@@ -10,10 +10,10 @@
 //   * the hero says what GRYND is and puts ranked first;
 //   * three inline ways in (solo, vs AI, daily), plus one link to /play, which
 //     is the only surface that renders all six modes;
-//   * the standing block is the player's own Solitaire record, from
-//     /api/user-stats, /api/get-user-tokens and /api/solitaire-duel/lobby, with
-//     the solo and daily figures that used to live on the mode cards;
-//   * recent matches and the public ladder preview;
+//   * the dashboard block is one server read: /api/home/dashboard returns the
+//     trophy-derived level and rank, the daily streak, the ranked record, the
+//     merged recent activity and one explainable next action. It sits beside
+//     the public ladder preview;
 //   * why the ranked result can be trusted;
 //   * social proof, then the ad slot as the very last block.
 //
@@ -22,7 +22,7 @@
 // empty list says so, and a signed-out visitor gets a sign-in path rather than
 // somebody else's record.
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useAuth, useUser } from "@clerk/nextjs";
 import NavigationBar from "../components/navigation-bar";
@@ -31,42 +31,11 @@ import Footer from "../components/Footer";
 import ReportEntryButton from "../components/reports/ReportEntryButton";
 import HeroCard3D from "../components/home/HeroCard3D";
 import HeroBackdrop from "../components/home/HeroBackdrop";
+import PlayerDashboard from "../components/home/PlayerDashboard";
 import heroCopy from "../components/home/HeroCopy.module.css";
-import { Button, StatTile, Surface } from "../components/ui";
+import { Button, Surface } from "../components/ui";
 import SpotlightCard from "../components/ui/SpotlightCard";
-import { formatDuration } from "../lib/solitaire-duel/soloStats.js";
 import { clearSessionArtifacts } from "../lib/security/sessionCleanup";
-
-const formatDate = (ms) => {
-  if (!ms) return "";
-  return new Date(ms).toLocaleDateString("en-US", { month: "short", day: "numeric" });
-};
-
-// A UTC date key (YYYY-MM-DD) as a short label. UTC is explicit so the viewer's
-// timezone can never move the day the server fixed the deal to.
-const formatDealDate = (dateKey) => {
-  const [year, month, day] = String(dateKey).split("-").map(Number);
-  if (!year || !month || !day) return "";
-  return new Date(Date.UTC(year, month - 1, day)).toLocaleDateString("en-US", {
-    month: "short",
-    day: "numeric",
-    timeZone: "UTC",
-  });
-};
-
-const outcomeLabel = (outcome) => {
-  if (outcome === "win") return "Win";
-  if (outcome === "loss") return "Loss";
-  if (outcome === "draw") return "Draw";
-  return "In progress";
-};
-
-const outcomeTone = (outcome) => {
-  if (outcome === "win") return "text-[color:var(--state-win)]";
-  if (outcome === "loss") return "text-[color:var(--state-loss)]";
-  if (outcome === "draw") return "text-[color:var(--state-gold)]";
-  return "text-[color:var(--accent-strong)]";
-};
 
 // The three ways in that are NOT ranked. Ranked owns the hero CTA; the full
 // six-mode menu is one link away on /play (D1). Deliberately data-driven so a
@@ -96,6 +65,14 @@ const WAYS = [
     body: "The same deterministic deal for every player, fixed by the UTC date. One official result a day.",
     cta: "Play today's deal",
   },
+  {
+    key: "daily-puzzle",
+    href: "/play/daily-puzzle",
+    eyebrow: "Puzzle",
+    title: "Three positions, one run",
+    body: "A short daily puzzle run from one winning deal. Free, unrated and separate from your ranked record.",
+    cta: "Play today's puzzle",
+  },
 ];
 
 export default function MainComponent({ adSlot = null, hilltopSlot = null, socialProof = null }) {
@@ -106,15 +83,10 @@ export default function MainComponent({ adSlot = null, hilltopSlot = null, socia
   const [termsLoading, setTermsLoading] = useState(true);
   const [termsSaving, setTermsSaving] = useState(false);
   const [termsError, setTermsError] = useState("");
-  const [stats, setStats] = useState(null);
-  const [trophies, setTrophies] = useState(null);
   const [board, setBoard] = useState(null);
-  const [recent, setRecent] = useState([]);
-  const [soloSummary, setSoloSummary] = useState(null);
-  const [soloLoaded, setSoloLoaded] = useState(false);
-  const [dailySummary, setDailySummary] = useState(null);
-  const [dailyDateKey, setDailyDateKey] = useState(null);
-  const [dailyLoaded, setDailyLoaded] = useState(false);
+  const [dashboard, setDashboard] = useState(null);
+  const [dashboardLoading, setDashboardLoading] = useState(true);
+  const [dashboardError, setDashboardError] = useState(false);
 
   // Terms gate — unchanged: a signed-in player who has not accepted is asked
   // before they keep playing.
@@ -152,90 +124,42 @@ export default function MainComponent({ adSlot = null, hilltopSlot = null, socia
     };
   }, []);
 
-  // The player's own record, from the platform's authoritative counters.
+  // ONE player read for the whole dashboard. Ranked history, Solo, the Daily
+  // Challenge, trophies, rating and streak all arrive together from
+  // `/api/home/dashboard`; the page no longer fans out to five endpoints that
+  // could disagree while they loaded. The endpoint keeps every identity and
+  // membership decision server-side.
+  const loadDashboard = useCallback(async () => {
+    setDashboardLoading(true);
+    setDashboardError(false);
+    try {
+      const res = await fetch("/api/home/dashboard", {
+        cache: "no-store",
+        credentials: "same-origin",
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok || !data?.success || !data.signedIn) {
+        setDashboardError(true);
+        return;
+      }
+      setDashboard(data);
+    } catch {
+      setDashboardError(true);
+    } finally {
+      setDashboardLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
+    if (!isLoaded) return;
     if (!isSignedIn) {
-      setStats(null);
-      setTrophies(null);
-      setRecent([]);
+      setDashboard(null);
+      setDashboardLoading(false);
+      setDashboardError(false);
       return;
     }
-    let cancelled = false;
-
-    fetch("/api/user-stats", { credentials: "include" })
-      .then((res) => res.json())
-      .then((data) => {
-        if (!cancelled && data?.success) setStats(data.stats);
-      })
-      .catch(() => {});
-
-    // Total trophies come from the same payload the navbar chip reads, so the
-    // two surfaces can never disagree.
-    fetch("/api/get-user-tokens", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      credentials: "include",
-    })
-      .then((res) => res.json())
-      .then((data) => {
-        if (cancelled || !data?.success) return;
-        const total = Number(data.data?.totalTrophies);
-        setTrophies(Number.isFinite(total) && total >= 0 ? total : 0);
-      })
-      .catch(() => {});
-
-    fetch("/api/solitaire-duel/lobby", { cache: "no-store", credentials: "include" })
-      .then((res) => res.json())
-      .then((data) => {
-        if (cancelled) return;
-        if (data?.success && Array.isArray(data.data?.recent)) {
-          setRecent(data.data.recent);
-        }
-      })
-      .catch(() => {});
-
-    return () => {
-      cancelled = true;
-    };
-  }, [isSignedIn]);
-
-  // Solo and daily records. These endpoints are the ONLY source for those
-  // figures: `/api/solitaire/solo` 401s for a guest (there are no account rows
-  // to read) and the daily payload carries today's UTC date for everyone. A
-  // failed read leaves the line empty rather than inventing a zero.
-  useEffect(() => {
-    // Wait for the auth state so a signed-in visitor is never sent the 401 path.
-    if (!isLoaded) return;
-    let cancelled = false;
-    const readJson = (url) =>
-      fetch(url, { credentials: "same-origin", cache: "no-store" })
-        .then((res) => (res.ok ? res.json() : null))
-        .catch(() => null);
-
-    Promise.all([
-      isSignedIn ? readJson("/api/solitaire/solo") : Promise.resolve(null),
-      readJson("/api/solitaire/daily"),
-    ])
-      .then(([soloBody, dailyBody]) => {
-        if (cancelled) return;
-        if (soloBody?.data?.summary) setSoloSummary(soloBody.data.summary);
-        if (dailyBody?.data) {
-          setDailySummary(dailyBody.data.summary ?? null);
-          setDailyDateKey(dailyBody.data.dateKey ?? null);
-        }
-        setSoloLoaded(true);
-        setDailyLoaded(true);
-      })
-      .catch(() => {
-        if (cancelled) return;
-        setSoloLoaded(true);
-        setDailyLoaded(true);
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [isLoaded, isSignedIn]);
+    void loadDashboard();
+  }, [isLoaded, isSignedIn, loadDashboard]);
 
   const handleAcceptTerms = async () => {
     setTermsSaving(true);
@@ -269,72 +193,11 @@ export default function MainComponent({ adSlot = null, hilltopSlot = null, socia
     }
   };
 
-  const solitaireRating = stats?.ratings?.["solitaire-duel"] ?? null;
-  const rating = Number.isFinite(Number(solitaireRating?.rating))
-    ? Number(solitaireRating.rating)
-    : null;
-  const games = Number.isFinite(Number(solitaireRating?.gamesRated))
-    ? Number(solitaireRating.gamesRated)
-    : null;
-  const winRate = Number.isFinite(Number(solitaireRating?.winRate))
-    ? Number(solitaireRating.winRate)
-    : null;
-
-  // The solo and daily lines that used to sit on the two mode cards. They move
-  // here rather than disappearing with the cards (D1): the figures answer "how
-  // am I doing?" and belong beside the ranked standing.
-  const soloLine = !isSignedIn
-    ? "Sign in to save your best"
-    : !soloLoaded
-      ? ""
-      : soloSummary && soloSummary.games > 0
-        ? `${soloSummary.completed}/${soloSummary.games} solved${
-            soloSummary.bestMs ? ` · best ${formatDuration(soloSummary.bestMs)}` : ""
-          }`
-        : "No solo games yet";
-
-  const dailyLine = !dailyLoaded
-    ? ""
-    : dailySummary
-      ? dailySummary.today?.completed
-        ? `Played today${
-            dailySummary.currentStreak > 1 ? ` · ${dailySummary.currentStreak}-day streak` : ""
-          }`
-        : `Not played yet${
-            dailySummary.currentStreak > 0 ? ` · ${dailySummary.currentStreak}-day streak` : ""
-          }`
-      : dailyDateKey
-        ? `Today's deal · ${formatDealDate(dailyDateKey)}`
-        : "";
-
-  const tiles = [
-    {
-      label: "Solitaire Elo",
-      value: rating === null ? "—" : rating.toLocaleString(),
-      hint: solitaireRating?.provisional
-        ? `Provisional · ${Number(solitaireRating.provisionalGamesRemaining ?? 0)} placement games left`
-        : "Rated ladder",
-      tone: "accent",
-    },
-    {
-      label: "Trophies",
-      value: trophies === null ? "—" : trophies.toLocaleString(),
-      hint: "Across every archived and active game",
-      tone: "gold",
-    },
-    {
-      label: "Ranked games",
-      value: games === null ? "—" : games.toLocaleString(),
-      hint: "Settled Solitaire matches",
-      tone: "default",
-    },
-    {
-      label: "Win rate",
-      value: winRate === null ? "—" : `${winRate}%`,
-      hint: "Decided Solitaire matches only",
-      tone: "win",
-    },
-  ];
+  // Today's challenge state comes from the same single dashboard read, so the
+  // Daily card can say it is already recorded instead of inviting a replay as
+  // if nothing had happened.
+  const dailyCompletedToday =
+    dashboard?.overview?.daily?.today?.completed === true;
 
   const features = [
     {
@@ -436,7 +299,27 @@ export default function MainComponent({ adSlot = null, hilltopSlot = null, socia
               All six ways to play →
             </Link>
           </div>
-          <div className="mt-4 grid gap-3 sm:grid-cols-3">
+          {/* Ranked is the primary competitive action: one clear card above
+              the practice and daily alternatives, with the same destination
+              as the hero CTA. */}
+          <Surface className="mt-4 flex flex-col gap-3 border-[color:var(--accent)]/40 sm:flex-row sm:items-center sm:justify-between">
+            <div className="min-w-0">
+              <p className="text-[10px] font-black uppercase tracking-[0.2em] text-[color:var(--accent-strong)]">
+                Ranked · competitive
+              </p>
+              <p className="mt-1 text-sm font-bold text-[color:var(--text-primary)]">
+                Ranked Solitaire
+              </p>
+              <p className="mt-1 text-xs leading-relaxed text-[color:var(--text-secondary)]">
+                Free ladder, the same deal for both seats. Results move your Elo
+                and trophies; practice and Solo never do.
+              </p>
+            </div>
+            <Button href="/play/ranked" className="shrink-0">
+              Play ranked
+            </Button>
+          </Surface>
+          <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
             {WAYS.map((way) => (
               <Surface key={way.key} tone="panel" padding="sm">
                 <Link
@@ -445,6 +328,9 @@ export default function MainComponent({ adSlot = null, hilltopSlot = null, socia
                 >
                   <p className="text-[10px] font-black uppercase tracking-[0.2em] text-[color:var(--text-muted)]">
                     {way.eyebrow}
+                    {way.key === "daily" && dailyCompletedToday
+                      ? " · completed today"
+                      : ""}
                   </p>
                   <p className="mt-1 text-sm font-bold text-[color:var(--text-primary)]">
                     {way.title}
@@ -453,7 +339,10 @@ export default function MainComponent({ adSlot = null, hilltopSlot = null, socia
                     {way.body}
                   </p>
                   <span className="mt-2 inline-block text-xs font-semibold text-[color:var(--accent-strong)]">
-                    {way.cta} →
+                    {way.key === "daily" && dailyCompletedToday
+                      ? "Play again"
+                      : way.cta}{" "}
+                    →
                   </span>
                 </Link>
               </Surface>
@@ -461,7 +350,7 @@ export default function MainComponent({ adSlot = null, hilltopSlot = null, socia
           </div>
         </section>
 
-        {/* ── Player standing ───────────────────────────────────────────── */}
+        {/* ── Player dashboard ─────────────────────────────────────────── */}
 
         <section id="dashboard" className="mt-14 scroll-mt-28" aria-labelledby="dashboard-heading">
           <div className="flex flex-wrap items-baseline justify-between gap-3">
@@ -469,7 +358,7 @@ export default function MainComponent({ adSlot = null, hilltopSlot = null, socia
               id="dashboard-heading"
               className="text-[11px] font-black uppercase tracking-[0.32em] text-[color:var(--text-muted)]"
             >
-              Your Solitaire
+              {isSignedIn ? "Your dashboard" : "Start playing"}
             </h2>
             {isSignedIn && (
               <Link
@@ -481,120 +370,16 @@ export default function MainComponent({ adSlot = null, hilltopSlot = null, socia
             )}
           </div>
 
-          {!isLoaded ? (
-            <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4" aria-busy="true">
-              {[0, 1, 2, 3].map((i) => (
-                <div
-                  key={i}
-                  className="h-24 animate-pulse rounded-[var(--radius-surface)] border border-[color:var(--border-hairline)] bg-[color:var(--bg-panel)]"
-                />
-              ))}
-            </div>
-          ) : !isSignedIn ? (
-            <Surface className="mt-4 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-              <div>
-                <p className="font-bold text-[color:var(--text-primary)]">
-                  Carry a rating, not just a score
-                </p>
-                <p className="mt-1 text-sm leading-relaxed text-[color:var(--text-secondary)]">
-                  An account keeps your Solitaire Elo, trophies, match history and
-                  placement progress. Practice against the bot works without one.
-                </p>
-              </div>
-              <div className="flex shrink-0 gap-2">
-                <Button href="/sign-up">Create account</Button>
-                <Button href="/sign-in" variant="secondary">
-                  Sign in
-                </Button>
-              </div>
-            </Surface>
-          ) : (
-            <>
-              <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                {tiles.map((tile) => (
-                  <StatTile key={tile.label} {...tile} />
-                ))}
-              </div>
-              {(soloLine || dailyLine) && (
-                <div className="mt-3 grid gap-3 sm:grid-cols-2">
-                  <Surface tone="panel" padding="sm">
-                    <p className="text-[10px] font-black uppercase tracking-[0.2em] text-[color:var(--text-muted)]">
-                      Solo
-                    </p>
-                    <p className="mt-1 text-xs text-[color:var(--text-secondary)]">
-                      {soloLine || "—"}
-                    </p>
-                  </Surface>
-                  <Surface tone="panel" padding="sm">
-                    <p className="text-[10px] font-black uppercase tracking-[0.2em] text-[color:var(--text-muted)]">
-                      Daily
-                    </p>
-                    <p className="mt-1 text-xs text-[color:var(--text-secondary)]">
-                      {dailyLine || "—"}
-                    </p>
-                  </Surface>
-                </div>
-              )}
-            </>
-          )}
+          <PlayerDashboard
+            isLoaded={isLoaded}
+            isSignedIn={isSignedIn}
+            dashboard={dashboard}
+            loading={dashboardLoading}
+            error={dashboardError}
+            onRetry={loadDashboard}
+          />
 
-          <div className="mt-4 grid gap-4 lg:grid-cols-[1.1fr_0.9fr]">
-            {/* Recent matches — the caller's own rows, never a sample. */}
-            <Surface>
-              <div className="flex items-baseline justify-between gap-3">
-                <h3 className="text-sm font-bold text-[color:var(--text-primary)]">
-                  Recent matches
-                </h3>
-                <Link
-                  href="/profil"
-                  className="text-[11px] font-semibold text-[color:var(--text-muted)] transition hover:text-[color:var(--text-primary)]"
-                >
-                  History
-                </Link>
-              </div>
-              {!isSignedIn ? (
-                <p className="mt-3 text-sm text-[color:var(--text-muted)]">
-                  Sign in to see your match history.
-                </p>
-              ) : recent.length === 0 ? (
-                <p className="mt-3 text-sm text-[color:var(--text-muted)]">
-                  No matches yet. Your first ranked game will appear here.
-                </p>
-              ) : (
-                <ul className="mt-3 divide-y divide-[color:var(--border-hairline)]">
-                  {recent.map((match) => (
-                    <li
-                      key={match.matchId}
-                      className="flex items-center justify-between gap-3 py-2.5"
-                    >
-                      <div className="min-w-0">
-                        <p className="truncate text-sm font-semibold text-[color:var(--text-primary)]">
-                          {match.opponent}
-                        </p>
-                        <p className="text-[11px] text-[color:var(--text-muted)]">
-                          {formatDate(match.endedAtMs ?? match.createdAtMs)}
-                          {match.isAi ? " · Practice · unrated" : " · Ranked"}
-                        </p>
-                      </div>
-                      <div className="flex shrink-0 items-center gap-3">
-                        <span
-                          className={`text-xs font-black uppercase tracking-wider ${outcomeTone(match.outcome)}`}
-                        >
-                          {outcomeLabel(match.outcome)}
-                        </span>
-                        <Link
-                          href={`/casino/solitaire-duel/${match.matchId}`}
-                          className="text-[11px] font-semibold text-[color:var(--text-muted)] transition hover:text-[color:var(--text-primary)]"
-                        >
-                          Open
-                        </Link>
-                      </div>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </Surface>
-
+          <div className="mt-4">
             {/* Public Solitaire leaderboard preview. */}
             <Surface>
               <div className="flex items-baseline justify-between gap-3">

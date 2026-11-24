@@ -67,6 +67,7 @@
     "test:streak-milestones": "node --import tsx --test --experimental-test-module-mocks tests/streak-milestones.test.mjs",
     "test:ui-sounds": "node --import tsx --test tests/ui-sounds.test.mjs",
     "test:home-polish": "node --import tsx --test tests/home-polish.test.mjs",
+    "test:home-dashboard": "node --import tsx --test tests/home-dashboard.test.mjs",
     "test:energy-grant": "node --import tsx --test tests/energy-grant.test.mjs",
     "test:nav-glow": "node --import tsx --test tests/nav-glow.test.mjs",
     "verify:nav-glow": "node qa/nav-glow-check.mjs",
