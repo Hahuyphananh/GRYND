@@ -61,6 +61,37 @@ let duel;
 let mocksInstalled = false;
 const cacheInputs = [];
 
+// ── Allowance seam ─────────────────────────────────────────────────────────
+// The allowance's own suite owns its internals (atomic increment, fail-open,
+// UTC rollover). Here it is a small in-memory counter so these route tests can
+// see whether a review charged the day and whether the engine was reached.
+const FREE_ANALYSES_PER_DAY = 3;
+const PRO_USER = "user_review_pro";
+const analysisUsage = new Map();
+const usageDay = (now = new Date()) => now.toISOString().slice(0, 10);
+const usageKey = (playerId, now = new Date()) => `${playerId}:${usageDay(now)}`;
+const usageReset = (now = new Date()) =>
+  new Date(
+    Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1),
+  ).toISOString();
+const freeAllowanceOf = (used, now = new Date()) => ({
+  unlimited: false,
+  limit: FREE_ANALYSES_PER_DAY,
+  used,
+  remaining: Math.max(0, FREE_ANALYSES_PER_DAY - used),
+  dayKey: usageDay(now),
+  resetsAt: usageReset(now),
+});
+const unlimitedAllowanceOf = (now = new Date()) => ({
+  unlimited: true,
+  limit: null,
+  used: 0,
+  remaining: null,
+  dayKey: usageDay(now),
+  resetsAt: usageReset(now),
+});
+const usedToday = (playerId) => analysisUsage.get(usageKey(playerId)) ?? 0;
+
 function duelMatch(overrides = {}) {
   return {
     id: MATCH_ID,
@@ -195,15 +226,15 @@ function installMocks() {
   mock.module("../src/lib/solitaire-duel/analysisCache.ts", {
     namedExports: {
       // The allowance gate reads the cache identity and probes the cache before
-      // it can cost an analysis; here every read is a miss, so the recorded
-      // `loadOrComputeAnalysis` calls below still describe the route wiring.
+      // it can cost an analysis; a test may seed `cachedAnalysis` to model a
+      // re-view of a game that was already analysed.
       analysisCacheIdentity: ({ gameKind, gameId, logDigest, engineVersion = 1 }) => ({
         gameKind,
         gameId,
         logDigest,
         engineVersion,
       }),
-      readCachedAnalysis: async () => null,
+      readCachedAnalysis: async () => request.cachedAnalysis ?? null,
       loadOrComputeAnalysis: async (input) => {
         cacheInputs.push(input);
         return { analysis: SAMPLE_ANALYSIS, cached: cacheInputs.length > 1 };
@@ -229,6 +260,30 @@ function installMocks() {
           playerId: null,
           isGuest: false,
         };
+      },
+    },
+  });
+
+  // PRO is resolved server-side (never from the client) and the allowance is
+  // the only place a charge can appear. Both are deterministic here.
+  mock.module("../src/lib/stripe/subscriptions.ts", {
+    namedExports: {
+      getMembershipTier: async (userId) => (userId === PRO_USER ? "pro" : "free"),
+    },
+  });
+  mock.module("../src/lib/solitaire-duel/analysisAllowance.ts", {
+    namedExports: {
+      FREE_ANALYSES_PER_DAY,
+      readAnalysisAllowance: async ({ playerId, isPro, now }) =>
+        isPro ? unlimitedAllowanceOf(now) : freeAllowanceOf(usedToday(playerId), now),
+      consumeAnalysisAllowance: async ({ playerId, isPro, now }) => {
+        if (isPro) return { allowed: true, allowance: unlimitedAllowanceOf(now) };
+        const used = usedToday(playerId);
+        if (used >= FREE_ANALYSES_PER_DAY) {
+          return { allowed: false, allowance: freeAllowanceOf(used, now) };
+        }
+        analysisUsage.set(usageKey(playerId), used + 1);
+        return { allowed: true, allowance: freeAllowanceOf(used + 1, now) };
       },
     },
   });
@@ -274,9 +329,10 @@ installMocks();
 
 function reset({ userId = USER, guestId = null } = {}) {
   fake = createFakeDb();
-  request = { userId, guestId };
+  request = { userId, guestId, cachedAnalysis: null };
   duel = { match: duelMatch(), p1: [...LOG], p2: [] };
   cacheInputs.length = 0;
+  analysisUsage.clear();
 }
 
 const duelReview = () => import("../src/app/api/solitaire-duel/match/[matchId]/review/route.ts");
@@ -376,6 +432,8 @@ test("a non-participant is refused and receives no deal", async () => {
   assert.equal(payload.success, false);
   assert.equal("deal" in payload, false);
   assert.equal("moves" in payload, false);
+  assert.equal(analysisUsage.size, 0, "a refused caller cannot spend an allowance");
+  assert.equal(cacheInputs.length, 0, "a refused caller never reaches the engine");
 });
 
 test("a live match is not reviewable and leaks neither deal nor log", async () => {
@@ -424,6 +482,10 @@ test("a forfeit is returned as an incomplete review, not a complete one", async 
     replayMoves({ deal: payload.data.deal, moves: payload.data.moves }).state.completed,
     false,
   );
+  assert.equal(payload.data.analysis, null, "an ineligible review runs no analysis");
+  assert.equal(payload.data.analysisAllowance.used, 0, "and consumes no allowance");
+  assert.equal(cacheInputs.length, 0, "the engine was never asked");
+  assert.equal(analysisUsage.size, 0, "no usage row was written");
 });
 
 test("a guest practice seat can review its own duel", async () => {
@@ -680,7 +742,9 @@ test("every mode asks for the analysis under its own canonical log digest", asyn
   );
 });
 
-test("an incomplete review still returns the analysis for the moves it has", async () => {
+// ── Eligibility, allowance and cache at the route ──────────────────────────
+
+test("an ineligible forfeit keeps its deal and log but spends nothing", async () => {
   reset();
   const prefix = LOG.slice(0, 5);
   duel.match = duelMatch({
@@ -694,8 +758,115 @@ test("an incomplete review still returns the analysis for the moves it has", asy
   duel.p1 = prefix;
 
   const payload = await (await duelGet()).json();
+
   assert.equal(payload.data.status, "forfeit");
   assert.equal(payload.data.analysisEligible, false);
-  assert.equal(payload.data.analysis.reconstructable, true);
-  assert.equal(cacheInputs[0].logDigest, moveLogDigest(canonicalMoveLog(prefix).log));
+  assert.equal(payload.data.analysis, null);
+  assert.equal(payload.data.analysisLimited, false);
+  assert.equal(payload.data.analysisAllowance.used, 0);
+  assert.equal(payload.data.analysisAllowance.remaining, FREE_ANALYSES_PER_DAY);
+  assert.equal(cacheInputs.length, 0, "the engine was never asked");
+  assert.equal(analysisUsage.size, 0, "no usage row was written");
+  // The review experience is preserved: the exact deal and the caller's log.
+  assert.deepEqual(payload.data.deal, DEAL);
+  assert.deepEqual(payload.data.moves, prefix);
+});
+
+test("losing the race with an unfinished board is not analysed or charged", async () => {
+  reset();
+  const prefix = LOG.slice(0, 4);
+  duel.match = duelMatch({
+    result: "player2",
+    resolutionReason: "finish",
+    p1State: replayMoves({ deal: DEAL, moves: prefix }).state,
+    p1Ply: prefix.length,
+    p1FinishedAt: null,
+  });
+  duel.p1 = prefix;
+
+  const payload = await (await duelGet()).json();
+
+  assert.equal(payload.data.status, "incomplete");
+  assert.equal(payload.data.analysisEligible, false);
+  assert.equal(payload.data.incompleteReason, "not-completed");
+  assert.equal(payload.data.result.completed, false);
+  assert.equal(payload.data.analysis, null);
+  assert.equal(payload.data.analysisAllowance.used, 0);
+  assert.equal(cacheInputs.length, 0);
+  assert.equal(analysisUsage.size, 0);
+});
+
+test("a cancelled match is refused before any analysis or charge", async () => {
+  reset();
+  duel.match = duelMatch({
+    status: "cancelled",
+    result: null,
+    resolutionReason: null,
+    p1State: OPENING,
+    p1Ply: 0,
+    p1FinishedAt: null,
+  });
+  duel.p1 = [];
+
+  const response = await duelGet();
+  const payload = await response.json();
+
+  assert.equal(response.status, 409);
+  assert.equal("deal" in payload, false);
+  assert.equal(cacheInputs.length, 0);
+  assert.equal(analysisUsage.size, 0);
+});
+
+test("a completed duel charges one analysis and a cached re-view charges none", async () => {
+  reset();
+
+  const fresh = await (await duelGet()).json();
+  assert.equal(fresh.data.status, "complete");
+  assert.ok(fresh.data.analysis);
+  assert.equal(fresh.data.analysisLimited, false);
+  assert.equal(fresh.data.analysisAllowance.used, 1);
+  assert.equal(fresh.data.analysisAllowance.remaining, FREE_ANALYSES_PER_DAY - 1);
+  assert.equal(cacheInputs.length, 1, "the analysis is generated once");
+  assert.equal(usedToday(USER), 1);
+
+  // The same game + exact log is a cache hit: served, never recomputed or
+  // charged again.
+  request.cachedAnalysis = SAMPLE_ANALYSIS;
+  const revisit = await (await duelGet()).json();
+  assert.equal(revisit.data.analysis.version, ANALYSIS_VERSION);
+  assert.equal(revisit.data.analysisAllowance.used, 1, "a cached re-view is free");
+  assert.equal(cacheInputs.length, 1, "the engine never runs twice");
+  assert.equal(usedToday(USER), 1);
+});
+
+test("the day's fourth fresh duel review is withheld, not an error", async () => {
+  reset();
+
+  for (let i = 0; i < FREE_ANALYSES_PER_DAY; i += 1) {
+    const allowed = await (await duelGet()).json();
+    assert.equal(allowed.data.analysisLimited, false, `analysis ${i + 1} must be allowed`);
+    assert.ok(allowed.data.analysis);
+  }
+
+  const denied = await (await duelGet()).json();
+  assert.equal(denied.data.analysisLimited, true);
+  assert.equal(denied.data.analysis, null, "no analysis is served past the limit");
+  assert.equal(denied.data.analysisEligible, true, "the game itself stays reviewable");
+  assert.equal(denied.data.analysisAllowance.remaining, 0);
+  assert.deepEqual(denied.data.moves, LOG, "the caller's log is still served");
+  assert.equal(usedToday(USER), FREE_ANALYSES_PER_DAY);
+});
+
+test("a PRO duel review is unlimited and never counted", async () => {
+  reset({ userId: PRO_USER });
+  duel.match = duelMatch({ player1Id: PRO_USER, player2Id: OTHER });
+
+  for (let i = 0; i < FREE_ANALYSES_PER_DAY * 2; i += 1) {
+    const payload = await (await duelGet()).json();
+    assert.ok(payload.data.analysis, "PRO always gets the analysis");
+    assert.equal(payload.data.analysisLimited, false);
+    assert.equal(payload.data.analysisAllowance.unlimited, true);
+    assert.equal(payload.data.analysisAllowance.limit, null);
+  }
+  assert.equal(analysisUsage.size, 0, "PRO is never written to the usage table");
 });

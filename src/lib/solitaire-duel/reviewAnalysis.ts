@@ -8,6 +8,11 @@
 // analyses per account. They now call this module, which applies the GRYND PRO
 // rule in the right order:
 //
+//   0. NOT ELIGIBLE → the viewer's own board was never completed (a forfeit or
+//                   an unfinished race). The deal and the caller's log stay
+//                   reviewable, but no analysis is read, computed or charged:
+//                   the day's count is only READ for display. Eligibility is
+//                   decided by the route from server facts, never by a client.
 //   1. CACHE HIT  → the analysis is already stored for this exact game + log +
 //                   engine version. Serve it and consume NOTHING. Re-opening a
 //                   game, refreshing, or opening it on another device is free.
@@ -86,6 +91,7 @@ export async function loadReviewAnalysis(
     moves,
     playerId,
     isGuest = false,
+    eligible = true,
     now = new Date(),
   }: {
     gameKind: ReviewGameKind;
@@ -97,11 +103,27 @@ export async function loadReviewAnalysis(
     /** The authenticated (or signed guest) identity — never a query param. */
     playerId: string;
     isGuest?: boolean;
+    /**
+     * Whether this game may be analysed at all. A duel whose viewer's own board
+     * was never completed (`forfeit` / `incomplete`) is not eligible: the
+     * review itself is still served, but a full analysis would be of an unplayed
+     * game, so it is neither read from the cache, computed, nor charged. Only
+     * the solo/daily rows, which are served only when completed, default true.
+     */
+    eligible?: boolean;
     now?: Date;
   },
   deps: ReviewAnalysisDeps = {},
 ): Promise<ReviewAnalysis> {
   const isPro = await resolveIsPro(playerId, isGuest, deps);
+
+  if (!eligible) {
+    // Nothing to analyse, so nothing may be cached or spent. Today's count is
+    // read for display only; a cached analysis of the same partial log is
+    // deliberately NOT served, because it is not a complete Game Review either.
+    const allowance = await readAnalysisAllowance({ playerId, isPro, now }, deps);
+    return { analysis: null, cached: false, limited: false, allowance };
+  }
 
   const identity: AnalysisCacheIdentity | null = analysisCacheIdentity({
     gameKind,

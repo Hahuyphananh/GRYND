@@ -9,6 +9,9 @@
  *     how many are left and point at the upgrade page;
  *   * a cached analysis (same game + log + engine version) is FREE — it never
  *     consumes a slot, so refreshing or re-opening a review costs nothing;
+ *   * an INELIGIBLE review (a forfeit, or a board that was never completed) is
+ *     never cached, computed or charged — its allowance is read for display
+ *     only, so a review that cannot be a full Game Review cannot spend one;
  *   * GRYND PRO is unlimited and is never written to the usage table;
  *   * the day rolls over at UTC midnight;
  *   * an unreachable quota table fails OPEN (the review still computes) instead
@@ -154,6 +157,79 @@ test("PRO is unlimited and never counted", async () => {
     assert.ok(result.analysis);
   }
   assert.equal(rows.size, 0, "PRO members must never be written to the usage table");
+});
+
+test("an ineligible review is never analysed and never consumes a slot", async () => {
+  const { usage, rows } = memoryStore();
+  let cacheReads = 0;
+  let engineCalls = 0;
+  const deps = {
+    ...usage,
+    read: async () => {
+      cacheReads += 1;
+      return null;
+    },
+    store: async () => assert.fail("an ineligible review must not store"),
+    analyze: () => {
+      engineCalls += 1;
+      return ANALYZED_GAME;
+    },
+    isPro: async () => false,
+  };
+
+  const result = await loadReviewAnalysis(
+    { ...INPUT, playerId: "user_1", eligible: false },
+    deps,
+  );
+
+  assert.equal(result.analysis, null, "no analysis may be served");
+  assert.equal(result.cached, false);
+  assert.equal(result.limited, false, "ineligible is not the same as limited");
+  assert.equal(result.allowance.used, 0, "nothing was consumed");
+  assert.equal(result.allowance.remaining, FREE_ANALYSES_PER_DAY);
+  assert.equal(rows.size, 0, "no usage row may be written");
+  assert.equal(cacheReads, 0, "the cache is not even consulted");
+  assert.equal(engineCalls, 0, "the engine never runs");
+});
+
+test("an ineligible review never serves or rewrites a cached analysis", async () => {
+  const { usage, rows } = memoryStore();
+  let stores = 0;
+  const deps = {
+    ...usage,
+    read: async () => ANALYZED_GAME,
+    store: async () => {
+      stores += 1;
+    },
+    analyze: () => assert.fail("a cached row must not be recomputed"),
+    isPro: async () => false,
+  };
+
+  const result = await loadReviewAnalysis(
+    { ...INPUT, playerId: "user_1", eligible: false },
+    deps,
+  );
+
+  assert.equal(result.analysis, null, "a partial-log analysis is not a full review either");
+  assert.equal(result.cached, false, "an ineligible review is not a cached re-view");
+  assert.equal(stores, 0);
+  assert.equal(rows.size, 0);
+});
+
+test("an ineligible PRO review stays unlimited and uncounted", async () => {
+  const { usage, rows } = memoryStore();
+  const deps = { ...usage, ...cache(null), isPro: async () => true };
+
+  const result = await loadReviewAnalysis(
+    { ...INPUT, playerId: "user_pro", eligible: false },
+    deps,
+  );
+
+  assert.equal(result.analysis, null);
+  assert.equal(result.limited, false);
+  assert.equal(result.allowance.unlimited, true);
+  assert.equal(result.allowance.limit, null);
+  assert.equal(rows.size, 0);
 });
 
 test("the allowance rolls over at UTC midnight", async () => {

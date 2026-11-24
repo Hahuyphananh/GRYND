@@ -16,6 +16,10 @@
 //   * For a forfeit or an unfinished board the payload is clearly marked
 //     `status: "forfeit" | "incomplete"` and `analysisEligible: false`; it is
 //     never presented as a complete review.
+//   * ELIGIBILITY IS DECIDED BEFORE THE ANALYSIS. Only a completed board reaches
+//     `loadReviewAnalysis`; an ineligible review never computes an analysis and
+//     never spends one of the day's free analyses. Its allowance is read (never
+//     consumed) so the surface can still show how many are left.
 //
 // WHAT IS NOT HERE: no analysis, no accuracy score, no Elo/trophy write, no
 // settlement. The log is replayed through `replayMoves` only to prove it
@@ -101,6 +105,12 @@ export async function GET(
     }
 
     const playerCompleted = state.completed === true;
+    // The review's own vocabulary, computed BEFORE anything can be spent: only
+    // `complete` is a full Game Review and the only status that may analyse.
+    const status = duelReviewStatus({
+      playerCompleted,
+      resolutionReason: match.resolutionReason,
+    });
     const viewerPly = Number(seat === "player1" ? match.p1Ply : match.p2Ply) || 0;
     const rawMoves = await fetchSeatMoves(String(match.id), seat);
 
@@ -150,8 +160,11 @@ export async function GET(
 
     // Cache identity = the caller's own game + SHA-256 of THEIR canonical log +
     // engine version. The opponent's log is neither read nor part of the key.
-    // The analysis is costed by the caller's daily allowance: a cached re-view
-    // is free, a fresh one uses the free plan's 3/day (PRO is unlimited).
+    // Eligibility comes first: a forfeit or an unfinished board is fully
+    // reviewable (its deal and personal log are served below) but is never
+    // analysed or charged. Otherwise the analysis is costed by the caller's
+    // daily allowance: a cached re-view is free, a fresh one uses the free
+    // plan's 3/day (PRO is unlimited).
     const { analysis, limited, allowance } = await loadReviewAnalysis({
       gameKind: "duel",
       gameId: String(match.id),
@@ -159,11 +172,7 @@ export async function GET(
       deal: match.deal as SolitaireDeal,
       moves: canonical.log,
       playerId: userId,
-    });
-
-    const status = duelReviewStatus({
-      playerCompleted,
-      resolutionReason: match.resolutionReason,
+      eligible: status === "complete",
     });
     const startedAt = toIso(match.startedAt ?? match.goAt ?? match.createdAt);
     const seatFinishedAt =
