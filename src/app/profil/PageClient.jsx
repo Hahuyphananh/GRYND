@@ -1167,7 +1167,7 @@ export default function ProfilePage({ adSlot = null, hilltopSlot = null }) {
 
   if (!isLoaded) {
     return (
-      <div className="flex h-screen items-center justify-center bg-[color:var(--bg-page)]">
+      <div className="flex h-dvh items-center justify-center bg-[color:var(--bg-page)]">
         <div className="text-2xl text-cyan-200/80">
           {t("profile.loading", "Loading…")}
         </div>
@@ -1182,9 +1182,9 @@ export default function ProfilePage({ adSlot = null, hilltopSlot = null }) {
     // account profile below is untouched (Phase 2F).
     return (
       <div
-        className="relative min-h-screen bg-[color:var(--bg-page)] text-[color:var(--text-primary)]"
+        className="relative min-h-dvh bg-[color:var(--bg-page)] text-[color:var(--text-primary)]"
       >
-        <div className="mx-auto max-w-6xl px-4 pb-20 pt-24 sm:px-6">
+        <div className="mx-auto max-w-6xl px-4 pb-20 pt-6 sm:px-6">
           <NavigationBar currentPath="/profil" />
           <header className="mb-6">
             <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-cyan-200/80">
@@ -1215,13 +1215,39 @@ export default function ProfilePage({ adSlot = null, hilltopSlot = null }) {
 
   return (
     <div
-      className="relative min-h-screen bg-[color:var(--bg-page)] text-[color:var(--text-primary)]"
+      className="relative min-h-dvh bg-[color:var(--bg-page)] text-[color:var(--text-primary)]"
     >
-      <div className="max-w-6xl mx-auto px-6 pt-24 pb-20">
+      <div className="max-w-6xl mx-auto px-6 pt-6 pb-20">
         <NavigationBar currentPath="/profil" />
-        <h1 className="mb-8 text-4xl font-black tracking-tight text-white sm:text-5xl">
+        <h1 className="mb-4 text-4xl font-black tracking-tight text-white sm:text-5xl">
           {t("profile.title", "Your Profile")}
         </h1>
+        {/* This page is one very long scroll. The chips are a map of it: they
+            stick under the bar, wrap instead of hiding sections off-screen,
+            and jump to each card. Each target carries the matching scroll
+            margin so the sticky row cannot cover the heading it just moved
+            to. */}
+        <nav
+          aria-label={t("profile.sections.label", "Profile sections")}
+          className="sticky top-[calc(var(--nav-height)_+_var(--safe-top))] z-30 -mx-6 mb-6 flex flex-wrap gap-2 bg-[color:var(--bg-page)]/95 px-6 py-2 backdrop-blur"
+        >
+          {[
+            ["profil-personal", "profile.info.title", "Personal info"],
+            ["profil-stats", "profile.stats.title", "Statistics"],
+            ["profil-titles", "profile.titles.title", "Titles"],
+            ["profil-referral", "profile.referral.title", "Referral"],
+            ["profil-friends", "profile.friends.addTitle", "Friends"],
+            ["profil-danger", "profile.danger.title", "Account"],
+          ].map(([id, key, label]) => (
+            <a
+              key={id}
+              href={`#${id}`}
+              className="rounded-full border border-white/15 bg-[color:var(--bg-panel)] px-3 py-1.5 text-xs font-bold text-slate-300 transition hover:border-cyan-400/40 hover:text-cyan-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[color:var(--focus-ring)]"
+            >
+              {t(key, label)}
+            </a>
+          ))}
+        </nav>
         <div className="grid gap-8">
           <div
             className={`relative overflow-hidden bg-[color:var(--bg-surface)] border border-white/10 rounded-xl p-6 shadow-[var(--shadow-raise)] ${profileGlowClass || ""}`}
@@ -1240,7 +1266,10 @@ export default function ProfilePage({ adSlot = null, hilltopSlot = null }) {
             }
           >
             <div className="flex items-center justify-between mb-2">
-              <h2 className="text-xl text-cyan-200/80">
+              <h2
+                id="profil-personal"
+                className="scroll-mt-[calc(var(--nav-height)_+_var(--safe-top)_+_4rem)] text-xl text-cyan-200/80"
+              >
                 {t("profile.info.title", "Personal info")}
               </h2>
               <div className="flex items-center gap-3">
@@ -1442,7 +1471,10 @@ export default function ProfilePage({ adSlot = null, hilltopSlot = null }) {
 rounded-xl p-6 
 shadow-[var(--shadow-raise)]"
         >
-          <h2 className="text-xl text-cyan-200/80 mb-4">
+          <h2
+            id="profil-stats"
+            className="scroll-mt-[calc(var(--nav-height)_+_var(--safe-top)_+_4rem)] text-xl text-cyan-200/80 mb-4"
+          >
             {t("profile.stats.title", "User Statistics")}
           </h2>
           {statsError && <p className="text-red-400 mb-4">{statsError}</p>}
@@ -1528,7 +1560,10 @@ shadow-[var(--shadow-raise)]"
             aria-expanded={titlesOpen}
             aria-controls="titles-section-body"
           >
-            <h2 className="text-xl text-slate-200">
+            <h2
+              id="profil-titles"
+              className="scroll-mt-[calc(var(--nav-height)_+_var(--safe-top)_+_4rem)] text-xl text-slate-200"
+            >
               {t("profile.titles.title", "Titles")}
             </h2>
             <svg
@@ -1840,7 +1875,10 @@ shadow-[var(--shadow-raise)]"
 rounded-xl p-6 
 shadow-[var(--shadow-raise)]"
         >
-          <h2 className="text-xl text-cyan-200/80 mb-4">
+          <h2
+            id="profil-referral"
+            className="scroll-mt-[calc(var(--nav-height)_+_var(--safe-top)_+_4rem)] text-xl text-cyan-200/80 mb-4"
+          >
             {t("profile.referral.title", "Referral System")}
           </h2>
 
@@ -1928,7 +1966,10 @@ focus:ring-2 focus:ring-[color:var(--focus-ring)] px-4 py-2 outline-hidden focus
 rounded-xl p-6 
 shadow-[var(--shadow-raise)]"
         >
-          <h2 className="text-xl text-cyan-200/80 mb-4">
+          <h2
+            id="profil-friends"
+            className="scroll-mt-[calc(var(--nav-height)_+_var(--safe-top)_+_4rem)] text-xl text-cyan-200/80 mb-4"
+          >
             {t("profile.friends.addTitle", "Add Friends")}
           </h2>
           <div className="flex gap-2 mb-4">
@@ -2046,7 +2087,7 @@ shadow-[var(--shadow-raise)]"
                         {friend.name}
                       </span>
                       {friend.streakTitle && (
-                        <span className="ml-2 rounded-full border border-amber-400/40 bg-amber-500/10 px-1.5 py-0.5 text-[10px] text-amber-300">
+                        <span className="ml-2 rounded-full border border-amber-400/40 bg-amber-500/10 px-1.5 py-0.5 text-[11px] text-amber-300">
                           <svg
                             className="w-3 h-3 inline text-amber-400"
                             viewBox="0 0 24 24"
@@ -2282,7 +2323,10 @@ shadow-[var(--shadow-raise)]"
           className="mt-8 border border-red-500 bg-red-950/40 border border-red-500/40 
 shadow-[0_0_20px_rgba(255,0,0,0.15)] rounded-lg p-6"
         >
-          <h2 className="text-xl text-red-400 mb-2">
+          <h2
+            id="profil-danger"
+            className="scroll-mt-[calc(var(--nav-height)_+_var(--safe-top)_+_4rem)] text-xl text-red-400 mb-2"
+          >
             {t("profile.danger.title", "Danger Zone: Delete Account")}
           </h2>
           <p className="text-red-200 mb-4">

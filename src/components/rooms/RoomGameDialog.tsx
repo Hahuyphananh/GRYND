@@ -116,7 +116,7 @@ export default function RoomGameDialog({
                     }`}
                   >
                     {t(`rooms.game_${option.key}`, option.label)}
-                    <span className="mt-0.5 block text-[10px] font-normal text-gray-300">
+                    <span className="mt-0.5 block text-[11px] font-normal text-gray-300">
                       {t("rooms.optionFree", "Free play")}
                     </span>
                   </button>

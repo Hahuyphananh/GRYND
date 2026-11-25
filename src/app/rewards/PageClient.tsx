@@ -32,7 +32,7 @@ export default function RewardsPage() {
   });
 
   return (
-    <div className="relative min-h-screen overflow-x-clip bg-page text-[color:var(--text-primary)]">
+    <div className="relative min-h-dvh overflow-x-clip bg-page text-[color:var(--text-primary)]">
       <InteractiveCasinoBg variant="subtle" />
 
       <NavigationBar currentPath="/rewards" />

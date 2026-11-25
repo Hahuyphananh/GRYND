@@ -52,7 +52,7 @@ export default function GameLanding({
   const gameGuides = guidesForGame(game.slug).slice(0, 3);
 
   return (
-    <div className="relative min-h-screen overflow-x-clip bg-page pb-16 text-white">
+    <div className="relative min-h-dvh overflow-x-clip bg-page pb-16 text-white">
       <NavigationBar currentPath="/games" />
 
       {/* Structured data through the shared component, not a JSON blob copied

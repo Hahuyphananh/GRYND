@@ -106,7 +106,7 @@ export default function BoardAppearanceDrawer({ label = "Appearance" }: { label?
         type="button"
         onClick={() => setOpen(true)}
         data-testid="board-appearance-trigger"
-        className="pointer-events-auto rounded-lg border border-white/15 bg-white/5 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.14em] text-white/70 transition hover:bg-white/10 hover:text-white"
+        className="pointer-events-auto rounded-lg border border-white/15 bg-white/5 px-2.5 py-1 text-[11px] font-black uppercase tracking-[0.14em] text-white/70 transition hover:bg-white/10 hover:text-white"
       >
         {label}
       </button>
@@ -239,7 +239,7 @@ export default function BoardAppearanceDrawer({ label = "Appearance" }: { label?
 function Section({ title, children }: { title: string; children: ReactNode }) {
   return (
     <section className="mt-5">
-      <h3 className="text-[10px] font-black uppercase tracking-[0.22em] text-cyan-200/80">{title}</h3>
+      <h3 className="text-[11px] font-black uppercase tracking-[0.22em] text-cyan-200/80">{title}</h3>
       <div className="mt-2 space-y-1.5">{children}</div>
     </section>
   );
@@ -280,11 +280,11 @@ function Item({
       {preview}
       <span className="min-w-0 flex-1">
         <span className="block text-xs font-bold text-white">{label}</span>
-        <span className="block truncate text-[10px] text-white/45">
+        <span className="block truncate text-[11px] text-white/45">
           {locked ? `Unlock at ${streakDay}-day streak` : blurb}
         </span>
       </span>
-      <span className="text-[10px] font-black uppercase tracking-[0.12em] text-cyan-200/80">
+      <span className="text-[11px] font-black uppercase tracking-[0.12em] text-cyan-200/80">
         {locked ? "Locked" : active ? "Equipped" : busy ? "Saving…" : "Equip"}
       </span>
     </button>

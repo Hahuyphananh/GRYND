@@ -24,11 +24,11 @@ export default function RoomPageClient({
   const { t } = useTranslation();
 
   return (
-    <div className="relative min-h-screen">
+    <div className="relative min-h-dvh">
       <InteractiveCasinoBg variant="subtle" />
       <NavigationBar currentPath="/rooms" />
 
-      <main className="relative mx-auto w-full max-w-5xl px-4 pb-16 pt-24 sm:px-6">
+      <div className="relative mx-auto w-full max-w-5xl px-4 pb-16 pt-6 sm:px-6">
         <h1 className="text-2xl font-black text-white sm:text-3xl">
           {t("rooms.pageTitle", "Private room")}
         </h1>
@@ -48,7 +48,7 @@ export default function RoomPageClient({
             </Link>
           </div>
         )}
-      </main>
+      </div>
 
       <Footer />
     </div>

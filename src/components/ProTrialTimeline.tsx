@@ -102,7 +102,7 @@ export default function ProTrialTimeline({
                 >
                   {index + 1}
                 </span>
-                <span className="text-[10px] font-semibold leading-tight">{labels[id]}</span>
+                <span className="text-[11px] font-semibold leading-tight">{labels[id]}</span>
               </button>
             </li>
           );
@@ -191,7 +191,7 @@ export default function ProTrialTimeline({
         >
           ← {t("pro.trial.back")}
         </button>
-        <span className="text-[10px] font-semibold uppercase tracking-wider text-[#9dd8ff]/50">
+        <span className="text-[11px] font-semibold uppercase tracking-wider text-[#9dd8ff]/50">
           {t("pro.trial.step_of", { current: stepIndex + 1, total: STEPS.length })}
         </span>
         <button

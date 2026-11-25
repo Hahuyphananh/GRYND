@@ -215,7 +215,7 @@ export default function MainComponent({ adSlot = null, hilltopSlot = null, socia
   ];
 
   return (
-    <div className="relative isolate min-h-screen bg-[color:var(--bg-page)] pb-24 text-[color:var(--text-primary)] md:pb-0">
+    <div className="relative isolate min-h-dvh bg-[color:var(--bg-page)] pb-24 text-[color:var(--text-primary)] md:pb-0">
       {/* The brand backdrop is page-wide, not boxed into the hero: the glow
           fades out behind the content instead of ending at a section edge. */}
       <HeroBackdrop />
@@ -224,7 +224,7 @@ export default function MainComponent({ adSlot = null, hilltopSlot = null, socia
 
       <StreakWidget />
 
-      <main className="mx-auto max-w-6xl px-4 pt-24 sm:px-6 md:pt-28">
+      <div className="mx-auto max-w-6xl px-4 pt-6 sm:px-6 md:pt-8">
         {/* ── Hero ──────────────────────────────────────────────────────── */}
 
         <section className="relative pb-8 pt-4 sm:pb-10">
@@ -304,7 +304,7 @@ export default function MainComponent({ adSlot = null, hilltopSlot = null, socia
               as the hero CTA. */}
           <Surface className="mt-4 flex flex-col gap-3 border-[color:var(--accent)]/40 sm:flex-row sm:items-center sm:justify-between">
             <div className="min-w-0">
-              <p className="text-[10px] font-black uppercase tracking-[0.2em] text-[color:var(--accent-strong)]">
+              <p className="text-[11px] font-black uppercase tracking-[0.2em] text-[color:var(--accent-strong)]">
                 Ranked · competitive
               </p>
               <p className="mt-1 text-sm font-bold text-[color:var(--text-primary)]">
@@ -326,7 +326,7 @@ export default function MainComponent({ adSlot = null, hilltopSlot = null, socia
                   href={way.href}
                   className="block rounded-lg p-2 transition hover:bg-[color:var(--bg-surface)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[color:var(--focus-ring)]"
                 >
-                  <p className="text-[10px] font-black uppercase tracking-[0.2em] text-[color:var(--text-muted)]">
+                  <p className="text-[11px] font-black uppercase tracking-[0.2em] text-[color:var(--text-muted)]">
                     {way.eyebrow}
                     {way.key === "daily" && dailyCompletedToday
                       ? " · completed today"
@@ -499,7 +499,7 @@ export default function MainComponent({ adSlot = null, hilltopSlot = null, socia
             element and immediately above the footer, so nothing clickable
             follows it (tests/ad-model.test.mjs). */}
         {adSlot}
-      </main>
+      </div>
 
       <Footer />
 

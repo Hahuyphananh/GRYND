@@ -169,7 +169,7 @@ export default async function OperationsPage() {
   const recentAudit = [...snapshot.audit].reverse().slice(0, 8);
 
   return (
-    <main className="min-h-screen bg-surface px-4 py-8 text-[#c9f7ff] sm:px-6 lg:px-10">
+    <div className="min-h-dvh bg-surface px-4 py-8 text-[#c9f7ff] sm:px-6 lg:px-10">
       <div className="mx-auto max-w-6xl">
         <div className="mb-6 flex flex-wrap items-end justify-between gap-3">
           <div>
@@ -330,7 +330,7 @@ export default async function OperationsPage() {
                 <div>
                   <h3 className={LABEL}>PRO by billing option</h3>
                   <table className="mt-2 w-full text-left text-xs">
-                    <thead className="text-[10px] uppercase tracking-wider text-[#7f9bbd]">
+                    <thead className="text-[11px] uppercase tracking-wider text-[#7f9bbd]">
                       <tr>
                         <th className="py-1 font-medium">Option</th>
                         <th className="py-1 text-right font-medium">Members</th>
@@ -406,7 +406,7 @@ export default async function OperationsPage() {
                   </p>
                 ) : (
                   <table className="mt-2 w-full text-left text-xs">
-                    <thead className="text-[10px] uppercase tracking-wider text-[#7f9bbd]">
+                    <thead className="text-[11px] uppercase tracking-wider text-[#7f9bbd]">
                       <tr>
                         <th className="py-1 font-medium">Day</th>
                         <th className="py-1 text-right font-medium">Peak online</th>
@@ -568,7 +568,7 @@ export default async function OperationsPage() {
                       ) : (
                         <>
                           <div className="text-amber-200">{factor.status.reason}</div>
-                          <div className="mt-1 font-mono text-[10px] text-[#7f9bbd]">
+                          <div className="mt-1 font-mono text-[11px] text-[#7f9bbd]">
                             {factor.status.variables.join(" · ")}
                           </div>
                         </>
@@ -760,7 +760,7 @@ export default async function OperationsPage() {
               {recentAudit.map((entry, index) => (
                 <li key={`${entry.at}-${entry.event}-${index}`} className="flex flex-wrap gap-x-3 gap-y-1 px-5 py-2 text-xs">
                   <span className="text-[#7f9bbd]">{fmtTime(entry.at)}</span>
-                  <span className="font-mono text-[10px] uppercase text-[#00e5ff]">{entry.source}</span>
+                  <span className="font-mono text-[11px] uppercase text-[#00e5ff]">{entry.source}</span>
                   <span className="font-mono text-[#c9f7ff]">{entry.event}</span>
                   {entry.actor && <span className="text-[#a9c4dd]">by {entry.actor}</span>}
                   {entry.outcome && <Outcome value={entry.outcome} />}
@@ -775,6 +775,6 @@ export default async function OperationsPage() {
           only dispatches the release workflow; use the Control Center over the SSH tunnel for the host itself.
         </p>
       </div>
-    </main>
+    </div>
   );
 }

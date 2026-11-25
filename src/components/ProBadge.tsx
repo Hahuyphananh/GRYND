@@ -58,7 +58,7 @@ export default function ProBadge({
         founder
           ? "border-[#f5ff3b]/80 bg-gradient-to-r from-[#ffd700] to-[#f5ff3b] text-[#241c00] shadow-[0_0_12px_rgba(245,255,59,0.45)]"
           : "border-[#00ffa6]/70 bg-[#00ffa6]/15 text-[#8affcd] shadow-[0_0_10px_rgba(0,255,166,0.28)]",
-        size === "lg" ? "px-2.5 py-1 text-[11px]" : "px-1.5 py-0.5 text-[9px]",
+        size === "lg" ? "px-2.5 py-1 text-[11px]" : "px-1.5 py-0.5 text-[11px]",
         className,
       ]
         .filter(Boolean)

@@ -726,17 +726,17 @@ export default function ChatWidget() {
                             {msg.displayName || "Player"}
                           </span>
                           {msg.premium ? (
-                            <span className="rounded-full border border-emerald-400/60 bg-emerald-500/10 px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-emerald-300 shadow-[0_0_10px_rgba(52,211,153,0.35)]">
+                            <span className="rounded-full border border-emerald-400/60 bg-emerald-500/10 px-1.5 py-0.5 text-[11px] uppercase tracking-wide text-emerald-300 shadow-[0_0_10px_rgba(52,211,153,0.35)]">
                               {msg.premiumTitle || "GRYND PRO"}
                             </span>
                           ) : null}
                           {msg.equippedTitle ? (
-                            <span className="rounded-full border border-fuchsia-400/60 bg-fuchsia-500/10 px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-fuchsia-200 shadow-[0_0_10px_rgba(217,70,239,0.35)]">
+                            <span className="rounded-full border border-fuchsia-400/60 bg-fuchsia-500/10 px-1.5 py-0.5 text-[11px] uppercase tracking-wide text-fuchsia-200 shadow-[0_0_10px_rgba(217,70,239,0.35)]">
                               {msg.equippedTitle}
                             </span>
                           ) : null}
                           {msg.streakTitle ? (
-                            <span className="rounded-full border border-amber-400/60 bg-amber-500/10 px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-amber-200 shadow-[0_0_10px_rgba(251,191,36,0.35)]">
+                            <span className="rounded-full border border-amber-400/60 bg-amber-500/10 px-1.5 py-0.5 text-[11px] uppercase tracking-wide text-amber-200 shadow-[0_0_10px_rgba(251,191,36,0.35)]">
                               <IconFlame size={12} className="mb-0.5 mr-0.5 inline" /> {msg.streakTitle}
                             </span>
                           ) : null}

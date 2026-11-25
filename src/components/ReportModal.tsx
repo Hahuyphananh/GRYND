@@ -237,7 +237,7 @@ export default function ReportModal({
                     focus:border-red-400/50 focus:ring-1 focus:ring-red-400/30 outline-hidden transition resize-none
                     placeholder:text-slate-500"
                 />
-                <p className="text-[10px] text-slate-500 mt-1 text-right">{details.length}/500</p>
+                <p className="text-[11px] text-slate-500 mt-1 text-right">{details.length}/500</p>
               </div>
             )}
 
@@ -267,7 +267,7 @@ export default function ReportModal({
               </button>
             </div>
 
-            <p className="mt-4 text-[9px] text-slate-600 text-center">
+            <p className="mt-4 text-[11px] text-slate-600 text-center">
               False reports may result in action against your account. Reports are reviewed by our moderation team.
             </p>
           </>

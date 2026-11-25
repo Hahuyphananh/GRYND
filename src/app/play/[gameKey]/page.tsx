@@ -64,7 +64,7 @@ export default async function PlayPage({
         <p className="truncate text-xs font-bold uppercase tracking-[0.18em] text-[#00e5ff]">
           {game.name}
         </p>
-        <p className="shrink-0 text-[10px] uppercase tracking-wider text-white/45">
+        <p className="shrink-0 text-[11px] uppercase tracking-wider text-white/45">
           Practice · unrated
         </p>
       </div>

@@ -84,7 +84,7 @@ function FooterSkeleton() {
 
 function PageShell({ children, maxWidth = "max-w-7xl" }: { children: ReactNode; maxWidth?: string }) {
   return (
-    <div aria-hidden className="min-h-screen bg-page pb-12">
+    <div aria-hidden className="min-h-dvh bg-page pb-12">
       <NavSkeleton />
       <div className={`mx-auto ${maxWidth} px-3 py-8 sm:px-4 sm:py-10`}>{children}</div>
       <FooterSkeleton />

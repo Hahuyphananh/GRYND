@@ -121,7 +121,7 @@ function BillingCard({
       }`}
     >
       {option.badge && (
-        <span className="absolute -top-2.5 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-full border border-[#f5ff3b]/60 bg-surface px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-[#f5ff3b]">
+        <span className="absolute -top-2.5 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-full border border-[#f5ff3b]/60 bg-surface px-2 py-0.5 text-[11px] font-bold uppercase tracking-wider text-[#f5ff3b]">
           {t("pro.badge.best_value")}
         </span>
       )}
@@ -199,10 +199,10 @@ function AnalyticsPreview({
       className="rounded-xl border border-[#00e5ff]/25 bg-surface/85 p-3 text-left"
     >
       <figcaption className="flex items-center justify-between gap-2">
-        <span className="text-[10px] font-bold uppercase tracking-wider text-[#00e5ff]">
+        <span className="text-[11px] font-bold uppercase tracking-wider text-[#00e5ff]">
           {t("pro.preview.title")}
         </span>
-        <span className="rounded-full border border-[#9dd8ff]/30 bg-[#9dd8ff]/10 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-[#9dd8ff]/80">
+        <span className="rounded-full border border-[#9dd8ff]/30 bg-[#9dd8ff]/10 px-1.5 py-0.5 text-[11px] font-bold uppercase tracking-wider text-[#9dd8ff]/80">
           {t("pro.preview.sample")}
         </span>
       </figcaption>
@@ -261,7 +261,7 @@ function AnalyticsPreview({
         </text>
       </svg>
 
-      <p className="mt-1 text-[10px] leading-snug text-[#9dd8ff]/55">
+      <p className="mt-1 text-[11px] leading-snug text-[#9dd8ff]/55">
         {t("pro.preview.caption")}
       </p>
     </figure>
@@ -526,7 +526,7 @@ export default function UpgradeProContent({
               className="mt-5 rounded-xl border border-[#00e5ff]/25 bg-surface/85 p-4 text-left"
             >
               <figcaption className="flex items-center justify-between gap-2">
-                <span className="text-[10px] font-bold uppercase tracking-wider text-[#00e5ff]">
+                <span className="text-[11px] font-bold uppercase tracking-wider text-[#00e5ff]">
                   {t("pro.testimonial_title")}
                 </span>
                 <span className="text-xs tracking-[0.15em] text-[#f5ff3b]" aria-hidden>

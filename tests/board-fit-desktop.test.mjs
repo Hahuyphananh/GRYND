@@ -131,12 +131,12 @@ test("the caps live in the desktop media query, not globally", () => {
 test("each cap derives from the viewport height and keeps a floor", () => {
   assert.match(
     desktopQuery,
-    /\.mines-board-frame \{\s*max-width: max\(260px, calc\(100vh - 12\.5rem\)\);\s*\}/,
+    /\.mines-board-frame \{\s*max-width: max\(260px, calc\(100dvh - 12\.5rem\)\);\s*\}/,
     "the Mines cap must be viewport-height derived, with a 260px floor",
   );
   assert.match(
     desktopQuery,
-    /\.memory-board-frame \{\s*max-width: max\(260px, calc\(100vh - 20rem\)\);\s*\}/,
+    /\.memory-board-frame \{\s*max-width: max\(260px, calc\(100dvh - 20rem\)\);\s*\}/,
     "the Memory cap must be viewport-height derived, with a 260px floor",
   );
 });

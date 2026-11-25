@@ -41,7 +41,7 @@
  *      so every result screen can reuse it, never a game-specific prop.
  */
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import ShareWinButton from "../share/ShareWinButton";
 import { useRouter } from "next/navigation";
@@ -327,6 +327,65 @@ export default function PvpResultScreen({
   }, [glitchReaction]);
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [navigating, setNavigating] = useState(false);
+  // The result is a modal in the only sense that matters on a phone: the match
+  // is over and nothing behind it can be played. It therefore owns focus while
+  // it is up — otherwise the keyboard and Tab still talk to the board — and
+  // hands it back when the panel leaves. Escape, which the native Back button
+  // dispatches (see NativeBackButton), takes the same exit as "Return to
+  // Lobby", so Back can no longer be swallowed by an invisible dialog.
+  const panelRef = useRef(null);
+  useEffect(() => {
+    if (!revealed) return undefined;
+    const panel = panelRef.current;
+    const previous = typeof document === "undefined" ? null : document.activeElement;
+    panel?.focus({ preventScroll: true });
+
+    const onKeyDown = (event) => {
+      if (event.key === "Escape") {
+        const exit = onReturnToLobby || onDismiss;
+        if (!exit || navigating) return;
+        event.preventDefault();
+        // Same latch the buttons use, so a doubled Back cannot navigate twice.
+        setNavigating(true);
+        exit();
+        return;
+      }
+      if (event.key !== "Tab" || !panel) return;
+      const items = Array.from(
+        panel.querySelectorAll(
+          'a[href], button:not([disabled]), [tabindex]:not([tabindex="-1"])',
+        ),
+      );
+      if (items.length === 0) {
+        event.preventDefault();
+        return;
+      }
+      const first = items[0];
+      const last = items[items.length - 1];
+      if (
+        event.shiftKey &&
+        (document.activeElement === first || document.activeElement === panel)
+      ) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("keydown", onKeyDown);
+      if (previous && typeof previous.focus === "function") {
+        try {
+          previous.focus({ preventScroll: true });
+        } catch {
+          // The control that opened the result is gone (e.g. after a rematch).
+        }
+      }
+    };
+  }, [revealed, navigating, onReturnToLobby, onDismiss]);
   // A RESULT SCREEN CAN OUTLIVE A RESULT. A rematch or a re-deal navigates to a
   // NEW match on the SAME route, where React keeps this component instance
   // alive, so the per-result `navigating` flag has to be reset when the next
@@ -570,7 +629,7 @@ export default function PvpResultScreen({
           role="dialog"
           aria-modal="true"
           aria-label={`Match result — ${style.label}`}
-          className={`fixed inset-0 z-[95] overflow-y-auto bg-black/80 px-3 py-4 backdrop-blur-xs sm:px-4 ${
+          className={`fixed inset-0 z-[95] overflow-y-auto bg-black/80 px-3 pt-[max(1rem,env(safe-area-inset-top))] pb-[max(1rem,env(safe-area-inset-bottom))] backdrop-blur-xs sm:px-4 ${
             compact ? "!px-2 !py-3" : ""
           }`}
         >
@@ -593,7 +652,9 @@ export default function PvpResultScreen({
                       ? { duration: 0.3, ease: "easeOut" }
                       : panelMotion.transition,
               })}
-              className={`relative w-full overflow-hidden rounded-[var(--radius-surface)] border border-[color:var(--border-hairline)] bg-[color:var(--bg-surface)] text-center shadow-[var(--shadow-raise)] ${
+              ref={panelRef}
+              tabIndex={-1}
+              className={`relative w-full overflow-hidden rounded-[var(--radius-surface)] border border-[color:var(--border-hairline)] bg-[color:var(--bg-surface)] text-center shadow-[var(--shadow-raise)] outline-none ${
                 compact ? "max-w-[22rem] p-4" : "max-w-md p-5 sm:p-7"
               }`}
             >
@@ -736,7 +797,7 @@ export default function PvpResultScreen({
                 {subline && (
                   <p
                     className={`mx-auto mt-1 max-w-sm text-[color:var(--text-muted)] ${
-                      compact ? "text-[10px]" : "text-xs"
+                      compact ? "text-[11px]" : "text-xs"
                     }`}
                   >
                     {subline}
@@ -995,7 +1056,7 @@ export default function PvpResultScreen({
                                       : "border-[color:var(--border-hairline)] bg-[color:var(--bg-panel)] opacity-80"
                                   }`}
                                 >
-                                  <p className="truncate text-[10px] uppercase tracking-wider text-[color:var(--text-muted)]">
+                                  <p className="truncate text-[11px] uppercase tracking-wider text-[color:var(--text-muted)]">
                                     {side.name}
                                   </p>
                                   <p
@@ -1008,7 +1069,7 @@ export default function PvpResultScreen({
                                     {side.score}
                                   </p>
                                   {side.highlight && (
-                                    <p className="mt-0.5 text-[9px] font-bold uppercase tracking-widest text-[color:var(--accent-strong)]">
+                                    <p className="mt-0.5 text-[11px] font-bold uppercase tracking-widest text-[color:var(--accent-strong)]">
                                       Winner
                                     </p>
                                   )}
@@ -1127,7 +1188,7 @@ export default function PvpResultScreen({
                                 </div>
                               )}
                               <div className="min-w-0 text-left">
-                                <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[color:var(--text-muted)]">
+                                <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[color:var(--text-muted)]">
                                   Opponent
                                 </p>
                                 <p className="truncate text-sm font-bold text-[color:var(--text-primary)]">

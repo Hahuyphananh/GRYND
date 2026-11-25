@@ -57,6 +57,11 @@ export default function DailyPageClient() {
     setDateReady(true);
   }, []);
 
+  // A transient network failure used to leave the player with a sentence and
+  // no way forward. This counter re-runs the same server request; the deal is
+  // deterministic, so a retry can only return the same cards.
+  const [retryTick, setRetryTick] = useState(0);
+
   useEffect(() => {
     if (!dateReady) return;
     let cancelled = false;
@@ -88,14 +93,14 @@ export default function DailyPageClient() {
     return () => {
       cancelled = true;
     };
-  }, [dateReady, requestedDate]);
+  }, [dateReady, requestedDate, retryTick]);
 
   const summary = payload?.summary ?? null;
 
   return (
-    <div className="relative min-h-screen bg-[color:var(--bg-page)] pb-24 text-[color:var(--text-primary)] md:pb-0">
+    <div className="relative min-h-dvh bg-[color:var(--bg-page)] pb-24 text-[color:var(--text-primary)] md:pb-0">
       <NavigationBar currentPath="/daily" />
-      <main className="mx-auto max-w-6xl px-4 pt-24 sm:px-6 md:pt-28">
+      <div className="mx-auto max-w-6xl px-4 pt-6 sm:px-6 md:pt-8">
         <PageHeader
           kicker={`GRYND · ${payload?.archived ? "daily archive" : "daily challenge"}`}
           title={
@@ -154,9 +159,19 @@ export default function DailyPageClient() {
 
         {failed && (
           <div className="mt-8 rounded-[var(--radius-surface)] border border-[color:var(--border-hairline)] bg-[color:var(--bg-panel)] p-5 text-sm text-[color:var(--state-loss)]">
-            {requestedDate
-              ? "That archived deal could not be loaded. Please try again shortly."
-              : "Today's deal could not be loaded. Please try again shortly."}
+            <p>
+              {requestedDate
+                ? "That archived deal could not be loaded."
+                : "Today's deal could not be loaded."}
+            </p>
+            <Button
+              className="mt-3"
+              size="sm"
+              variant="secondary"
+              onClick={() => setRetryTick((tick) => tick + 1)}
+            >
+              Try again
+            </Button>
           </div>
         )}
 
@@ -230,7 +245,7 @@ export default function DailyPageClient() {
               data-testid="daily-to-daily-puzzle"
               className="rounded-2xl border border-sky-400/25 bg-sky-400/[0.05] p-4 transition hover:border-sky-300/50 hover:bg-sky-400/10"
             >
-              <p className="text-[10px] font-black uppercase tracking-[0.2em] text-sky-300">
+              <p className="text-[11px] font-black uppercase tracking-[0.2em] text-sky-300">
                 Daily puzzle
               </p>
               <p className="mt-1 text-sm text-[color:var(--text-primary)]">
@@ -239,7 +254,7 @@ export default function DailyPageClient() {
             </Link>
           </div>
         </section>
-      </main>
+      </div>
       <Footer />
     </div>
   );

@@ -446,7 +446,7 @@ export function PvpLobby({
                 <IconRobot size={16} className="opacity-70" />
                 {vsAi.busy ? "Starting…" : vsAi.label}
                 {vsAi.badge && (
-                  <span className="rounded-full bg-white/10 px-2 py-0.5 text-[9px] font-black uppercase tracking-[0.14em] text-white/60">
+                  <span className="rounded-full bg-white/10 px-2 py-0.5 text-[11px] font-black uppercase tracking-[0.14em] text-white/60">
                     {vsAi.badge}
                   </span>
                 )}
@@ -739,7 +739,7 @@ export default function PvpLobbyPage(props) {
     props.practiceOnly === undefined ? isPortalPlayPath(pathname) : Boolean(props.practiceOnly);
   return (
     <div
-      className={`min-h-screen overflow-x-clip px-4 pb-24 text-white sm:px-6 md:pb-8 ${
+      className={`min-h-dvh overflow-x-clip px-4 pb-24 text-white sm:px-6 md:pb-8 ${
         practiceMode ? "pt-4" : "pt-20"
       } ${PALETTE.page}`}
     >

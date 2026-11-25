@@ -11,7 +11,7 @@ export default function Page() {
   const redirectUrl = searchParams.get("redirect_url");
 
   return (
-    <div className="relative min-h-screen flex items-center justify-center bg-[var(--tint-bg--001a33)]">
+    <div className="relative min-h-dvh flex items-center justify-center bg-[var(--tint-bg--001a33)]">
       <InteractiveCasinoBg variant="subtle" />
       <SignIn
         fallbackRedirectUrl={redirectUrl && redirectUrl.startsWith("/") ? redirectUrl : "/sync"}

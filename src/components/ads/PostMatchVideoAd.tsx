@@ -416,7 +416,7 @@ export default function PostMatchVideoAd({
       className={`fixed inset-0 z-[100] flex flex-col bg-black ${className}`.trim()}
     >
       <div className="flex items-center justify-between gap-3 px-4 pb-2 pt-3">
-        <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-white/45">
+        <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-white/45">
           Advertisement
         </p>
 
@@ -472,7 +472,7 @@ export default function PostMatchVideoAd({
         >
           {muted ? "Sound off" : "Sound on"}
         </button>
-        <p className="text-[10px] text-white/30">
+        <p className="text-[11px] text-white/30">
           Ad by HilltopAds · the match result is not affected.
         </p>
       </div>

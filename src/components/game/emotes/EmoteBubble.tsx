@@ -49,7 +49,7 @@ export default function EmoteBubble({
     >
       {label ? (
         <span
-          className={`max-w-[7rem] truncate text-[10px] font-bold uppercase tracking-[0.12em] ${
+          className={`max-w-[7rem] truncate text-[11px] font-bold uppercase tracking-[0.12em] ${
             isMine ? "text-cyan-200/80" : "text-fuchsia-200/80"
           }`}
         >

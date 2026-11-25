@@ -225,7 +225,7 @@ export default function ShareProBadgeButton({
             </button>
           </div>
 
-          <p aria-live="polite" className="mt-1.5 min-h-[14px] text-[10px] text-emerald-300">
+          <p aria-live="polite" className="mt-1.5 min-h-[14px] text-[11px] text-emerald-300">
             {status ?? ""}
           </p>
         </div>

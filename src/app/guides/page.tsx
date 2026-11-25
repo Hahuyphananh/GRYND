@@ -26,7 +26,7 @@ export const metadata = pageMetadata({
 
 export default function GuidesIndexPage() {
   return (
-    <div className="relative min-h-screen overflow-x-clip pb-16">
+    <div className="relative min-h-dvh overflow-x-clip pb-16">
       <NavigationBar currentPath="/guides" />
       {/* The guides are the site's editorial surface, so this is the
           placement a reader is actually engaged with — and the one a site

@@ -425,8 +425,8 @@ export default function SettingsPageClient() {
   ];
 
   return (
-    <div className="relative min-h-screen bg-[color:var(--bg-page)] text-[color:var(--text-primary)]">
-      <div className="mx-auto max-w-6xl px-6 pt-24 pb-20">
+    <div className="relative min-h-dvh bg-[color:var(--bg-page)] text-[color:var(--text-primary)]">
+      <div className="mx-auto max-w-6xl px-6 pt-6 pb-20">
         <NavigationBar currentPath="/settings" />
 
         <PageHeader

@@ -192,7 +192,7 @@ export default function HilltopBannerUnit({ placement }: { placement: HilltopPla
       <AdCodeMarker />
       {/* Rendered with the ad, never without it: this caption is what labels
           the reserved area, so it must not survive the area's collapse. */}
-      <span className="mb-1 block text-[10px] font-semibold uppercase tracking-[0.2em] text-[#9dd8ff]/50">
+      <span className="mb-1 block text-[11px] font-semibold uppercase tracking-[0.2em] text-[#9dd8ff]/50">
         Advertisement
       </span>
       <div

@@ -33,7 +33,7 @@ export default function ThankYouPage() {
 
   return (
     <div
-      className="relative flex min-h-screen flex-col items-center justify-center overflow-hidden px-4 py-16"
+      className="relative flex min-h-dvh flex-col items-center justify-center overflow-hidden px-4 py-16"
       style={{ background: "linear-gradient(135deg, #001933 0%, #000d1f 50%, #000814 100%)" }}
     >
       {/* Ambient neon glows */}

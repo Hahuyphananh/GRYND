@@ -109,9 +109,13 @@ export default function SiteChrome({
           `.safe-top` padding, so the page offset below adds the same inset —
           one source of truth (`--safe-top`), no double padding, and 0px
           everywhere the platform reports no inset. */}
+      {/* `bg-page` matters now that this element carries the top offset: the
+          padding sits ABOVE the page's own box, so without a background of its
+          own the body shows through for the bar's height whenever the bar is
+          not painted (a loading state, a route hand-off). */}
       <main
         id="main-content"
-        className="pt-[calc(var(--nav-height)_+_var(--safe-top))]"
+        className="bg-[color:var(--bg-page)] pt-[calc(var(--nav-height)_+_var(--safe-top))]"
       >
         <GuestStreakPrompt />
         {children}

@@ -257,7 +257,7 @@ export default function PuzzleAiLobby() {
                 <div className="min-w-0">
                   <p className="flex items-center gap-2 text-sm font-black text-white">
                     {selectedBot.name}
-                    <span className="rounded-full border border-[#c4b5fd]/40 bg-[#c4b5fd]/10 px-2 py-0.5 text-[9px] font-black uppercase tracking-[0.14em] text-[#ddd6fe]">
+                    <span className="rounded-full border border-[#c4b5fd]/40 bg-[#c4b5fd]/10 px-2 py-0.5 text-[11px] font-black uppercase tracking-[0.14em] text-[#ddd6fe]">
                       {t("playHub.lobby.puzzleAi.aiBadge")}
                     </span>
                   </p>
@@ -285,7 +285,7 @@ export default function PuzzleAiLobby() {
                     <span className="block truncate text-sm font-black text-white">
                       {bot.name}
                     </span>
-                    <span className="block truncate text-[10px] uppercase tracking-[0.12em] text-white/45">
+                    <span className="block truncate text-[11px] uppercase tracking-[0.12em] text-white/45">
                       {bot.difficultyLabel}
                     </span>
                   </span>
@@ -296,7 +296,7 @@ export default function PuzzleAiLobby() {
             <div className="flex flex-wrap items-center gap-2">
               <label
                 htmlFor="puzzle-ai-level"
-                className="text-[10px] font-black uppercase tracking-[0.16em] text-white/50"
+                className="text-[11px] font-black uppercase tracking-[0.16em] text-white/50"
               >
                 {t("playHub.lobby.puzzleAi.level")}
               </label>

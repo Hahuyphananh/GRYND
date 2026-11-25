@@ -68,7 +68,7 @@ export default async function AdSlot({
       data-ad-placement={placement}
       className={`mx-auto my-6 w-full max-w-4xl px-4 ${className}`.trim()}
     >
-      <span className="mb-1 block text-[10px] font-semibold uppercase tracking-[0.2em] text-[#9dd8ff]/50">
+      <span className="mb-1 block text-[11px] font-semibold uppercase tracking-[0.2em] text-[#9dd8ff]/50">
         Advertisement
       </span>
       <AdUnit slotId={slotId} placement={placement} />

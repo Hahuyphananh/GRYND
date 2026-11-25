@@ -145,7 +145,7 @@ export default function SolitaireModesPanel() {
       <div className="mt-3 grid gap-3 md:grid-cols-3">
         {cards.map((card) => (
           <Surface key={card.key} tone="panel" padding="sm" className="flex flex-col">
-            <p className="text-[10px] font-black uppercase tracking-[0.2em] text-[color:var(--text-muted)]">
+            <p className="text-[11px] font-black uppercase tracking-[0.2em] text-[color:var(--text-muted)]">
               {card.title}
             </p>
             {card.body && (

@@ -36,7 +36,7 @@ const LINK = "text-[#00e5ff] underline underline-offset-2 hover:text-[#f5ff3b]";
 
 export default function AboutPage() {
   return (
-    <div className="relative min-h-screen overflow-x-clip pb-16">
+    <div className="relative min-h-dvh overflow-x-clip pb-16">
       <NavigationBar currentPath="/about" />
 
       <div className="mx-auto max-w-3xl px-4 py-8 sm:py-12">

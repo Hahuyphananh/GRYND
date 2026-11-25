@@ -9,7 +9,7 @@ export const metadata = {
 
 export default function MaintenancePage() {
   return (
-    <div className="relative flex min-h-screen items-center justify-center">
+    <div className="relative flex min-h-dvh items-center justify-center">
       <InteractiveCasinoBg variant="subtle" />
 
       <div className="relative z-10 mx-auto max-w-xl px-4 py-16 text-center">

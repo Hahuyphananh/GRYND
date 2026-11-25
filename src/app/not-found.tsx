@@ -169,7 +169,7 @@ const QUICK_LINKS = [
 export default function NotFound() {
   return (
     <div
-      className="relative flex min-h-[calc(100vh-68px)] items-center justify-center overflow-hidden bg-page px-4 py-14 sm:min-h-[calc(100vh-4rem)]"
+      className="relative flex min-h-[calc(100dvh-68px)] items-center justify-center overflow-hidden bg-page px-4 py-14 sm:min-h-[calc(100dvh-4rem)]"
     >
       {/* Backdrop: neon glows + subtle grid */}
       <div aria-hidden className="pointer-events-none absolute inset-0">

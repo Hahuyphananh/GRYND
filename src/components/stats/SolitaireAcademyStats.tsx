@@ -50,7 +50,7 @@ function Tile({
 }) {
   return (
     <div className="rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2">
-      <p className="flex items-center gap-1 text-[9px] font-bold uppercase tracking-[0.12em] text-[#9dd8ff]/60">
+      <p className="flex items-center gap-1 text-[11px] font-bold uppercase tracking-[0.12em] text-[#9dd8ff]/60">
         {icon}
         {label}
       </p>
@@ -172,7 +172,7 @@ export default function SolitaireAcademyStats({
     >
       <div className="flex flex-wrap items-start justify-between gap-3 p-5">
         <div>
-          <p className="text-[10px] font-black uppercase tracking-[0.24em] text-[#00e5ff]/80">
+          <p className="text-[11px] font-black uppercase tracking-[0.24em] text-[#00e5ff]/80">
             {t("learn.coaching.kicker")}
           </p>
           <h2
@@ -186,7 +186,7 @@ export default function SolitaireAcademyStats({
           </p>
         </div>
         <span
-          className={`rounded-full border px-2.5 py-1 text-[9px] font-black uppercase tracking-[0.14em] ${
+          className={`rounded-full border px-2.5 py-1 text-[11px] font-black uppercase tracking-[0.14em] ${
             pro
               ? "border-[#00ffa3]/35 bg-[#00ffa3]/10 text-[#8dffd0]"
               : "border-[#f5ff3b]/35 bg-[#f5ff3b]/10 text-[#ffe9a3]"
@@ -263,7 +263,7 @@ export default function SolitaireAcademyStats({
                           ? t(PRACTICE_SKILL_BY_ID[skill.skillId].titleKey)
                           : skill.skillId}
                       </span>
-                      <span className="shrink-0 font-mono text-[10px] font-bold text-[#9dd8ff]/75">
+                      <span className="shrink-0 font-mono text-[11px] font-bold text-[#9dd8ff]/75">
                         {skill.attempts} · {skill.successRate}%
                       </span>
                     </div>

@@ -21,7 +21,7 @@ export const metadata: Metadata = {
 
 export default function GameUnavailablePage() {
   return (
-    <main className="flex min-h-screen flex-col items-center justify-center px-6 py-20 text-center">
+    <div className="flex min-h-dvh flex-col items-center justify-center px-6 py-20 text-center">
       <p className="mb-3 inline-block rounded-full border border-[#00e5ff]/50 bg-[#00e5ff]/10 px-3 py-1 text-[11px] font-bold uppercase tracking-wider text-[#00e5ff]">
         Temporarily unavailable
       </p>
@@ -37,6 +37,6 @@ export default function GameUnavailablePage() {
       >
         Browse the games catalogue
       </Link>
-    </main>
+    </div>
   );
 }

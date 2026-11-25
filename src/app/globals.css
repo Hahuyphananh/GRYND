@@ -87,7 +87,7 @@ body {
    Desktop only. */
 @media (min-width: 1024px) {
   .chess-board-frame {
-    max-width: max(340px, calc(100vh - 22rem));
+    max-width: max(340px, calc(100dvh - 22rem));
   }
 }
 
@@ -127,11 +127,11 @@ body {
    short window instead of collapsing it. Desktop only. */
 @media (min-width: 1024px) {
   .mines-board-frame {
-    max-width: max(260px, calc(100vh - 12.5rem));
+    max-width: max(260px, calc(100dvh - 12.5rem));
   }
 
   .memory-board-frame {
-    max-width: max(260px, calc(100vh - 20rem));
+    max-width: max(260px, calc(100dvh - 20rem));
   }
 }
 
@@ -378,7 +378,7 @@ body {
 
 /* Smooth animated background gradient */
 .animated-bg {
-  min-height: 100vh; /* Full page height */
+  min-height: 100dvh; /* Full page height */
   background: linear-gradient(270deg, var(--bg-page), var(--bg-panel), var(--bg-surface), var(--bg-page));
   background-size: 600% 600%;
   animation: gradientBG 30s ease infinite;
@@ -1910,7 +1910,7 @@ a[class*="bg-[#f5ff3b]"]:not([class*="bg-[#f5ff3b]/"]) {
   -webkit-backface-visibility: hidden;
 }
 
-/* ── Skeleton loaders (splash-screen page skeletons) ─────────────────────
+/* ── Skeleton loaders (splash-dvh page skeletons) ─────────────────────
    Neutral shimmer blocks used by src/components/skeletons/PageSkeleton.tsx
    to mirror each page's layout while it loads. `border-radius` is left to
    the Tailwind `rounded-*` utilities used in JSX (unlayered CSS would
@@ -2244,7 +2244,7 @@ a[class*="bg-[#f5ff3b]"]:not([class*="bg-[#f5ff3b]/"]) {
 /* Mono micro-label: the HUD's voice. */
 .odds-label {
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: 9px;
+  font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.22em;
   text-transform: uppercase;
@@ -2497,7 +2497,7 @@ a[class*="bg-[#f5ff3b]"]:not([class*="bg-[#f5ff3b]/"]) {
   gap: 6px;
   border-radius: 8px;
   padding: 4px 8px;
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 600;
   letter-spacing: 0.12em;
   text-transform: uppercase;
@@ -2557,7 +2557,7 @@ a[class*="bg-[#f5ff3b]"]:not([class*="bg-[#f5ff3b]/"]) {
   border: 1px solid rgba(124, 239, 255, 0.4);
   background: rgba(0, 229, 255, 0.14);
   padding: 2px 8px;
-  font-size: 9px;
+  font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.14em;
   text-transform: uppercase;
@@ -2857,7 +2857,7 @@ a[class*="bg-[#f5ff3b]"]:not([class*="bg-[#f5ff3b]/"]) {
 }
 
 .dominoes-seat-meta {
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 600;
   letter-spacing: 0.1em;
   text-transform: uppercase;
@@ -2870,7 +2870,7 @@ a[class*="bg-[#f5ff3b]"]:not([class*="bg-[#f5ff3b]/"]) {
   border: 1px solid rgba(124, 239, 255, 0.4);
   background: rgba(0, 229, 255, 0.14);
   padding: 2px 8px;
-  font-size: 9px;
+  font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.14em;
   text-transform: uppercase;
@@ -2903,7 +2903,7 @@ a[class*="bg-[#f5ff3b]"]:not([class*="bg-[#f5ff3b]/"]) {
   border: 1px solid rgba(124, 239, 255, 0.28);
   background: rgba(0, 229, 255, 0.08);
   padding: 2px 8px;
-  font-size: 9px;
+  font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.12em;
   text-transform: uppercase;
@@ -2948,7 +2948,7 @@ a[class*="bg-[#f5ff3b]"]:not([class*="bg-[#f5ff3b]/"]) {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.12em;
   text-transform: uppercase;
@@ -2972,7 +2972,7 @@ a[class*="bg-[#f5ff3b]"]:not([class*="bg-[#f5ff3b]/"]) {
 }
 
 .dominoes-score-round {
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 800;
   letter-spacing: 0.12em;
   text-transform: uppercase;
@@ -2980,7 +2980,7 @@ a[class*="bg-[#f5ff3b]"]:not([class*="bg-[#f5ff3b]/"]) {
 }
 
 .dominoes-score-target {
-  font-size: 9px;
+  font-size: 11px;
   font-weight: 600;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -3057,7 +3057,7 @@ a[class*="bg-[#f5ff3b]"]:not([class*="bg-[#f5ff3b]/"]) {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -3129,7 +3129,7 @@ a[class*="bg-[#f5ff3b]"]:not([class*="bg-[#f5ff3b]/"]) {
   }
 
   .dominoes-score-target {
-    font-size: 8px;
+    font-size: 11px;
   }
 
   .dominoes-round-result {
@@ -3420,7 +3420,7 @@ a[class*="bg-[#f5ff3b]"]:not([class*="bg-[#f5ff3b]/"]) {
   border: 1px solid rgba(251, 191, 36, 0.45);
   background: rgba(4, 18, 34, 0.95);
   padding: 1px 7px;
-  font-size: 9px;
+  font-size: 11px;
   font-weight: 800;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -3656,7 +3656,7 @@ a[class*="bg-[#f5ff3b]"]:not([class*="bg-[#f5ff3b]/"]) {
 }
 
 .dominoes-pile-title {
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.12em;
   text-transform: uppercase;
@@ -3872,7 +3872,7 @@ button.dominoes-tile:disabled {
 }
 
 .dominoes-hand-count {
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.06em;
   color: rgba(165, 243, 252, 0.85);
@@ -4045,7 +4045,7 @@ button.dominoes-tile:disabled {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 10px;
+  font-size: 11px;
   line-height: 1.4;
   color: rgba(207, 250, 254, 0.8);
 }
@@ -4305,7 +4305,7 @@ button.dominoes-tile:disabled {
   }
 
   .dominoes-hint {
-    font-size: 10px;
+    font-size: 11px;
   }
 
   /* A notice with nothing to say is not a row. */

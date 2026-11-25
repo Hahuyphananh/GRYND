@@ -111,9 +111,9 @@ function Shell({
   navPath: string;
 }) {
   return (
-    <div className="relative min-h-screen bg-[color:var(--bg-page)] pb-24 text-[color:var(--text-primary)] md:pb-0">
+    <div className="relative min-h-dvh bg-[color:var(--bg-page)] pb-24 text-[color:var(--text-primary)] md:pb-0">
       <NavigationBar currentPath={navPath} />
-      <main className="mx-auto max-w-7xl px-4 pt-24 sm:px-6 md:pt-28">
+      <div className="mx-auto max-w-7xl px-4 pt-6 sm:px-6 md:pt-8">
         <Link
           href={backHref}
           className="inline-flex items-center gap-1.5 rounded-md text-xs font-semibold text-white/50 transition-colors hover:text-cyan-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/70 motion-reduce:transition-none"
@@ -122,7 +122,7 @@ function Shell({
           {backLabel}
         </Link>
         {children}
-      </main>
+      </div>
       <Footer />
     </div>
   );
@@ -144,7 +144,7 @@ function Stat({
       data-testid={testId}
       className="rounded-xl border border-white/10 bg-black/25 px-3 py-2"
     >
-      <dt className="text-[10px] font-bold uppercase tracking-wider text-[color:var(--text-muted)]">{label}</dt>
+      <dt className="text-[11px] font-bold uppercase tracking-wider text-[color:var(--text-muted)]">{label}</dt>
       <dd className={`mt-0.5 font-mono text-xl font-black tabular-nums ${tone}`}>{value}</dd>
     </div>
   );
@@ -223,7 +223,7 @@ function StatusChip({ status, label }: { status: ReviewStatus; label?: string })
   return (
     <span
       data-testid="review-status"
-      className={`inline-flex shrink-0 items-center rounded-full border px-2.5 py-1 text-[10px] font-black uppercase tracking-wider ${meta.chip}`}
+      className={`inline-flex shrink-0 items-center rounded-full border px-2.5 py-1 text-[11px] font-black uppercase tracking-wider ${meta.chip}`}
     >
       {label ?? meta.label}
     </span>
@@ -1002,7 +1002,7 @@ export default function SolitaireReviewPageClient({
 
               <div className="mb-3 flex flex-wrap items-center justify-between gap-2 border-b border-white/10 pb-3">
                 <div className="min-w-0">
-                  <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-white/40">
+                  <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-white/40">
                     {selectedPly === 0
                       ? t("solitaireReview.ui.initialDeal")
                       : t("solitaireReview.ui.moveOf", {
@@ -1022,13 +1022,13 @@ export default function SolitaireReviewPageClient({
                 {currentMeta ? (
                   <span
                     data-testid="review-current-rating"
-                    className={`inline-flex shrink-0 items-center gap-1.5 rounded-full border px-2.5 py-1 text-[10px] font-black uppercase tracking-wider ${currentMeta.chip}`}
+                    className={`inline-flex shrink-0 items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-black uppercase tracking-wider ${currentMeta.chip}`}
                   >
                     <span className={`h-1.5 w-1.5 rounded-full ${currentMeta.dot}`} aria-hidden="true" />
                     {localizedRating(currentRating ?? "normal")}
                   </span>
                 ) : selectedPly > 0 ? (
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-white/35">
+                  <span className="text-[11px] font-bold uppercase tracking-wider text-white/35">
                     {t("solitaireReview.ui.noExtraInsight")}
                   </span>
                 ) : null}
@@ -1043,12 +1043,12 @@ export default function SolitaireReviewPageClient({
                   className="mb-3 rounded-xl border border-amber-300/30 bg-amber-300/[0.07] p-3"
                 >
                   <div className="flex flex-wrap items-center justify-between gap-2">
-                    <p className="text-[10px] font-black uppercase tracking-[0.18em] text-amber-200/85">
+                    <p className="text-[11px] font-black uppercase tracking-[0.18em] text-amber-200/85">
                       {t("solitaireReview.recommendation.demoTitle", {
                         move: demo.recommendation.ply + 1,
                       })}
                     </p>
-                    <span className="inline-flex shrink-0 items-center rounded-full border border-amber-300/30 bg-amber-300/10 px-2 py-0.5 text-[9px] font-black uppercase tracking-wider text-amber-100/85">
+                    <span className="inline-flex shrink-0 items-center rounded-full border border-amber-300/30 bg-amber-300/10 px-2 py-0.5 text-[11px] font-black uppercase tracking-wider text-amber-100/85">
                       {t("solitaireReview.recommendation.demoBadge")}
                     </span>
                   </div>
@@ -1059,7 +1059,7 @@ export default function SolitaireReviewPageClient({
                     type="button"
                     data-testid="review-demo-back"
                     onClick={closeRecommendation}
-                    className="mt-2 inline-flex h-9 items-center gap-1.5 rounded-lg border border-amber-300/35 bg-amber-300/10 px-3 text-[10px] font-black uppercase tracking-wider text-amber-100 transition-colors hover:bg-amber-300/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-200/70 motion-reduce:transition-none"
+                    className="mt-2 inline-flex h-9 items-center gap-1.5 rounded-lg border border-amber-300/35 bg-amber-300/10 px-3 text-[11px] font-black uppercase tracking-wider text-amber-100 transition-colors hover:bg-amber-300/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-200/70 motion-reduce:transition-none"
                   >
                     <IconArrowLeft size={14} aria-hidden="true" />
                     {t("solitaireReview.recommendation.demoBack")}
@@ -1109,11 +1109,11 @@ export default function SolitaireReviewPageClient({
                   className="mt-3 rounded-xl border border-cyan-300/20 bg-cyan-300/[0.04] p-3 sm:p-4"
                 >
                   <div className="flex flex-wrap items-center justify-between gap-2">
-                    <p className="text-[10px] font-black uppercase tracking-[0.18em] text-cyan-200/75">
+                    <p className="text-[11px] font-black uppercase tracking-[0.18em] text-cyan-200/75">
                       {t("solitaireReview.insight.title")}
                     </p>
                     <span
-                      className={`inline-flex shrink-0 items-center rounded-full border px-2 py-0.5 text-[10px] font-black uppercase tracking-wider ${RATING_META[insight.rating].chip}`}
+                      className={`inline-flex shrink-0 items-center rounded-full border px-2 py-0.5 text-[11px] font-black uppercase tracking-wider ${RATING_META[insight.rating].chip}`}
                     >
                       {localizedRating(insight.rating)}
                     </span>
@@ -1132,12 +1132,12 @@ export default function SolitaireReviewPageClient({
                       className="mt-3 rounded-lg border border-amber-300/25 bg-amber-300/[0.06] p-3"
                     >
                       <div className="flex flex-wrap items-center justify-between gap-2">
-                        <p className="text-[10px] font-black uppercase tracking-[0.18em] text-amber-200/85">
+                        <p className="text-[11px] font-black uppercase tracking-[0.18em] text-amber-200/85">
                           {t("solitaireReview.recommendation.title")}
                         </p>
                         <span
                           data-testid="review-recommendation-confidence"
-                          className="inline-flex shrink-0 items-center rounded-full border border-amber-300/30 bg-amber-300/10 px-2 py-0.5 text-[9px] font-black uppercase tracking-wider text-amber-100/85"
+                          className="inline-flex shrink-0 items-center rounded-full border border-amber-300/30 bg-amber-300/10 px-2 py-0.5 text-[11px] font-black uppercase tracking-wider text-amber-100/85"
                         >
                           {localizedRating(recommendation.rating)} ·{" "}
                           {t(
@@ -1158,7 +1158,7 @@ export default function SolitaireReviewPageClient({
                           <li key={reason}>• {reason}</li>
                         ))}
                       </ul>
-                      <p className="mt-1.5 text-[10px] leading-relaxed text-white/35">
+                      <p className="mt-1.5 text-[11px] leading-relaxed text-white/35">
                         {t("solitaireReview.recommendation.basis")}
                       </p>
                       {practicePlan && (
@@ -1170,7 +1170,7 @@ export default function SolitaireReviewPageClient({
                               data-skill={practicePlan.skillId}
                               data-exercise={practicePlan.exerciseId}
                               data-lesson={practicePlan.lessonId ?? ""}
-                              className="inline-flex min-h-9 items-center gap-1.5 rounded-lg border border-[#00e5ff]/35 bg-[#00e5ff]/10 px-3 text-[10px] font-black uppercase tracking-wider text-[#9dd8ff] transition-colors hover:bg-[#00e5ff]/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff]/70 motion-reduce:transition-none"
+                              className="inline-flex min-h-9 items-center gap-1.5 rounded-lg border border-[#00e5ff]/35 bg-[#00e5ff]/10 px-3 text-[11px] font-black uppercase tracking-wider text-[#9dd8ff] transition-colors hover:bg-[#00e5ff]/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff]/70 motion-reduce:transition-none"
                             >
                               {t("solitaireReview.recommendation.practiceCta")}
                               <span aria-hidden="true">→</span>
@@ -1179,13 +1179,13 @@ export default function SolitaireReviewPageClient({
                               <Link
                                 href={`/learn/${practicePlan.lessonId}`}
                                 data-testid="review-recommendation-lesson"
-                                className="inline-flex min-h-9 items-center gap-1.5 rounded-lg border border-white/15 bg-white/[0.04] px-3 text-[10px] font-bold text-white/65 transition-colors hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/70 motion-reduce:transition-none"
+                                className="inline-flex min-h-9 items-center gap-1.5 rounded-lg border border-white/15 bg-white/[0.04] px-3 text-[11px] font-bold text-white/65 transition-colors hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/70 motion-reduce:transition-none"
                               >
                                 {t("solitaireReview.recommendation.practiceLessonCta")}
                               </Link>
                             )}
                           </div>
-                          <p className="mt-1.5 text-[10px] leading-relaxed text-white/35">
+                          <p className="mt-1.5 text-[11px] leading-relaxed text-white/35">
                             {t("solitaireReview.recommendation.practiceNote")}
                           </p>
                         </>
@@ -1196,7 +1196,7 @@ export default function SolitaireReviewPageClient({
                         data-demo-active={demo ? "true" : "false"}
                         aria-pressed={Boolean(demo)}
                         onClick={demo ? closeRecommendation : openRecommendation}
-                        className="mt-2 inline-flex h-9 items-center gap-1.5 rounded-lg border border-amber-300/35 bg-amber-300/10 px-3 text-[10px] font-black uppercase tracking-wider text-amber-100 transition-colors hover:bg-amber-300/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-200/70 motion-reduce:transition-none"
+                        className="mt-2 inline-flex h-9 items-center gap-1.5 rounded-lg border border-amber-300/35 bg-amber-300/10 px-3 text-[11px] font-black uppercase tracking-wider text-amber-100 transition-colors hover:bg-amber-300/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-200/70 motion-reduce:transition-none"
                       >
                         <IconSparkles size={14} aria-hidden="true" />
                         {demo
@@ -1232,7 +1232,7 @@ export default function SolitaireReviewPageClient({
                       {insightLesson}
                     </p>
                   )}
-                  <p className="mt-2 text-[10px] leading-relaxed text-white/35">
+                  <p className="mt-2 text-[11px] leading-relaxed text-white/35">
                     {t("solitaireReview.insight.basis")}
                   </p>
                 </section>
@@ -1311,12 +1311,12 @@ export default function SolitaireReviewPageClient({
                       onClick={restartReview}
                       aria-label={t("solitaireReview.ui.restartAria")}
                       title={t("solitaireReview.ui.restartAria")}
-                      className="inline-flex h-10 items-center gap-1.5 rounded-lg border border-white/10 bg-white/5 px-3 text-[10px] font-bold uppercase tracking-wider text-white/55 transition-colors hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/70 motion-reduce:transition-none"
+                      className="inline-flex h-10 items-center gap-1.5 rounded-lg border border-white/10 bg-white/5 px-3 text-[11px] font-bold uppercase tracking-wider text-white/55 transition-colors hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/70 motion-reduce:transition-none"
                     >
                       <IconRefresh size={15} aria-hidden="true" />
                       {t("solitaireReview.ui.restart")}
                     </button>
-                    <label className="inline-flex h-10 items-center gap-1.5 rounded-lg border border-white/10 bg-white/5 px-2 text-[10px] font-bold uppercase tracking-wider text-white/45 focus-within:ring-2 focus-within:ring-cyan-300/70">
+                    <label className="inline-flex h-10 items-center gap-1.5 rounded-lg border border-white/10 bg-white/5 px-2 text-[11px] font-bold uppercase tracking-wider text-white/45 focus-within:ring-2 focus-within:ring-cyan-300/70">
                       <span className="hidden sm:inline">{t("solitaireReview.ui.speed")}</span>
                       <select
                         data-testid="review-playback-speed"
@@ -1354,7 +1354,7 @@ export default function SolitaireReviewPageClient({
                 </div>
                 <p
                   data-testid="review-nav-hint"
-                  className="text-[10px] uppercase tracking-wider text-white/30"
+                  className="text-[11px] uppercase tracking-wider text-white/30"
                 >
                   {nextTarget != null
                     ? t("solitaireReview.ui.hintNext", { next: nextTarget })
@@ -1381,7 +1381,7 @@ export default function SolitaireReviewPageClient({
                     <span
                       data-testid="review-analysis-progress"
                       aria-live="polite"
-                      className="inline-flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-cyan-200/70"
+                      className="inline-flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-cyan-200/70"
                     >
                       <span
                         aria-hidden="true"
@@ -1484,26 +1484,26 @@ export default function SolitaireReviewPageClient({
                             onClick={() => selectManually(moment.ply + 1)}
                             className="flex w-full items-center gap-2 rounded-lg border border-transparent px-2 py-1.5 text-left transition-colors hover:border-white/10 hover:bg-white/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/70 motion-reduce:transition-none"
                           >
-                            <span className="w-6 shrink-0 text-right font-mono text-[10px] text-white/35">
+                            <span className="w-6 shrink-0 text-right font-mono text-[11px] text-white/35">
                               {moment.ply + 1}
                             </span>
                             <span className="min-w-0 flex-1">
                               <span className="block truncate text-xs text-white/80">
                                 {localizedMove(t, move?.move)}
                               </span>
-                              <span className="block truncate text-[10px] text-white/35">
+                              <span className="block truncate text-[11px] text-white/35">
                                 {moment.tags.slice(0, 2).map(localizedTag).join(" · ") ||
                                   t("solitaireReview.highlights.noTag")}
                               </span>
                             </span>
                             {meta ? (
                               <span
-                                className={`shrink-0 rounded-full border px-1.5 py-0.5 text-[9px] font-black uppercase tracking-wider ${meta.chip}`}
+                                className={`shrink-0 rounded-full border px-1.5 py-0.5 text-[11px] font-black uppercase tracking-wider ${meta.chip}`}
                               >
                                 {localizedRating(moment.rating)}
                               </span>
                             ) : (
-                              <span className="shrink-0 rounded-full border border-white/10 bg-white/5 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-white/35">
+                              <span className="shrink-0 rounded-full border border-white/10 bg-white/5 px-1.5 py-0.5 text-[11px] font-bold uppercase tracking-wider text-white/35">
                                 {localizedTag(moment.tags[0] ?? "")}
                               </span>
                             )}
@@ -1523,7 +1523,7 @@ export default function SolitaireReviewPageClient({
                   <h2 className="text-[11px] font-black uppercase tracking-[0.2em] text-white/60">
                     {t("solitaireReview.ui.moveTimeline")}
                   </h2>
-                  <span className="font-mono text-[10px] text-white/35">
+                  <span className="font-mono text-[11px] text-white/35">
                     {selectedPly}/{totalMoves}
                   </span>
                 </div>
@@ -1564,7 +1564,7 @@ export default function SolitaireReviewPageClient({
                                 : "border-transparent hover:border-white/10 hover:bg-white/5"
                             }`}
                           >
-                            <span className="w-7 shrink-0 text-right font-mono text-[10px] tabular-nums text-white/35">
+                            <span className="w-7 shrink-0 text-right font-mono text-[11px] tabular-nums text-white/35">
                               {index + 1}
                             </span>
                             <span
@@ -1576,7 +1576,7 @@ export default function SolitaireReviewPageClient({
                             </span>
                             {meta ? (
                               <span
-                                className={`inline-flex shrink-0 items-center gap-1 rounded-full border px-1.5 py-0.5 text-[9px] font-black uppercase tracking-wider ${meta.chip}`}
+                                className={`inline-flex shrink-0 items-center gap-1 rounded-full border px-1.5 py-0.5 text-[11px] font-black uppercase tracking-wider ${meta.chip}`}
                               >
                                 <span
                                   className={`h-1 w-1 rounded-full ${meta.dot}`}
@@ -1585,7 +1585,7 @@ export default function SolitaireReviewPageClient({
                                 {localizedRating(rating ?? "normal")}
                               </span>
                             ) : (
-                              <span className="shrink-0 text-[9px] uppercase tracking-wider text-white/25">
+                              <span className="shrink-0 text-[11px] uppercase tracking-wider text-white/25">
                                 —
                               </span>
                             )}
@@ -1606,7 +1606,7 @@ export default function SolitaireReviewPageClient({
           >
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div className="max-w-2xl">
-                <p className="text-[10px] font-black uppercase tracking-[0.24em] text-cyan-300/75">
+                <p className="text-[11px] font-black uppercase tracking-[0.24em] text-cyan-300/75">
                   {t("solitaireReview.summary.kicker")}
                 </p>
                 <h2
@@ -1695,7 +1695,7 @@ export default function SolitaireReviewPageClient({
             <div className="mt-4 border-t border-white/10 pt-4">
               {learning ? (
                 <div data-testid="review-learning">
-                  <p className="text-[10px] font-black uppercase tracking-[0.18em] text-cyan-200/75">
+                  <p className="text-[11px] font-black uppercase tracking-[0.18em] text-cyan-200/75">
                     {t("solitaireReview.learning.title")}
                   </p>
                   <p className="mt-1 text-[11px] leading-relaxed text-white/45">
@@ -1739,7 +1739,7 @@ export default function SolitaireReviewPageClient({
                         : t("solitaireReview.summary.noInsightsIncomplete")}
                 </p>
               )}
-              <p className="mt-3 text-[10px] leading-relaxed text-white/30">
+              <p className="mt-3 text-[11px] leading-relaxed text-white/30">
                 {t("solitaireReview.summary.heuristic")}
               </p>
             </div>

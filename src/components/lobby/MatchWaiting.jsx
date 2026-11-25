@@ -234,7 +234,7 @@ export default function MatchWaiting({
                     seat.occupied ? accent.tile : "border-white/15 bg-black/40"
                   }`}
                 >
-                  <p className="text-[10px] font-bold uppercase tracking-widest text-white/45">
+                  <p className="text-[11px] font-bold uppercase tracking-widest text-white/45">
                     {seat.label}
                   </p>
                   {seat.occupied ? (
@@ -249,7 +249,7 @@ export default function MatchWaiting({
                       <p className="max-w-full truncate text-sm font-bold text-white">
                         {seat.name || "—"}
                       </p>
-                      <span className="flex min-h-4 flex-wrap items-center justify-center gap-x-2.5 gap-y-1 text-[10px] font-semibold">
+                      <span className="flex min-h-4 flex-wrap items-center justify-center gap-x-2.5 gap-y-1 text-[11px] font-semibold">
                         <span className="inline-flex items-center gap-1.5 text-cyan-300">
                           <span className="h-1.5 w-1.5 rounded-full bg-cyan-400" />
                           {t("home.matchWaiting.connected")}
@@ -261,7 +261,7 @@ export default function MatchWaiting({
                       <p className="mt-2 animate-pulse text-sm font-semibold text-cyan-200/80">
                         {t("home.matchWaiting.awaiting_seat")}
                       </p>
-                      <span className="mt-1.5 inline-flex items-center gap-1.5 text-[10px] font-semibold text-white/35">
+                      <span className="mt-1.5 inline-flex items-center gap-1.5 text-[11px] font-semibold text-white/35">
                         <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-white/30" />
                         {t("home.matchWaiting.open")}
                       </span>

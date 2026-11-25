@@ -77,7 +77,7 @@ const CARD =
 
 export default function GamesHubPage() {
   return (
-    <div className="relative min-h-screen overflow-x-clip pb-16">
+    <div className="relative min-h-dvh overflow-x-clip pb-16">
       <NavigationBar currentPath="/games" />
 
       <div className="mx-auto max-w-4xl px-4 py-8 sm:py-12">

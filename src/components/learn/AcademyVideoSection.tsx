@@ -40,7 +40,7 @@ export default function AcademyVideoSection() {
     <section className="mt-10" aria-labelledby="learn-videos-title">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <p className="text-[10px] font-black uppercase tracking-[0.3em] text-[#00e5ff]/75">
+          <p className="text-[11px] font-black uppercase tracking-[0.3em] text-[#00e5ff]/75">
             {t("learn.videos.kicker")}
           </p>
           <h2 id="learn-videos-title" className="mt-1 text-2xl font-black tracking-tight">
@@ -100,16 +100,16 @@ export default function AcademyVideoSection() {
                     className="object-cover transition-transform duration-300 group-hover:scale-[1.03] motion-reduce:transition-none"
                   />
                   <span className="absolute inset-0 bg-gradient-to-t from-[#040712]/80 via-transparent to-transparent" />
-                  <span className="absolute left-3 top-3 rounded-full border border-white/15 bg-black/55 px-2.5 py-1 text-[10px] font-extrabold uppercase tracking-[0.16em] text-white/80 backdrop-blur">
+                  <span className="absolute left-3 top-3 rounded-full border border-white/15 bg-black/55 px-2.5 py-1 text-[11px] font-extrabold uppercase tracking-[0.16em] text-white/80 backdrop-blur">
                     {t("learn.videos.part", { number: video.number })}
                   </span>
                   {status === "watched" && (
-                    <span className="absolute right-3 top-3 inline-flex items-center gap-1 rounded-full bg-[#00ffa3]/15 px-2 py-1 text-[10px] font-bold text-[#8dffd0] backdrop-blur">
+                    <span className="absolute right-3 top-3 inline-flex items-center gap-1 rounded-full bg-[#00ffa3]/15 px-2 py-1 text-[11px] font-bold text-[#8dffd0] backdrop-blur">
                       <IconCheck size={11} aria-hidden="true" />
                       {t("learn.videos.watched")}
                     </span>
                   )}
-                  <span className="absolute bottom-3 right-3 inline-flex items-center gap-1 rounded-full bg-black/65 px-2 py-1 text-[10px] font-bold text-white/85 backdrop-blur">
+                  <span className="absolute bottom-3 right-3 inline-flex items-center gap-1 rounded-full bg-black/65 px-2 py-1 text-[11px] font-bold text-white/85 backdrop-blur">
                     <IconClock size={11} aria-hidden="true" />
                     {video.duration}
                   </span>

@@ -102,7 +102,7 @@ export default function PlayHub() {
     >
       <div className="relative aspect-[16/9] w-full shrink-0 overflow-hidden border-b border-[color:var(--mode-line)]">
         <ModeTableau variant="dailyPuzzle" />
-        <span className="absolute bottom-3 left-3 rounded-full border border-[color:var(--mode-line)] bg-[color:var(--bg-page)]/80 px-2.5 py-0.5 text-[9px] font-black uppercase tracking-[0.16em] text-[color:var(--mode-accent)] backdrop-blur-xs">
+        <span className="absolute bottom-3 left-3 rounded-full border border-[color:var(--mode-line)] bg-[color:var(--bg-page)]/80 px-2.5 py-0.5 text-[11px] font-black uppercase tracking-[0.16em] text-[color:var(--mode-accent)] backdrop-blur-xs">
           {t("playHub.cards.strategic.tag")}
         </span>
       </div>
@@ -114,7 +114,7 @@ export default function PlayHub() {
         <p className="mt-1.5 flex-1 text-xs leading-relaxed text-[color:var(--text-secondary)]">
           {t("playHub.cards.strategic.description")}
         </p>
-        <p className="mt-3 text-[10px] font-bold uppercase tracking-[0.14em] text-[color:var(--text-muted)]">
+        <p className="mt-3 text-[11px] font-bold uppercase tracking-[0.14em] text-[color:var(--text-muted)]">
           {t("playHub.cards.strategic.meta")}
         </p>
         <span className="mt-3 inline-flex items-center gap-1.5 text-xs font-extrabold text-[color:var(--mode-accent)]">
@@ -130,7 +130,7 @@ export default function PlayHub() {
   );
 
   return (
-    <div className="relative min-h-screen overflow-hidden bg-[color:var(--bg-page)] pb-24 text-[color:var(--text-primary)] md:pb-0">
+    <div className="relative min-h-dvh overflow-hidden bg-[color:var(--bg-page)] pb-24 text-[color:var(--text-primary)] md:pb-0">
       <div
         aria-hidden="true"
         className="pointer-events-none absolute inset-x-0 top-0 h-[560px] bg-[radial-gradient(ellipse_at_top,rgba(0,229,255,0.12),transparent_60%)]"
@@ -145,7 +145,7 @@ export default function PlayHub() {
       />
       <NavigationBar currentPath="/play" />
 
-      <main className="relative mx-auto max-w-6xl px-4 pt-24 sm:px-6 md:pt-28">
+      <div className="relative mx-auto max-w-6xl px-4 pt-6 sm:px-6 md:pt-8">
         <PageHeader
           kicker={t("playHub.kicker")}
           title={t("playHub.title")}
@@ -208,7 +208,7 @@ export default function PlayHub() {
                   >
                     <div className="relative aspect-[16/9] w-full shrink-0 overflow-hidden border-b border-[color:var(--mode-line)]">
                       <ModeTableau variant={TABLEAU[mode.id]} />
-                      <span className="absolute bottom-3 left-3 rounded-full border border-[color:var(--mode-line)] bg-[color:var(--bg-page)]/80 px-2.5 py-0.5 text-[9px] font-black uppercase tracking-[0.16em] text-[color:var(--mode-accent)] backdrop-blur-xs">
+                      <span className="absolute bottom-3 left-3 rounded-full border border-[color:var(--mode-line)] bg-[color:var(--bg-page)]/80 px-2.5 py-0.5 text-[11px] font-black uppercase tracking-[0.16em] text-[color:var(--mode-accent)] backdrop-blur-xs">
                         {t(`playHub.cards.${mode.id}.tag`)}
                       </span>
                     </div>
@@ -220,14 +220,14 @@ export default function PlayHub() {
                       <p className="mt-1.5 flex-1 text-xs leading-relaxed text-[color:var(--text-secondary)]">
                         {t(`playHub.cards.${mode.id}.description`)}
                       </p>
-                      <p className="mt-3 text-[10px] font-bold uppercase tracking-[0.14em] text-[color:var(--text-muted)]">
+                      <p className="mt-3 text-[11px] font-bold uppercase tracking-[0.14em] text-[color:var(--text-muted)]">
                         {t(`playHub.cards.${mode.id}.meta`)}
                       </p>
 
                       {mode.id === "unlimited" && (
                         <span
                           data-testid="play-mode-unlimited-remaining"
-                          className="mt-1 text-[10px] font-bold uppercase tracking-[0.14em] text-fuchsia-200/85"
+                          className="mt-1 text-[11px] font-bold uppercase tracking-[0.14em] text-fuchsia-200/85"
                         >
                           <PuzzleAllowanceBadge />
                         </span>
@@ -251,7 +251,7 @@ export default function PlayHub() {
             </div>
           </section>
         ))}
-      </main>
+      </div>
 
       <Footer />
     </div>

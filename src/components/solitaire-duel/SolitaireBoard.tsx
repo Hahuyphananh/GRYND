@@ -35,6 +35,7 @@ import {
 } from "react";
 
 import { useReducedMotion } from "framer-motion";
+import { IconArrowsMaximize, IconArrowsMinimize } from "@tabler/icons-react";
 
 import PlayingCard, { cardLabel, suitGlyph } from "./PlayingCard";
 import {
@@ -119,6 +120,64 @@ const MIN_BOARD_HEIGHT = `calc(var(--cw) * ${BOARD_CW})`;
  * the fold, because the ask is that the CARDS are visible without scrolling.
  */
 const CHROME_REM = "17rem";
+
+/**
+ * The board's own footer row, in rem: the legend, the appearance trigger and
+ * the full-screen toggle. It is part of the felt, not of the page chrome above
+ * it, so the viewport-height floor below has to leave room for it too.
+ */
+const FOOTER_REM = "3rem";
+
+/**
+ * `--cw` on a normal page: as wide as seven columns fit, and never taller than
+ * the room left under the page chrome. The width term used to be flat `10.4vw`,
+ * which left a phone's cards at ~40px with ~48px of width unused; deriving it
+ * from the viewport minus the page/board padding and the six column gaps lets a
+ * phone use that width, so the board fills the screen instead of floating in
+ * the middle of it.
+ */
+const BOARD_CARD_SIZE = `clamp(34px, min(calc((100vw - 4.5rem) / 7), calc((100dvh - ${CHROME_REM}) / ${BOARD_CW})), 92px)`;
+
+/**
+ * `--cw` while the board owns the screen. Same fit arithmetic, measured against
+ * the whole viewport (the page chrome is gone) minus the board's own padding
+ * and footer. The 160px ceiling is for tablets and desktops, where full screen
+ * still should not produce card-house-sized cards.
+ */
+const FULLSCREEN_CARD_SIZE = `clamp(34px, min(calc((100vw - 3rem) / 7), calc((100dvh - 4.5rem) / ${BOARD_CW})), 160px)`;
+
+/**
+ * `--cw` in a LANDSCAPE full screen, where the top row moves to a side panel.
+ *
+ * Seven tableau columns plus a two-card panel need nine card-widths, and the
+ * tallest column is 5.62 card-widths tall — no foundations row on top of it —
+ * so the cards can grow past the portrait cap instead of leaving most of a
+ * landscape phone as empty felt. The terms include the root padding, the six
+ * column gaps, the panel gap and the panel's own inter-card gap.
+ */
+const FULLSCREEN_LANDSCAPE_CARD_SIZE = `clamp(34px, min(calc((100vw - 5.5rem) / 9), calc((100dvh - 2.5rem) / 6)), 160px)`;
+
+/**
+ * The felt's floor: a full table, and on a phone the rest of the viewport under
+ * the page chrome — so the normal (non-full-screen) board almost fills the
+ * screen vertically instead of ending just under the top row.
+ */
+const BOARD_MIN_HEIGHT = `max(${MIN_BOARD_HEIGHT}, calc(100dvh - ${CHROME_REM} - ${FOOTER_REM}))`;
+
+/**
+ * The orientation lock is real on Android Chrome but absent from the DOM
+types (and from iOS Safari entirely), so it is reached through this narrow,
+ * fully optional surface instead of a cast at every call site.
+ */
+type OrientationLockApi = {
+  lock?: (orientation: "landscape") => Promise<void>;
+  unlock?: () => void;
+};
+
+function orientationApi(): OrientationLockApi | null {
+  if (typeof screen === "undefined") return null;
+  return (screen.orientation as unknown as OrientationLockApi | undefined) ?? null;
+}
 
 export type SolitaireBoardProps = {
   view: SolitaireView | null;
@@ -327,7 +386,7 @@ function EmptySlot({
         {label}
       </span>
       {hint && (
-        <span className="mt-0.5 text-[9px] font-bold uppercase tracking-wider">{hint}</span>
+        <span className="mt-0.5 text-[11px] font-bold uppercase tracking-wider">{hint}</span>
       )}
     </button>
   );
@@ -366,6 +425,16 @@ export default function SolitaireBoard({
 
 
   const [dragGhost, setDragGhost] = useState<DragGhost | null>(null);
+  // Full screen: `fullscreen` tracks the browser's real full-screen element
+  // (the board itself); `pseudoFullscreen` is the fixed-layer fallback iOS
+  // needs. `immersive` is the single flag the layout and the toggle read.
+  const [fullscreen, setFullscreen] = useState(false);
+  const [pseudoFullscreen, setPseudoFullscreen] = useState(false);
+  // The landscape full-screen layout (top row as a side panel) is only correct
+  // while the display is actually wider than it is tall.
+  const [landscape, setLandscape] = useState(false);
+  const immersive = fullscreen || pseudoFullscreen;
+  const landscapeBoard = immersive && landscape;
 
   const board = view ?? null;
   const ply = board?.ply ?? 0;
@@ -824,6 +893,174 @@ export default function SolitaireBoard({
     [finishDrag],
   );
 
+  // A board that fits is the normal case, and `touch-none` on the cards is
+  // what makes the drag reliable there. A board that does NOT fit (a very
+  // short viewport, or the player's text scaled up) would otherwise trap the
+  // page scroll behind the cards, so in that case they yield the vertical
+  // gesture and tap-to-move — the equal path — takes over. The 32px slack
+  // stops a collapsing browser toolbar from flipping the mode mid-game.
+  const [touchScroll, setTouchScroll] = useState(false);
+  useEffect(() => {
+    const measure = () => {
+      const el = boardRef.current;
+      if (!el) return;
+      setTouchScroll(el.getBoundingClientRect().bottom > window.innerHeight + 32);
+    };
+    measure();
+    const observer =
+      typeof ResizeObserver === "undefined" ? null : new ResizeObserver(measure);
+    if (observer && boardRef.current) observer.observe(boardRef.current);
+    window.addEventListener("resize", measure);
+    window.addEventListener("orientationchange", measure);
+    return () => {
+      observer?.disconnect();
+      window.removeEventListener("resize", measure);
+      window.removeEventListener("orientationchange", measure);
+    };
+  }, []);
+
+  /**
+   * Abandon an in-flight drag when the surface under it changes.
+   *
+   * `pointercancel` is the normal ending, but it is NOT guaranteed here. The
+   * Android activity declares `configChanges` for orientation/screenSize
+   * (android/app/src/main/AndroidManifest.xml), so a rotation RESIZES this
+   * WebView instead of recreating it — the DOM keeps its pointer bookkeeping
+   * and no cancel event has to arrive. Backgrounding the app, losing window
+   * focus, or a display resize can strand a captured pointer the same way.
+   *
+   * Without this, the lifted card's ghost (and the held selection) can stay
+   * frozen on screen until the player's next press. The abort is deliberately
+   * silent: the board stays on its last AUTHORITATIVE position, no move is
+   * proposed, nothing is sent to the server, and no forfeit or rollback is
+   * implied. The ghost is removed rather than flown home because its origin
+   * was captured in the OLD viewport coordinates, which the rotation just
+   * invalidated — animating to them would fly the card to the wrong place.
+   */
+  useEffect(() => {
+    const abort = () => {
+      const session = dragRef.current;
+      if (!session) return;
+      dragRef.current = null;
+      try {
+        // A press that never crossed the threshold captured nothing.
+        boardRef.current?.releasePointerCapture(session.pointerId);
+      } catch {
+        // Already released, or never captured.
+      }
+      // A drag already decided this gesture; its synthetic click must not.
+      if (session.active) swallowNextClick();
+      setSelection(null);
+      setDragGhost(null);
+    };
+
+    const onVisibilityChange = () => {
+      if (document.visibilityState === "hidden") abort();
+    };
+
+    window.addEventListener("orientationchange", abort);
+    window.addEventListener("resize", abort);
+    window.addEventListener("blur", abort);
+    document.addEventListener("visibilitychange", onVisibilityChange);
+
+    return () => {
+      window.removeEventListener("orientationchange", abort);
+      window.removeEventListener("resize", abort);
+      window.removeEventListener("blur", abort);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+    };
+  }, [swallowNextClick]);
+
+  // ── Full screen ──────────────────────────────────────────────────────
+  //
+  // The toggle puts the board — and only the board — on the whole display and
+  // asks the platform for landscape, which is the orientation seven columns
+  // want. Android and desktop honour both; iOS Safari allows neither for a
+  // div, so the board falls back to a fixed viewport-filling layer and shows a
+  // turn-the-phone hint. The same button leaves full screen again.
+  useEffect(() => {
+    const onChange = () => {
+      const active = document.fullscreenElement === boardRef.current;
+      setFullscreen(active);
+      if (active) return;
+      setPseudoFullscreen(false);
+      try {
+        orientationApi()?.unlock?.();
+      } catch {
+        // No orientation API on this browser: nothing to unlock.
+      }
+    };
+    document.addEventListener("fullscreenchange", onChange);
+    return () => document.removeEventListener("fullscreenchange", onChange);
+  }, []);
+
+  // The fallback layer covers the page, so the page underneath must not scroll.
+  // Escape leaves it, exactly as it leaves a real full-screen element.
+  useEffect(() => {
+    if (!pseudoFullscreen) return undefined;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setPseudoFullscreen(false);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener("keydown", onKeyDown);
+    };
+  }, [pseudoFullscreen]);
+
+  useEffect(() => {
+    const query = window.matchMedia("(orientation: landscape)");
+    const update = () => setLandscape(query.matches);
+    update();
+    query.addEventListener("change", update);
+    return () => query.removeEventListener("change", update);
+  }, []);
+
+  const toggleFullscreen = useCallback(async () => {
+    const element = boardRef.current;
+    if (!element) return;
+
+    if (immersive) {
+      try {
+        if (document.fullscreenElement) await document.exitFullscreen();
+      } catch {
+        // The browser had already left full screen.
+      }
+      setFullscreen(false);
+      setPseudoFullscreen(false);
+      try {
+        orientationApi()?.unlock?.();
+      } catch {
+        // No orientation API on this browser: nothing to unlock.
+      }
+      return;
+    }
+
+    let entered = false;
+    try {
+      if (typeof element.requestFullscreen === "function") {
+        await element.requestFullscreen({ navigationUI: "hide" });
+        entered = true;
+      }
+    } catch {
+      entered = false;
+    }
+    // The fallback is the same screen for a browser that refuses the API.
+    setFullscreen(entered);
+    setPseudoFullscreen(!entered);
+
+    if (entered) {
+      try {
+        await orientationApi()?.lock?.("landscape");
+      } catch {
+        // Refused (iOS, or a non-touch display): the board still plays in
+        // portrait, and the hint under the controls asks for the turn.
+      }
+    }
+  }, [immersive]);
+
   if (!board) {
     return (
       <div
@@ -856,31 +1093,27 @@ export default function SolitaireBoard({
       data-stock={stockCount}
       data-selected={selection ? selection.kind : "none"}
       data-dragging={dragGhost ? "true" : "false"}
+      data-fullscreen={immersive ? "true" : "false"}
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}
       onPointerCancel={onPointerCancel}
-      // One variable sizes every card and every fan, so the whole board scales
-      // from a single clamp: 34px cards on a phone, up to 92px on a tall
-      // desktop. Seven columns always fit the WIDTH, so it is the board's
-      // HEIGHT that decides whether the tableau is visible without scrolling.
+      // One variable sizes every card and every fan. Seven columns always fit
+      // the WIDTH, so the width term is "seven columns in the room available"
+      // (which is what makes a phone's board fill its screen) and the height
+      // term caps the card by the room left under the page chrome — the board
+      // is BOARD_CW card-widths tall (see the derivation above). `CHROME_REM`
+      // is everything above the tableau; `FOOTER_REM` the row under it.
       //
-      // The second term therefore also caps the card by the viewport height.
-      // The board is BOARD_CW card-widths tall (see the derivation above), so
-      // dividing the height left over after the page chrome by BOARD_CW gives
-      // the largest card whose bottom card still clears the fold. `CHROME_REM`
-      // is everything above the tableau — page padding, the title, the two
-      // progress meters, the board's own frame, the top row, the inter-row gap
-      // and the legend below it.
-      //
-      // On a tall screen `min()` picks the width term and nothing changes; on a
-      // short laptop viewport (~768-800px tall, where the width term wanted the
-      // full 92px) the cards shrink just enough to stop the tableau scrolling.
-      // The 34px floor still governs phones, where the width term is smaller
-      // than this one and mobile sizing is untouched.
+      // In full screen the page chrome is gone, so the same fit runs against
+      // the whole viewport (`FULLSCREEN_CARD_SIZE`).
       style={
         {
-          "--cw": `clamp(34px, min(10.4vw, calc((100vh - ${CHROME_REM}) / ${BOARD_CW})), 92px)`,
+          "--cw": immersive
+            ? landscapeBoard
+              ? FULLSCREEN_LANDSCAPE_CARD_SIZE
+              : FULLSCREEN_CARD_SIZE
+            : BOARD_CARD_SIZE,
           // ── The table (lib/solitaire-duel/boardThemes) ──────────────────
           // One set of custom properties on the board root is what the empty
           // piles and the legend below read. A theme change therefore repaints
@@ -902,10 +1135,11 @@ export default function SolitaireBoard({
           // animation releases its measured pre-finish height. When that
           // measurement is taller, max() keeps it; there is no maximum, so the
           // board remains free to expand with its content.
-          minHeight:
-            holdHeight && holdHeight > 0
-              ? `max(${holdHeight}px, ${MIN_BOARD_HEIGHT})`
-              : MIN_BOARD_HEIGHT,
+          minHeight: immersive
+            ? "calc(100dvh - 1rem)"
+            : holdHeight && holdHeight > 0
+              ? `max(${holdHeight}px, ${BOARD_MIN_HEIGHT})`
+              : BOARD_MIN_HEIGHT,
           backgroundImage: theme.felt,
           // The felt's edge is an INSET ring, never a border: a border would add
           // 4px to the height the `--cw` budget above was computed against.
@@ -917,10 +1151,47 @@ export default function SolitaireBoard({
       data-solitaire-theme={theme.key}
       data-card-back={cardBack.key}
       data-deck={deckSkin.key}
-      className="w-full touch-manipulation select-none rounded-2xl"
+      className={`flex w-full touch-manipulation select-none flex-col ${
+        immersive
+          ? "fixed inset-0 z-[100] overflow-y-auto rounded-none p-2"
+          : "rounded-2xl"
+      }`}
     >
+      {/* In full screen the felt fills the display but the CARDS never do:
+          seven columns are as wide as seven cards. Centring a card-width
+          column keeps the tableau from stretching across a landscape phone. */}
+      <div
+        className="mx-auto w-full"
+        style={
+          landscapeBoard
+            ? {
+                display: "flex",
+                alignItems: "flex-start",
+                justifyContent: "center",
+                gap: "1rem",
+                maxWidth: "none",
+              }
+            : immersive
+              ? { maxWidth: "calc(var(--cw) * 7 + 3rem)" }
+              : undefined
+        }
+      >
       {/* ── Top row: stock · waste · the four foundations ──────────────── */}
-      <div className="flex items-start gap-1 sm:gap-2">
+      <div
+        className="flex items-start gap-1 sm:gap-2"
+        style={
+          landscapeBoard
+            ? {
+                // Landscape full screen: this row becomes the right-hand
+                // panel, two cards wide, so the tableau owns the full height.
+                order: 2,
+                width: "calc(var(--cw) * 2 + 0.5rem)",
+                flexWrap: "wrap",
+                alignContent: "flex-start",
+              }
+            : undefined
+        }
+      >
         {stockCount > 0 ? (
           <button
             type="button"
@@ -939,7 +1210,7 @@ export default function SolitaireBoard({
               aria-hidden="true"
               className="h-[62%] w-[62%] rounded-[4px] border border-[color:var(--gr-hairline)] bg-[repeating-linear-gradient(45deg,rgba(0,229,255,0.16)_0_3px,transparent_3px_6px)]"
             />
-            <span className="absolute bottom-0.5 right-1 text-[10px] font-black text-white/80">
+            <span className="absolute bottom-0.5 right-1 text-[11px] font-black text-white/80">
               {stockCount}
             </span>
           </button>
@@ -981,6 +1252,7 @@ export default function SolitaireBoard({
                   card={card}
                   faceUp
                   interactive={isTop && cardsInteractive}
+                  touchScroll={touchScroll}
                   selected={Boolean(isHeld)}
                   label={
                     isTop
@@ -1008,10 +1280,18 @@ export default function SolitaireBoard({
         </div>
 
         {/* Spacer: pushes the foundations to the right edge on wide screens and
-            collapses to a gap on narrow ones. */}
-        <div aria-hidden="true" className="min-w-1 flex-1" />
+            collapses to a gap on narrow ones. In the landscape panel it has no
+            job — the panel's own width does the placing. */}
+        <div
+          aria-hidden="true"
+          className="min-w-1 flex-1"
+          style={landscapeBoard ? { display: "none" } : undefined}
+        />
 
-        <div className="flex items-start gap-1 sm:gap-2">
+        <div
+          className="flex items-start gap-1 sm:gap-2"
+          style={landscapeBoard ? { width: "100%", flexWrap: "wrap" } : undefined}
+        >
           {SUITS.map((suit) => {
             const pile = board.foundations?.[suit] ?? [];
             const top = pile.length > 0 ? pile[pile.length - 1] : null;
@@ -1043,6 +1323,7 @@ export default function SolitaireBoard({
                   card={top}
                   faceUp
                   interactive={cardsInteractive}
+                  touchScroll={touchScroll}
                   selected={Boolean(isHeld)}
                   highlighted={highlighted}
                   label={`${cardLabel(top)} on the ${suit} foundation`}
@@ -1057,7 +1338,10 @@ export default function SolitaireBoard({
       </div>
 
       {/* ── Tableau: seven columns, each a fanned stack ─────────────────── */}
-      <div className="mt-2 grid grid-cols-7 gap-1 sm:mt-3 sm:gap-2">
+      <div
+        className="mt-2 grid grid-cols-7 gap-1 sm:mt-3 sm:gap-2"
+        style={landscapeBoard ? { order: 1, marginTop: 0, flex: "0 0 auto" } : undefined}
+      >
         {Array.from({ length: TABLEAU_COLUMNS }, (_, column) => {
           const pile = board.tableau?.[column] ?? [];
           const isHighlighted = targets.columns.includes(column);
@@ -1115,6 +1399,7 @@ export default function SolitaireBoard({
                     card={card}
                     faceUp={faceUp}
                     interactive={clickable}
+                    touchScroll={touchScroll}
                     selected={Boolean(isHeld)}
                     highlighted={isTop && dropsHere}
                     label={
@@ -1146,6 +1431,7 @@ export default function SolitaireBoard({
             </div>
           );
         })}
+      </div>
       </div>
 
       {/* The card(s) under the pointer while dragging. pointer-events-none, so
@@ -1215,8 +1501,30 @@ export default function SolitaireBoard({
       {/* A one-line legend instead of a tutorial: it states the only rule a
           Klondike player cannot see from the board itself (the automatic flip)
           and the current hold. */}
-      <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
-      <p className="flex-1 text-center text-[11px] leading-relaxed text-[color:var(--sol-legend)]">
+      <div
+        className="mt-auto flex flex-wrap items-center justify-between gap-2 pt-2"
+        style={
+          landscapeBoard
+            ? // In the landscape layout the felt's bottom-right corner is empty
+              // felt, so the controls dock there and cost the cards no height.
+              { position: "absolute", right: 8, bottom: 8, marginTop: 0, paddingTop: 0 }
+            : undefined
+        }
+      >
+      {immersive && (
+        <p
+          data-testid="solitaire-fullscreen-hint"
+          className="hidden w-full text-center text-[11px] font-semibold text-white/55 portrait:block"
+        >
+          {t("solitaireBoard.rotateHint")}
+        </p>
+      )}
+      {/* On a phone the legend takes its own line and the two controls share
+          the next one — squeezed beside them it became a six-line column. */}
+      <p
+        className="w-full text-center text-[11px] leading-relaxed text-[color:var(--sol-legend)] sm:w-auto sm:flex-1"
+        style={landscapeBoard ? { display: "none" } : undefined}
+      >
         {readOnly
           ? t("solitaireReview.ui.boardNotice")
           : selection
@@ -1225,6 +1533,30 @@ export default function SolitaireBoard({
               ? t("solitaireBoard.stockEmpty")
               : t("solitaireBoard.dragOrClick")}
       </p>
+      {!readOnly && (
+        <button
+          type="button"
+          onClick={toggleFullscreen}
+          data-testid="solitaire-fullscreen-toggle"
+          aria-pressed={immersive}
+          aria-label={
+            immersive ? t("solitaireBoard.exitFullscreen") : t("solitaireBoard.fullscreen")
+          }
+          title={
+            immersive ? t("solitaireBoard.exitFullscreen") : t("solitaireBoard.fullscreen")
+          }
+          className="pointer-events-auto inline-flex items-center gap-1.5 rounded-lg border border-white/15 bg-white/5 px-2.5 py-1 text-[11px] font-black uppercase tracking-[0.14em] text-white/70 transition hover:bg-white/10 hover:text-white"
+        >
+          {immersive ? (
+            <IconArrowsMinimize size={13} aria-hidden="true" />
+          ) : (
+            <IconArrowsMaximize size={13} aria-hidden="true" />
+          )}
+          {immersive
+            ? t("solitaireBoard.exitFullscreenShort")
+            : t("solitaireBoard.fullscreen")}
+        </button>
+      )}
       <BoardAppearanceDrawer label={t("solitaireBoard.appearance")} />
       </div>
     </div>

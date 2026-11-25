@@ -161,7 +161,7 @@ export default function SolitaireTutorial({
     >
       <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
-          <p className="text-[10px] font-bold uppercase tracking-[0.3em] text-[#00e5ff]">
+          <p className="text-[11px] font-bold uppercase tracking-[0.3em] text-[#00e5ff]">
             {t("onboarding.solitaire.tutorial.kicker")}
           </p>
           <h2 className="mt-1 text-lg font-extrabold text-white sm:text-xl">

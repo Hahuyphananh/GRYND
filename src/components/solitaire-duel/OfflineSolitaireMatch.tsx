@@ -209,19 +209,19 @@ export default function OfflineSolitaireMatch({
             type="button"
             onClick={onExit}
             data-testid="solitaire-offline-exit"
-            className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-lg border border-white/15 px-3 text-[10px] font-bold uppercase tracking-[0.14em] text-white/60 transition hover:border-white/30 hover:text-white focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#00e5ff]"
+            className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-lg border border-white/15 px-3 text-[11px] font-bold uppercase tracking-[0.14em] text-white/60 transition hover:border-white/30 hover:text-white focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#00e5ff]"
           >
             <IconArrowLeft size={14} aria-hidden="true" />
             Bots
           </button>
           <BotAvatar bot={bot} size="h-12 w-12" perfect={bot.id === "perfect"} />
           <div className="min-w-0">
-            <p className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-[0.2em] text-amber-300/80">
+            <p className="flex items-center gap-1.5 text-[11px] font-black uppercase tracking-[0.2em] text-amber-300/80">
               <IconWifiOff size={12} aria-hidden="true" />
               Offline practice
             </p>
             <h2 className="truncate text-xl font-extrabold text-white">{bot.name}</h2>
-            <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-white/40">
+            <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-white/40">
               {bot.difficultyLabel} · {aiPaceLabel(bot.id)}
             </p>
           </div>
@@ -252,7 +252,7 @@ export default function OfflineSolitaireMatch({
               type="button"
               onClick={endMatch}
               data-testid="solitaire-offline-end"
-              className="inline-flex h-8 items-center gap-1 rounded-full border border-white/15 px-3 text-[10px] font-bold uppercase tracking-[0.14em] text-white/60 transition hover:border-white/30 hover:text-white focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#00e5ff]"
+              className="inline-flex h-8 items-center gap-1 rounded-full border border-white/15 px-3 text-[11px] font-bold uppercase tracking-[0.14em] text-white/60 transition hover:border-white/30 hover:text-white focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#00e5ff]"
             >
               <IconFlag size={12} aria-hidden="true" />
               End
@@ -365,13 +365,13 @@ export default function OfflineSolitaireMatch({
       {match && !match.result && now < match.goAtMs ? (
         <div className="pointer-events-none fixed inset-0 z-30 flex items-center justify-center bg-[#04070f]/75">
           <div className="text-center">
-            <p className="text-[10px] font-black uppercase tracking-[0.3em] text-white/50">
+            <p className="text-[11px] font-black uppercase tracking-[0.3em] text-white/50">
               Same deal · {bot.name}
             </p>
             <p className="mt-2 text-6xl font-black tabular-nums">
               {Math.max(1, Math.ceil((match.goAtMs - now) / 1000))}
             </p>
-            <p className="mt-2 text-[10px] font-bold uppercase tracking-[0.2em] text-white/35">
+            <p className="mt-2 text-[11px] font-bold uppercase tracking-[0.2em] text-white/35">
               Running on this device
             </p>
           </div>
@@ -384,7 +384,7 @@ export default function OfflineSolitaireMatch({
           className="fixed inset-0 z-40 flex items-center justify-center bg-[#04070f]/85 p-4"
         >
           <div className="w-full max-w-sm rounded-3xl border border-white/[0.12] bg-surface p-5 text-center shadow-[0_18px_35px_rgba(3,8,23,0.6)]">
-            <p className="text-[10px] font-black uppercase tracking-[0.3em] text-[#00e5ff]">
+            <p className="text-[11px] font-black uppercase tracking-[0.3em] text-[#00e5ff]">
               {resolutionLabel(match.resolution) ?? "Match over"}
             </p>
             <p
@@ -405,18 +405,18 @@ export default function OfflineSolitaireMatch({
 
             <div className="mt-4 grid grid-cols-2 gap-2 text-left">
               <div className="rounded-xl border border-white/10 bg-white/[0.03] p-3">
-                <p className="text-[9px] font-black uppercase tracking-[0.16em] text-white/40">You</p>
+                <p className="text-[11px] font-black uppercase tracking-[0.16em] text-white/40">You</p>
                 <p className="mt-1 text-xs text-white/75">{progressLabel(you)}</p>
               </div>
               <div className="rounded-xl border border-white/10 bg-white/[0.03] p-3">
-                <p className="text-[9px] font-black uppercase tracking-[0.16em] text-white/40">
+                <p className="text-[11px] font-black uppercase tracking-[0.16em] text-white/40">
                   {bot.name}
                 </p>
                 <p className="mt-1 text-xs text-white/75">{progressLabel(botProgress)}</p>
               </div>
             </div>
 
-            <p className="mt-3 text-[10px] leading-relaxed text-white/35">
+            <p className="mt-3 text-[11px] leading-relaxed text-white/35">
               This race ran on this device. Nothing was sent, so no Elo, trophies,
               history or account state changed.
             </p>
@@ -483,7 +483,7 @@ function MiniStat({
 }) {
   return (
     <div data-testid={testId} className="rounded-lg border border-white/10 bg-white/5 px-3 py-2">
-      <dt className="text-[10px] uppercase tracking-wider text-slate-400">{label}</dt>
+      <dt className="text-[11px] uppercase tracking-wider text-slate-400">{label}</dt>
       <dd className="font-mono text-lg text-white">{value}</dd>
     </div>
   );
@@ -507,10 +507,10 @@ function Meter({
   return (
     <div data-testid={testId} data-ply={ply} data-foundation={progress.foundationCards}>
       <div className="flex items-baseline justify-between gap-2">
-        <span className="text-[10px] font-black uppercase tracking-[0.18em] text-white/70">
+        <span className="text-[11px] font-black uppercase tracking-[0.18em] text-white/70">
           {title}
         </span>
-        <span className="tabular-nums text-[10px] font-bold text-white/50">{percent}%</span>
+        <span className="tabular-nums text-[11px] font-bold text-white/50">{percent}%</span>
       </div>
       <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-white/10">
         <div
@@ -518,7 +518,7 @@ function Meter({
           style={{ width: `${percent}%` }}
         />
       </div>
-      <p className="mt-1 text-[10px] leading-snug text-white/40">{progressLabel(progress)}</p>
+      <p className="mt-1 text-[11px] leading-snug text-white/40">{progressLabel(progress)}</p>
     </div>
   );
 }

@@ -49,7 +49,7 @@ test("the page backdrop is decorative, token-driven and reduced-motion safe", ()
   // The page root isolates the layer, so it paints above the page background
   // but behind the content — page-wide, not clipped to a section rectangle.
   assert.match(home, /<HeroBackdrop \/>/);
-  assert.match(home, /relative isolate min-h-screen/);
+  assert.match(home, /relative isolate min-h-dvh/);
   assert.match(home, /relative z-10 grid/);
   assert.doesNotMatch(home, /<section className="relative isolate overflow-hidden/);
   assert.doesNotMatch(home, /border-b border-\[color:var\(--border-hairline\)\]/);

@@ -65,7 +65,7 @@ export function MilestoneGrid({ milestones }: { milestones: StreakMilestone[] })
               .filter(Boolean)
               .join(" ")}
           >
-            <span className="text-[9px] font-bold uppercase tracking-[0.16em] text-[color:var(--text-muted)]">
+            <span className="text-[11px] font-bold uppercase tracking-[0.16em] text-[color:var(--text-muted)]">
               Day {milestone.days}
             </span>
             <span
@@ -78,7 +78,7 @@ export function MilestoneGrid({ milestones }: { milestones: StreakMilestone[] })
             >
               {milestone.title}
             </span>
-            <span className="mt-0.5 flex items-center gap-1 text-[9px] font-semibold uppercase tracking-wider">
+            <span className="mt-0.5 flex items-center gap-1 text-[11px] font-semibold uppercase tracking-wider">
               {milestone.achieved ? (
                 <>
                   <IconCheck

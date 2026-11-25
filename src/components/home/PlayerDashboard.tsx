@@ -385,7 +385,7 @@ export default function PlayerDashboard({
               <p className="mt-0.5 text-xl font-black text-[color:var(--text-primary)]">
                 Level {level.level}
                 {level.complete && (
-                  <span className="ml-2 rounded-full border border-[color:var(--state-gold)] px-2 py-0.5 text-[10px] font-black uppercase tracking-wider text-[color:var(--state-gold)]">
+                  <span className="ml-2 rounded-full border border-[color:var(--state-gold)] px-2 py-0.5 text-[11px] font-black uppercase tracking-wider text-[color:var(--state-gold)]">
                     Max
                   </span>
                 )}

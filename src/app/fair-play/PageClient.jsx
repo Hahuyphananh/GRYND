@@ -57,7 +57,7 @@ const sections = [
 
 export default function FairPlayPage() {
   return (
-    <div className="relative min-h-screen bg-page text-white">
+    <div className="relative min-h-dvh bg-page text-white">
 
       <NavigationBar currentPath="/" />
 

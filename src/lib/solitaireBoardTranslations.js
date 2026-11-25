@@ -7,6 +7,10 @@
 export const SOLITAIRE_BOARD_TRANSLATIONS = {
   en: {
     appearance: "Appearance",
+    fullscreen: "Full screen",
+    exitFullscreen: "Exit full screen",
+    exitFullscreenShort: "Exit",
+    rotateHint: "Rotate your phone sideways to play in landscape.",
     holding: "Holding {held} — drop it on a highlighted pile, or click one to place it.",
     holdWaste: "the waste card",
     holdFoundation: "that foundation card",
@@ -17,6 +21,10 @@ export const SOLITAIRE_BOARD_TRANSLATIONS = {
   },
   fr: {
     appearance: "Apparence",
+    fullscreen: "Plein écran",
+    exitFullscreen: "Quitter le plein écran",
+    exitFullscreenShort: "Quitter",
+    rotateHint: "Tourne ton téléphone à l'horizontale pour jouer en paysage.",
     holding:
       "Tu tiens {held} — dépose-la sur une pile surlignée, ou clique dessus pour la placer.",
     holdWaste: "la carte de la défausse",
@@ -28,6 +36,10 @@ export const SOLITAIRE_BOARD_TRANSLATIONS = {
   },
   es: {
     appearance: "Apariencia",
+    fullscreen: "Pantalla completa",
+    exitFullscreen: "Salir de pantalla completa",
+    exitFullscreenShort: "Salir",
+    rotateHint: "Gira el teléfono en horizontal para jugar en apaisado.",
     holding:
       "Sostienes {held}: suéltala en una pila resaltada o haz clic en una para colocarla.",
     holdWaste: "la carta del descarte",

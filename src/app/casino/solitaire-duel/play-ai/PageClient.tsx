@@ -56,7 +56,7 @@ function Progression({ bot }: { bot: SolitaireBot }) {
           />
         ))}
       </div>
-      <p className="mt-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-white/35">
+      <p className="mt-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-white/35">
         Difficulty {bot.order} of 6
       </p>
     </div>
@@ -71,7 +71,7 @@ function DifficultyFacts({ bot }: { bot: SolitaireBot }) {
   return (
     <dl className="mt-3 grid grid-cols-2 gap-2" aria-label={`${bot.name} strengths`}>
       <div className="rounded-lg border border-white/10 bg-white/[0.03] px-2.5 py-2">
-        <dt className="text-[9px] font-bold uppercase tracking-[0.12em] text-white/35">
+        <dt className="text-[11px] font-bold uppercase tracking-[0.12em] text-white/35">
           Typical finish
         </dt>
         <dd className="mt-0.5 text-sm font-extrabold text-white/80">
@@ -79,7 +79,7 @@ function DifficultyFacts({ bot }: { bot: SolitaireBot }) {
         </dd>
       </div>
       <div className="rounded-lg border border-white/10 bg-white/[0.03] px-2.5 py-2">
-        <dt className="text-[9px] font-bold uppercase tracking-[0.12em] text-white/35">
+        <dt className="text-[11px] font-bold uppercase tracking-[0.12em] text-white/35">
           Bad moves
         </dt>
         <dd className="mt-0.5 text-sm font-extrabold text-white/80">
@@ -159,17 +159,17 @@ export default function SolitairePlayAiPage() {
 
   if (offlineBotId) {
     return (
-      <main className="min-h-screen bg-linear-to-b from-surface via-surface to-page px-4 pb-20 pt-20 text-white sm:px-6">
+      <div className="min-h-dvh bg-linear-to-b from-surface via-surface to-page px-4 pb-20 pt-6 text-white sm:px-6">
         <NavigationBar currentPath={LOBBY_PATH} />
         <div className="mx-auto mt-5 w-full max-w-6xl">
           <OfflineSolitaireMatch botId={offlineBotId} onExit={() => setOfflineBotId(null)} />
         </div>
-      </main>
+      </div>
     );
   }
 
   return (
-    <main className="min-h-screen bg-linear-to-b from-surface via-surface to-page px-4 pb-20 pt-20 text-white sm:px-6">
+    <div className="min-h-dvh bg-linear-to-b from-surface via-surface to-page px-4 pb-20 pt-6 text-white sm:px-6">
       <NavigationBar currentPath={LOBBY_PATH} />
 
       <div className="mx-auto mt-5 w-full max-w-6xl">
@@ -183,7 +183,7 @@ export default function SolitairePlayAiPage() {
 
         <header className="mt-5 flex flex-wrap items-end justify-between gap-4">
           <div>
-            <p className="text-[10px] font-black uppercase tracking-[0.28em] text-amber-300/70">
+            <p className="text-[11px] font-black uppercase tracking-[0.28em] text-amber-300/70">
               Unrated practice
             </p>
             <h1 className="mt-1 flex items-center gap-2 text-3xl font-extrabold tracking-tight text-transparent bg-clip-text bg-linear-to-r from-amber-200 via-cyan-100 to-violet-200 sm:text-4xl">
@@ -197,7 +197,7 @@ export default function SolitairePlayAiPage() {
             </p>
           </div>
 
-          <div className="flex items-center gap-2 rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2 text-[10px] font-bold uppercase tracking-[0.14em] text-white/45">
+          <div className="flex items-center gap-2 rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2 text-[11px] font-bold uppercase tracking-[0.14em] text-white/45">
             <IconCards size={14} className="text-cyan-300/70" aria-hidden="true" />
             <span>Beginner</span>
             <span aria-hidden="true" className="text-white/20">·</span>
@@ -253,7 +253,7 @@ export default function SolitairePlayAiPage() {
                 }`}
               >
                 {perfect && (
-                  <span className="absolute right-3 top-3 rounded-full border border-amber-300/50 bg-amber-300/15 px-2 py-0.5 text-[9px] font-black uppercase tracking-[0.16em] text-amber-200">
+                  <span className="absolute right-3 top-3 rounded-full border border-amber-300/50 bg-amber-300/15 px-2 py-0.5 text-[11px] font-black uppercase tracking-[0.16em] text-amber-200">
                     Final challenge
                   </span>
                 )}
@@ -262,10 +262,10 @@ export default function SolitairePlayAiPage() {
                   <BotAvatar bot={bot} perfect={perfect} size="h-20 w-20" />
                   <div className="min-w-0 flex-1">
                     <div className="flex items-start justify-between gap-2">
-                      <p className="text-[10px] font-black uppercase tracking-[0.18em] text-white/30">
+                      <p className="text-[11px] font-black uppercase tracking-[0.18em] text-white/30">
                         {String(bot.order).padStart(2, "0")}
                       </p>
-                      <span className="rounded-full border border-cyan-300/25 bg-cyan-400/10 px-2 py-0.5 text-[9px] font-black uppercase tracking-[0.12em] text-cyan-100/80">
+                      <span className="rounded-full border border-cyan-300/25 bg-cyan-400/10 px-2 py-0.5 text-[11px] font-black uppercase tracking-[0.12em] text-cyan-100/80">
                         {bot.difficultyLabel}
                       </span>
                     </div>
@@ -278,7 +278,7 @@ export default function SolitairePlayAiPage() {
                     </h2>
                     <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
                       <Rating bot={bot} />
-                      <span className="rounded-full border border-white/10 bg-white/[0.04] px-2 py-0.5 text-[9px] font-bold uppercase tracking-[0.1em] text-white/50">
+                      <span className="rounded-full border border-white/10 bg-white/[0.04] px-2 py-0.5 text-[11px] font-bold uppercase tracking-[0.1em] text-white/50">
                         {bot.audienceLabel}
                       </span>
                     </div>
@@ -293,7 +293,7 @@ export default function SolitairePlayAiPage() {
                   data-testid={`solitaire-result-preview-${bot.id}`}
                   className="mt-3 rounded-xl border border-violet-400/20 bg-violet-400/[0.05] px-3 py-2"
                 >
-                  <p className="text-[9px] font-black uppercase tracking-[0.16em] text-violet-200/50">
+                  <p className="text-[11px] font-black uppercase tracking-[0.16em] text-violet-200/50">
                     Result preview
                   </p>
                   <BotSpeech
@@ -334,6 +334,6 @@ export default function SolitairePlayAiPage() {
           matchmaking, Elo or trophies.
         </p>
       </div>
-    </main>
+    </div>
   );
 }

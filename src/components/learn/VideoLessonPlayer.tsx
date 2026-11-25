@@ -136,7 +136,7 @@ export default function VideoLessonPlayer({ video }: { video: AcademyVideo }) {
   };
 
   return (
-    <div className="relative min-h-screen overflow-hidden bg-page pb-24 text-white md:pb-0">
+    <div className="relative min-h-dvh overflow-hidden bg-page pb-24 text-white md:pb-0">
       <div
         aria-hidden="true"
         className="pointer-events-none absolute inset-x-0 top-0 h-[560px] bg-[radial-gradient(ellipse_at_top,rgba(0,229,255,0.14),transparent_62%)]"
@@ -144,7 +144,7 @@ export default function VideoLessonPlayer({ video }: { video: AcademyVideo }) {
 
       <NavigationBar currentPath="/learn" />
 
-      <main className="relative mx-auto max-w-5xl px-4 pt-24 sm:px-6 md:pt-28">
+      <div className="relative mx-auto max-w-5xl px-4 pt-6 sm:px-6 md:pt-8">
         <Link
           href="/learn/videos"
           className="inline-flex items-center gap-2 text-xs font-bold text-white/55 underline-offset-4 transition hover:text-white hover:underline focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#00e5ff]"
@@ -155,7 +155,7 @@ export default function VideoLessonPlayer({ video }: { video: AcademyVideo }) {
 
         <div className="mt-6 flex flex-wrap items-end justify-between gap-3">
           <div>
-            <p className="text-[10px] font-black uppercase tracking-[0.3em] text-[#00e5ff]/75">
+            <p className="text-[11px] font-black uppercase tracking-[0.3em] text-[#00e5ff]/75">
               {t("learn.videos.kicker")} · {t("learn.videos.part", { number: video.number })}
             </p>
             <h1 className="mt-1 text-3xl font-black leading-[1.02] tracking-tight sm:text-4xl">
@@ -166,7 +166,7 @@ export default function VideoLessonPlayer({ video }: { video: AcademyVideo }) {
             </p>
           </div>
           {status === "watched" && (
-            <span className="inline-flex items-center gap-1.5 rounded-full border border-[#00ffa3]/30 bg-[#00ffa3]/10 px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.18em] text-[#8dffd0]">
+            <span className="inline-flex items-center gap-1.5 rounded-full border border-[#00ffa3]/30 bg-[#00ffa3]/10 px-3 py-1.5 text-[11px] font-black uppercase tracking-[0.18em] text-[#8dffd0]">
               <IconCheck size={12} aria-hidden="true" />
               {t("learn.videos.watched")}
             </span>
@@ -258,7 +258,7 @@ export default function VideoLessonPlayer({ video }: { video: AcademyVideo }) {
                 message="Watch the demo all the way through, then open the related lesson to try the same move on a real board."
               />
             </div>
-            <p className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.22em] text-[#00e5ff]/75">
+            <p className="flex items-center gap-2 text-[11px] font-black uppercase tracking-[0.22em] text-[#00e5ff]/75">
               <IconList size={14} aria-hidden="true" />
               {t("learn.videos.chapters")}
             </p>
@@ -275,7 +275,7 @@ export default function VideoLessonPlayer({ video }: { video: AcademyVideo }) {
                         : "text-white/55 hover:bg-white/5 hover:text-white"
                     }`}
                   >
-                    <span className="w-8 shrink-0 font-mono text-[10px] text-white/40">
+                    <span className="w-8 shrink-0 font-mono text-[11px] text-white/40">
                       {clock(chapter.at)}
                     </span>
                     <span>{chapter.title}</span>
@@ -297,7 +297,7 @@ export default function VideoLessonPlayer({ video }: { video: AcademyVideo }) {
                 <IconSchool size={20} aria-hidden="true" />
               </span>
               <span className="min-w-0">
-                <span className="block text-[10px] font-black uppercase tracking-[0.24em] text-[#8dffd0]/70">
+                <span className="block text-[11px] font-black uppercase tracking-[0.24em] text-[#8dffd0]/70">
                   {t("learn.videos.practiceKicker")}
                 </span>
                 <span className="mt-1 block text-base font-extrabold text-white">
@@ -307,7 +307,7 @@ export default function VideoLessonPlayer({ video }: { video: AcademyVideo }) {
                   {t(lesson.descriptionKey)}
                 </span>
                 <span className="mt-2 flex flex-wrap items-center gap-2 text-[11px] font-semibold text-white/40">
-                  <span className="rounded-full border border-white/10 bg-white/[0.04] px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.12em] text-[#9dd8ff]">
+                  <span className="rounded-full border border-white/10 bg-white/[0.04] px-2 py-0.5 text-[11px] font-bold uppercase tracking-[0.12em] text-[#9dd8ff]">
                     {t(`learn.difficulty.${lesson.difficulty}`)}
                   </span>
                   {t("learn.lesson.minutes", { minutes: lesson.estimatedMinutes })}
@@ -327,7 +327,7 @@ export default function VideoLessonPlayer({ video }: { video: AcademyVideo }) {
             className="mt-4 flex items-center justify-between gap-4 rounded-2xl border border-[#00e5ff]/25 bg-[#00e5ff]/[0.06] p-4 transition hover:bg-[#00e5ff]/[0.1] focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#00e5ff]"
           >
             <span>
-              <span className="block text-[10px] font-black uppercase tracking-[0.24em] text-[#9dd8ff]/70">
+              <span className="block text-[11px] font-black uppercase tracking-[0.24em] text-[#9dd8ff]/70">
                 {t("learn.videos.next")}
               </span>
               <span className="mt-1 block text-base font-extrabold text-white">
@@ -345,7 +345,7 @@ export default function VideoLessonPlayer({ video }: { video: AcademyVideo }) {
             <IconArrowRight size={16} aria-hidden="true" />
           </Link>
         )}
-      </main>
+      </div>
 
       <Footer />
     </div>

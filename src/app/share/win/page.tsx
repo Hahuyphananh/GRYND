@@ -74,7 +74,7 @@ export default async function ShareWinPage({
   const moves = shareMovesLabel(input.moves, locale);
 
   return (
-    <main className="mx-auto flex min-h-[70vh] w-full max-w-3xl flex-col items-center justify-center px-4 py-12">
+    <div className="mx-auto flex min-h-[70vh] w-full max-w-3xl flex-col items-center justify-center px-4 py-12">
       <p className="text-[11px] font-black uppercase tracking-[0.3em] text-emerald-300">
         Shared result
       </p>
@@ -112,6 +112,6 @@ export default async function ShareWinPage({
           GRYND PRO
         </Link>
       </div>
-    </main>
+    </div>
   );
 }

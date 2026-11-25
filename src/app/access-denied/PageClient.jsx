@@ -79,7 +79,7 @@ export default function AccessDeniedPage() {
   const accountName = user?.firstName || user?.username || user?.fullName || null;
 
   return (
-    <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-page px-4 py-10 sm:py-14">
+    <div className="relative flex min-h-dvh items-center justify-center overflow-hidden bg-page px-4 py-10 sm:py-14">
       {/* Backdrop: neon glows + subtle grid (the family's stage). */}
       <div aria-hidden className="pointer-events-none absolute inset-0">
         <div className="absolute -left-28 -top-28 h-80 w-80 rounded-full bg-[#00e5ff]/10 blur-[110px]" />
@@ -156,7 +156,7 @@ export default function AccessDeniedPage() {
 
             {/* Eyebrow badge + which account is restricted */}
             <div className="mt-5 flex flex-wrap items-center justify-between gap-2">
-              <span className="inline-flex items-center gap-1.5 rounded-full border border-[#ff5d8f]/45 bg-[#ff5d8f]/10 px-3 py-1 text-[10px] font-black uppercase tracking-[0.22em] text-[#ffb3c9]">
+              <span className="inline-flex items-center gap-1.5 rounded-full border border-[#ff5d8f]/45 bg-[#ff5d8f]/10 px-3 py-1 text-[11px] font-black uppercase tracking-[0.22em] text-[#ffb3c9]">
                 <IconShieldX size={13} aria-hidden />
                 {t("accessDenied.badge")}
               </span>
@@ -178,7 +178,7 @@ export default function AccessDeniedPage() {
 
             {/* What now — the page's real job. */}
             <div className="mt-5 rounded-2xl border border-[#00e5ff]/20 bg-[#061530]/70 p-4 text-left">
-              <p className="text-[10px] font-black uppercase tracking-[0.22em] text-[#ffb3c9]">
+              <p className="text-[11px] font-black uppercase tracking-[0.22em] text-[#ffb3c9]">
                 {t("accessDenied.whatTitle")}
               </p>
               <ul className="mt-2.5 space-y-2 text-[13px] leading-snug text-[#c9f7ff]">

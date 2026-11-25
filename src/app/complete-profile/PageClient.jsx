@@ -169,7 +169,7 @@ export default function CompleteProfilePage() {
   };
 
   return (
-    <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-page px-4 py-10 sm:py-14">
+    <div className="relative flex min-h-dvh items-center justify-center overflow-hidden bg-page px-4 py-10 sm:py-14">
       {/* Backdrop: neon glows + subtle grid (same stage as the 404 page). */}
       <div aria-hidden className="pointer-events-none absolute inset-0">
         <div className="absolute -left-28 -top-28 h-80 w-80 rounded-full bg-[#00e5ff]/10 blur-[110px]" />
@@ -241,7 +241,7 @@ export default function CompleteProfilePage() {
 
             {/* Eyebrow badge + which account is being verified */}
             <div className="mt-5 flex flex-wrap items-center justify-between gap-2">
-              <span className="inline-flex items-center gap-1.5 rounded-full border border-[#f5ff3b]/40 bg-[#f5ff3b]/10 px-3 py-1 text-[10px] font-black uppercase tracking-[0.22em] text-[#f5ff3b]">
+              <span className="inline-flex items-center gap-1.5 rounded-full border border-[#f5ff3b]/40 bg-[#f5ff3b]/10 px-3 py-1 text-[11px] font-black uppercase tracking-[0.22em] text-[#f5ff3b]">
                 <IconShieldCheck size={13} aria-hidden />
                 {t("completeProfile.badge")}
               </span>

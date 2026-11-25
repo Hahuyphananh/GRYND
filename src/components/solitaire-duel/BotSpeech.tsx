@@ -12,7 +12,7 @@
 // SPACE: the slot is a fixed 36px, two-line clamp. That is deliberately the
 // height the opponent strip already spent on the bot description, so replacing
 // that line with this component does not add a tall panel above the board (the
-// board's card size is derived from a `100vh - 17rem` budget).
+// board's card size is derived from a `100dvh - 17rem` budget).
 //
 // INPUT: the live region is `pointer-events-none` and the component renders no
 // controls, so it can never steal a click, a tap or focus from the board.

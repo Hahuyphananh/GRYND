@@ -30,7 +30,7 @@ export default function ClaimPage() {
 
   return (
     <div
-      className="flex min-h-screen items-center justify-center px-4 py-16 text-white"
+      className="flex min-h-dvh items-center justify-center px-4 py-16 text-white"
       style={{ background: "linear-gradient(135deg, #001933 0%, #000d1a 100%)" }}
     >
       <div className="w-full max-w-xl">

@@ -50,7 +50,10 @@ export default function PageHeader({
           )}
         >
           {icon}
-          {title}
+          {/* ONE flex item: a title built from text + a highlighted <span>
+              would otherwise become three flex children and be scattered
+              across the line ("One deal." … "Everyone." … "Every day."). */}
+          <span>{title}</span>
         </Heading>
         {actions && <div className="flex flex-wrap items-center gap-2">{actions}</div>}
       </div>

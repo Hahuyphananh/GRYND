@@ -16,9 +16,9 @@ export const metadata: Metadata = {
 
 export default function UnlimitedPuzzlePlayPage() {
   return (
-    <div className="relative min-h-screen bg-page pb-24 text-white md:pb-0">
+    <div className="relative min-h-dvh bg-page pb-24 text-white md:pb-0">
       <NavigationBar currentPath="/play" />
-      <main className="relative mx-auto max-w-6xl px-4 pt-24 sm:px-6 md:pt-28">
+      <div className="relative mx-auto max-w-6xl px-4 pt-6 sm:px-6 md:pt-8">
         <Link
           href="/play/unlimited-puzzles"
           className="inline-flex items-center gap-2 text-xs font-bold text-white/55 underline-offset-4 hover:text-white hover:underline"
@@ -47,7 +47,7 @@ export default function UnlimitedPuzzlePlayPage() {
             or today&apos;s challenge →
           </Link>
         </p>
-      </main>
+      </div>
       <Footer />
     </div>
   );

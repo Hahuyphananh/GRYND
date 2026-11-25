@@ -42,7 +42,7 @@ import { nextLessonAfter } from "../../lib/solitaire-duel/lessonProgress";
 import { viewForState } from "../../lib/solitaire-duel/rules";
 
 const CARD = "rounded-2xl border border-white/10 bg-[#06152f]/90 p-4 sm:p-5";
-const KICKER = "text-[10px] font-black uppercase tracking-[0.28em] text-[#00e5ff]/80";
+const KICKER = "text-[11px] font-black uppercase tracking-[0.28em] text-[#00e5ff]/80";
 const PRIMARY =
   "inline-flex min-h-10 items-center justify-center gap-2 rounded-xl bg-[#00e5ff] px-4 py-2 text-sm font-black text-[#00212b] transition hover:brightness-110 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#00e5ff] disabled:cursor-not-allowed disabled:opacity-40";
 const SECONDARY =
@@ -68,7 +68,7 @@ export function PhaseRail({
           <span
             key={kind}
             aria-current={index === state.index ? "step" : undefined}
-            className={`rounded-full border px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.1em] ${
+            className={`rounded-full border px-2.5 py-1 text-[11px] font-bold uppercase tracking-[0.1em] ${
               index === state.index
                 ? "border-[#00e5ff]/40 bg-[#00e5ff]/15 text-[#9dd8ff]"
                 : index < state.index
@@ -87,7 +87,7 @@ export function PhaseRail({
             style={{ width: `${Math.max(0, Math.min(100, progress.percent))}%` }}
           />
         </div>
-        <span className="font-mono text-[10px] font-bold text-[#9dd8ff]/60">
+        <span className="font-mono text-[11px] font-bold text-[#9dd8ff]/60">
           {t("learn.player.phases.progress", {
             current: progress.current,
             total: progress.total,
@@ -121,7 +121,7 @@ export function LearnPhaseView({
         {t(content.explanationKey)}
       </p>
       <div className="mt-4 rounded-xl border border-[#00e5ff]/20 bg-[#00e5ff]/[0.06] p-3">
-        <p className="text-[10px] font-black uppercase tracking-[0.18em] text-[#9dd8ff]/70">
+        <p className="text-[11px] font-black uppercase tracking-[0.18em] text-[#9dd8ff]/70">
           {t("learn.player.phases.whyMatters")}
         </p>
         <p className="mt-1 text-sm leading-relaxed text-[#9dd8ff]">
@@ -135,7 +135,7 @@ export function LearnPhaseView({
       )}
       {content.mistakeKey && (
         <div className="mt-3 rounded-xl border border-[#f5ff3b]/25 bg-[#f5ff3b]/[0.06] p-3">
-          <p className="text-[10px] font-black uppercase tracking-[0.18em] text-[#ffe9a3]/70">
+          <p className="text-[11px] font-black uppercase tracking-[0.18em] text-[#ffe9a3]/70">
             {t("learn.player.phases.mistake")}
           </p>
           <p className="mt-1 text-xs leading-relaxed text-[#ffe9a3]/85">
@@ -294,7 +294,7 @@ function PracticePositionView({
     <section aria-label={t("learn.player.phases.practice")} className={CARD}>
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className={KICKER}>{t("learn.player.phases.practice")}</p>
-        <span className="font-mono text-[10px] font-bold text-[#9dd8ff]/60">
+        <span className="font-mono text-[11px] font-bold text-[#9dd8ff]/60">
           {t("learn.player.phases.practicePosition", {
             current: index + 1,
             total,
@@ -325,7 +325,7 @@ function PracticePositionView({
 
       {(hint || hintMessage) && (
         <div className="mt-3 rounded-xl border border-[#f5ff3b]/25 bg-[#1c1a05]/70 p-3">
-          <p className="text-[10px] font-black uppercase tracking-[0.16em] text-[#f5ff3b]">
+          <p className="text-[11px] font-black uppercase tracking-[0.16em] text-[#f5ff3b]">
             {hint
               ? t("learn.player.hintLevel", {
                   level: hint.level,
@@ -550,7 +550,7 @@ export function RecapPhaseView({
         {t(recap.summaryKey)}
       </p>
       <div className="mt-4 rounded-xl border border-[#00ffa3]/25 bg-[#00ffa3]/[0.07] p-3">
-        <p className="text-[10px] font-black uppercase tracking-[0.18em] text-[#8dffd0]/80">
+        <p className="text-[11px] font-black uppercase tracking-[0.18em] text-[#8dffd0]/80">
           {t("learn.player.phases.remember")}
         </p>
         <p className="mt-1 text-sm leading-relaxed text-[#b6ffe0]">
@@ -560,7 +560,7 @@ export function RecapPhaseView({
 
       {next && (
         <div className="mt-4 rounded-xl border border-white/10 bg-white/[0.03] p-3">
-          <p className="text-[10px] font-black uppercase tracking-[0.18em] text-[#9dd8ff]/60">
+          <p className="text-[11px] font-black uppercase tracking-[0.18em] text-[#9dd8ff]/60">
             {t("learn.player.phases.suggestedNext")}
           </p>
           <Link

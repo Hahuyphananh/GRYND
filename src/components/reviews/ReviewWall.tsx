@@ -210,7 +210,7 @@ export default function ReviewWall({
                 />
                 <span className="font-semibold text-[#c9f7ff]/80">{r.username || "Player"}</span>
                 <span className="ml-auto flex items-center gap-1.5">
-                  <span className="rounded-sm bg-green-500/15 px-1.5 py-0.5 text-[10px] text-green-400">
+                  <span className="rounded-sm bg-green-500/15 px-1.5 py-0.5 text-[11px] text-green-400">
                     Verified player
                   </span>
                   {/* Never offer a report button on your own review — the API

@@ -116,7 +116,7 @@ export default function ShareLadderButton({
         data-testid={testId}
         aria-expanded={open}
         onClick={() => setOpen((value) => !value)}
-        className="inline-flex items-center justify-center gap-1 rounded-full border border-[#00e5ff]/40 bg-[#00e5ff]/10 px-2.5 py-1 text-[10px] font-black uppercase tracking-wider text-[#00e5ff] transition hover:bg-[#00e5ff]/20 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#00e5ff]"
+        className="inline-flex items-center justify-center gap-1 rounded-full border border-[#00e5ff]/40 bg-[#00e5ff]/10 px-2.5 py-1 text-[11px] font-black uppercase tracking-wider text-[#00e5ff] transition hover:bg-[#00e5ff]/20 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#00e5ff]"
       >
         <IconShare size={11} aria-hidden="true" />
         {copy.share}
@@ -174,7 +174,7 @@ export default function ShareLadderButton({
             </button>
           )}
 
-          <p aria-live="polite" className="mt-1.5 min-h-[14px] text-[10px] text-emerald-300">
+          <p aria-live="polite" className="mt-1.5 min-h-[14px] text-[11px] text-emerald-300">
             {status ?? ""}
           </p>
         </div>

@@ -314,14 +314,14 @@ export default function PuzzleSessionPlayer({
           : "Waiting for the race to start.";
 
   return (
-    <div className="relative min-h-screen overflow-hidden bg-[color:var(--bg-page)] pb-24 text-[color:var(--text-primary)] md:pb-0">
+    <div className="relative min-h-dvh overflow-hidden bg-[color:var(--bg-page)] pb-24 text-[color:var(--text-primary)] md:pb-0">
       <div
         aria-hidden="true"
         className="pointer-events-none absolute inset-x-0 top-0 h-[520px] bg-[radial-gradient(ellipse_at_top,rgba(94,234,212,0.12),transparent_62%)]"
       />
       <NavigationBar currentPath="/play" />
 
-      <main className="relative mx-auto max-w-6xl px-4 pt-24 sm:px-6 md:pt-28">
+      <div className="relative mx-auto max-w-6xl px-4 pt-6 sm:px-6 md:pt-8">
         <Link
           href={mode === "ranked" ? "/play/puzzle-ranked" : "/play/puzzle-ai"}
           className="inline-flex items-center gap-2 text-xs font-bold text-white/55 underline-offset-4 transition hover:text-white hover:underline focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#5eead4]"
@@ -334,7 +334,7 @@ export default function PuzzleSessionPlayer({
 
         <header className="mt-4 flex flex-wrap items-end justify-between gap-4">
           <div className="min-w-0">
-            <p className="text-[10px] font-black uppercase tracking-[0.24em] text-[#5eead4]/85">
+            <p className="text-[11px] font-black uppercase tracking-[0.24em] text-[#5eead4]/85">
               {mode === "ranked"
                 ? t("playHub.lobby.puzzleBoard.rankedKicker")
                 : t("playHub.lobby.puzzleBoard.aiKicker")}
@@ -355,7 +355,7 @@ export default function PuzzleSessionPlayer({
             </p>
             <p
               data-testid="puzzle-battle-rules"
-              className="mt-1 text-[10px] font-bold uppercase tracking-[0.1em] text-[#5eead4]/70"
+              className="mt-1 text-[11px] font-bold uppercase tracking-[0.1em] text-[#5eead4]/70"
             >
               {t("playHub.lobby.puzzleBoard.battleRules")}
             </p>
@@ -459,20 +459,20 @@ export default function PuzzleSessionPlayer({
               >
                 <div className="flex flex-wrap items-start justify-between gap-2">
                   <div className="min-w-0">
-                    <p className="text-[10px] font-black uppercase tracking-[0.18em] text-[#5eead4]/80">
+                    <p className="text-[11px] font-black uppercase tracking-[0.18em] text-[#5eead4]/80">
                       {t("playHub.lobby.puzzleBoard.objective")}
                     </p>
                     <p className="mt-1 text-sm leading-relaxed text-white/85">
                       {view.puzzle.objectiveText}
                     </p>
                   </div>
-                  <p className="shrink-0 rounded-lg border border-white/10 bg-black/20 px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.1em] text-white/55">
+                  <p className="shrink-0 rounded-lg border border-white/10 bg-black/20 px-2.5 py-1 text-[11px] font-bold uppercase tracking-[0.1em] text-white/55">
                     {t("playHub.lobby.puzzleBoard.par")} {view.puzzle.par}
                   </p>
                 </div>
                 {view.progress.measurable && view.progress.target > 0 && (
                   <div className="mt-3">
-                    <div className="flex items-center justify-between text-[10px] font-bold uppercase tracking-[0.12em] text-white/45">
+                    <div className="flex items-center justify-between text-[11px] font-bold uppercase tracking-[0.12em] text-white/45">
                       <span>{t("playHub.lobby.puzzleBoard.progress")}</span>
                       <span className="font-mono text-white/70">
                         {view.progress.current} / {view.progress.target}
@@ -543,7 +543,7 @@ export default function PuzzleSessionPlayer({
                   aria-live="polite"
                   className="rounded-2xl border border-[#c4b5fd]/25 bg-[#c4b5fd]/[0.06] p-3"
                 >
-                  <p className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.16em] text-[#ddd6fe]">
+                  <p className="flex items-center gap-2 text-[11px] font-black uppercase tracking-[0.16em] text-[#ddd6fe]">
                     {opponentName ?? t("playHub.lobby.puzzleBoard.ai")}
                     <span className="rounded-full border border-[#c4b5fd]/40 bg-[#c4b5fd]/10 px-1.5 py-0.5 text-[8px] tracking-[0.12em]">
                       {t("playHub.lobby.puzzleBoard.ai")}
@@ -593,14 +593,14 @@ export default function PuzzleSessionPlayer({
                           onClick={forfeit}
                           disabled={forfeiting}
                           data-testid="puzzle-session-forfeit-confirm"
-                          className="flex-1 rounded-lg border border-rose-300/40 bg-rose-300/10 px-2 py-1.5 text-[10px] font-black uppercase tracking-[0.12em] text-rose-100 hover:bg-rose-300/20 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-rose-200 disabled:opacity-60"
+                          className="flex-1 rounded-lg border border-rose-300/40 bg-rose-300/10 px-2 py-1.5 text-[11px] font-black uppercase tracking-[0.12em] text-rose-100 hover:bg-rose-300/20 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-rose-200 disabled:opacity-60"
                         >
                           {t("playHub.lobby.puzzleBoard.forfeitConfirm")}
                         </button>
                         <button
                           type="button"
                           onClick={() => setConfirmingForfeit(false)}
-                          className="flex-1 rounded-lg border border-white/15 px-2 py-1.5 text-[10px] font-black uppercase tracking-[0.12em] text-white/65 hover:border-white/30 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white/60"
+                          className="flex-1 rounded-lg border border-white/15 px-2 py-1.5 text-[11px] font-black uppercase tracking-[0.12em] text-white/65 hover:border-white/30 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white/60"
                         >
                           {t("playHub.lobby.puzzleBoard.forfeitCancel")}
                         </button>
@@ -611,7 +611,7 @@ export default function PuzzleSessionPlayer({
                       type="button"
                       onClick={() => setConfirmingForfeit(true)}
                       data-testid="puzzle-session-forfeit"
-                      className="w-full rounded-lg border border-white/15 px-2 py-2 text-[10px] font-black uppercase tracking-[0.12em] text-white/55 hover:border-rose-300/40 hover:text-rose-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-rose-200"
+                      className="w-full rounded-lg border border-white/15 px-2 py-2 text-[11px] font-black uppercase tracking-[0.12em] text-white/55 hover:border-rose-300/40 hover:text-rose-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-rose-200"
                     >
                       {t("playHub.lobby.puzzleBoard.forfeit")}
                     </button>
@@ -621,14 +621,14 @@ export default function PuzzleSessionPlayer({
 
               <Link
                 href="/play"
-                className="block text-center text-[10px] font-bold uppercase tracking-[0.12em] text-white/40 underline-offset-4 hover:text-white hover:underline"
+                className="block text-center text-[11px] font-bold uppercase tracking-[0.12em] text-white/40 underline-offset-4 hover:text-white hover:underline"
               >
                 {t("playHub.lobby.puzzleBoard.backPlay")}
               </Link>
             </aside>
           </div>
         )}
-      </main>
+      </div>
 
       {/* THE RESULT POPUP.
           A settled race is announced over the finished board instead of in a
@@ -659,7 +659,7 @@ export default function PuzzleSessionPlayer({
                 won ? "bg-emerald-300" : draw ? "bg-white/30" : "bg-rose-300"
               }`}
             />
-            <p className="text-[10px] font-black uppercase tracking-[0.2em] text-[color:var(--text-muted)]">
+            <p className="text-[11px] font-black uppercase tracking-[0.2em] text-[color:var(--text-muted)]">
               {mode === "ranked"
                 ? t("playHub.lobby.puzzleBoard.rankedKicker")
                 : t("playHub.lobby.puzzleBoard.aiKicker")}
@@ -693,7 +693,7 @@ export default function PuzzleSessionPlayer({
 
             <div className="mt-5 grid grid-cols-2 gap-2 text-left">
               <div className="rounded-xl border border-[#5eead4]/30 bg-[#5eead4]/[0.07] p-3">
-                <p className="text-[10px] font-black uppercase tracking-[0.16em] text-[#5eead4]">
+                <p className="text-[11px] font-black uppercase tracking-[0.16em] text-[#5eead4]">
                   {t("playHub.lobby.puzzleBoard.you")}
                 </p>
                 <p
@@ -718,7 +718,7 @@ export default function PuzzleSessionPlayer({
                 <p
                   data-testid="puzzle-popup-opponent-name"
                   title={opponentLabel}
-                  className="truncate text-[10px] font-black uppercase tracking-[0.16em] text-[color:var(--text-muted)]"
+                  className="truncate text-[11px] font-black uppercase tracking-[0.16em] text-[color:var(--text-muted)]"
                 >
                   {opponentLabel}
                 </p>

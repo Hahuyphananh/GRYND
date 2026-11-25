@@ -135,7 +135,7 @@ export default function SolitaireThemePicker({ className = "" }: { className?: s
           className="mx-auto mb-2 block h-1 w-10 rounded-full bg-white/20 sm:hidden"
         />
         <div className="flex items-center justify-between gap-2">
-          <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-white/50">Table theme</p>
+          <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-white/50">Table theme</p>
           <div className="flex items-center gap-1.5">
             <button
               type="button"
@@ -193,7 +193,7 @@ export default function SolitaireThemePicker({ className = "" }: { className?: s
                 />
                 <span className="min-w-0 flex-1">{option.label}</span>
                 {locked ? (
-                  <span className="shrink-0 rounded-full border border-[#f5ff3b]/60 px-1 py-px text-[9px] font-black uppercase tracking-wider text-[#f5ff3b]">
+                  <span className="shrink-0 rounded-full border border-[#f5ff3b]/60 px-1 py-px text-[11px] font-black uppercase tracking-wider text-[#f5ff3b]">
                     PRO
                   </span>
                 ) : (
@@ -208,7 +208,7 @@ export default function SolitaireThemePicker({ className = "" }: { className?: s
           })}
         </div>
 
-        <p className="mt-2 text-[10px] leading-relaxed text-white/45">
+        <p className="mt-2 text-[11px] leading-relaxed text-white/45">
           Changes the table only — the cards, their faces and the rules stay exactly the same.
         </p>
       </div>

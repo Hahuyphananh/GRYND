@@ -6,9 +6,10 @@
  * The six presets are the only new colour source in Solitaire, so this suite
  * pins the three things that would break quietly:
  *
- *   1. THE CATALOG — the six documented presets, unique keys/labels, Classic
- *      Green as the default, and a fallback that never leaves the board
- *      unstyled when the stored value is junk.
+ *   1. THE CATALOG — the six base presets, the five streak-earned tables and
+ *      the two PRO tables (unique keys/labels), Classic Green as the default,
+ *      and a fallback that never leaves the board unstyled when the stored
+ *      value is junk.
  *   2. CONTRAST — every felt is dark enough to hold a white card, and the slot
  *      text / legend / legal-move cue stay readable on it. This is measured
  *      here rather than eyeballed, so a "nicer" colour can't ship unreadable.
@@ -90,11 +91,36 @@ const WHITE = parseColor("#ffffff");
 
 // ── 1. The catalog ────────────────────────────────────────────────────────
 
-test("catalog: the six free presets plus the two PRO tables, Classic Green first", () => {
-  // Every free preset is unchanged — that is the product rule the offer makes.
+test("catalog: six base presets, five streak tables, two PRO tables, Classic Green first", () => {
+  // The six always-owned presets plus the streak-earned tables are all free;
+  // every free preset is unchanged — that is the product rule the offer makes.
   assert.deepEqual(
     BOARD_THEMES.filter((theme) => !theme.proOnly).map((theme) => theme.label),
-    ["Classic Green", "Ocean Blue", "Royal Purple", "Midnight", "Warm Copper", "Sand"],
+    [
+      "Classic Green",
+      "Ocean Blue",
+      "Royal Purple",
+      "Midnight",
+      "Warm Copper",
+      "Sand",
+      "Slate",
+      "Royal Emerald",
+      "Midnight Navy",
+      "Crimson Velvet",
+      "Eternal Obsidian",
+    ],
+  );
+  // The streak tables keep their milestone days — the selector labels each one
+  // with the day it unlocks, so a changed day is a visible product change.
+  assert.deepEqual(
+    BOARD_THEMES.filter((theme) => theme.streakDay).map((theme) => [theme.key, theme.streakDay]),
+    [
+      ["felt_slate", 3],
+      ["felt_royal_emerald", 30],
+      ["felt_midnight_navy", 60],
+      ["felt_crimson_velvet", 275],
+      ["felt_eternal_obsidian", 365],
+    ],
   );
   // The PRO tables are the only gated ones, and they are flagged in the catalog
   // (the API refuses them for a non-member — see tests/pro-social-status).

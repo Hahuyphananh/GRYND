@@ -848,7 +848,7 @@ export default function AdminDashboardClient({
   }
 
   return (
-    <main className="max-w-4xl mx-auto px-4 py-10">
+    <div className="max-w-4xl mx-auto px-4 py-10">
       {/* Header */}
       <div className="flex items-center justify-between mb-8">
         <div className="flex items-center gap-4">
@@ -1047,7 +1047,7 @@ export default function AdminDashboardClient({
                 : "text-gray-400 hover:text-gray-200")
             }
           >
-            <span className="inline-flex items-center gap-1.5">{tab === "cache" ? <><IconChartBar size={14} /> Cache</> : tab === "users" ? <><IconUsers size={14} /> Users</> : tab === "audit" ? <><IconClipboardList size={14} /> Audit Logs</> : tab === "reports" ? <><IconFlag size={14} /> Reports{reportNotifCount > 0 && <span className="ml-1 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold leading-none text-white">{reportNotifCount > 9 ? "9+" : reportNotifCount}</span>}</> : tab === "messages" ? <><IconMail size={14} /> Messages{messageNotifCount > 0 && <span className="ml-1 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold leading-none text-white">{messageNotifCount > 9 ? "9+" : messageNotifCount}</span>}</> : <><IconStar size={14} /> Reviews</>}</span>
+            <span className="inline-flex items-center gap-1.5">{tab === "cache" ? <><IconChartBar size={14} /> Cache</> : tab === "users" ? <><IconUsers size={14} /> Users</> : tab === "audit" ? <><IconClipboardList size={14} /> Audit Logs</> : tab === "reports" ? <><IconFlag size={14} /> Reports{reportNotifCount > 0 && <span className="ml-1 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[11px] font-bold leading-none text-white">{reportNotifCount > 9 ? "9+" : reportNotifCount}</span>}</> : tab === "messages" ? <><IconMail size={14} /> Messages{messageNotifCount > 0 && <span className="ml-1 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[11px] font-bold leading-none text-white">{messageNotifCount > 9 ? "9+" : messageNotifCount}</span>}</> : <><IconStar size={14} /> Reviews</>}</span>
           </button>
         ))}
       </div>
@@ -1258,7 +1258,7 @@ export default function AdminDashboardClient({
                                 setTokenResetTarget(u);
                                 setTokenResetAmount("");
                               }}
-                              className="px-3 py-1 rounded-lg text-[10px] font-medium bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/30 transition-colors"
+                              className="px-3 py-1 rounded-lg text-[11px] font-medium bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/30 transition-colors"
                             >
                               <span className="inline-flex items-center gap-1"><IconCoins size={12} /> Reset Tokens</span>
                             </button>
@@ -1377,13 +1377,13 @@ export default function AdminDashboardClient({
                         <div>
                           <span className="text-gray-200 font-medium">{r.reported_name || r.reported_clerk_id}</span>
                           {r.reported_is_banned && (
-                            <span className="ml-1.5 inline-flex items-center rounded-full bg-red-500/20 border border-red-500/30 px-1.5 py-0.5 text-[10px] font-medium text-red-400">
+                            <span className="ml-1.5 inline-flex items-center rounded-full bg-red-500/20 border border-red-500/30 px-1.5 py-0.5 text-[11px] font-medium text-red-400">
                               BANNED
                             </span>
                           )}
                         </div>
                         {r.reported_email && (
-                          <p className="text-gray-500 text-[10px]">{r.reported_email}</p>
+                          <p className="text-gray-500 text-[11px]">{r.reported_email}</p>
                         )}
                       </td>
                       <td className="px-3 py-2.5">
@@ -1391,7 +1391,7 @@ export default function AdminDashboardClient({
                           {formatReason(r.reason)}
                         </span>
                         {r.details && (
-                          <p className="text-gray-500 text-[10px] mt-1 max-w-[150px] truncate" title={r.details}>
+                          <p className="text-gray-500 text-[11px] mt-1 max-w-[150px] truncate" title={r.details}>
                             {r.details}
                           </p>
                         )}
@@ -1399,7 +1399,7 @@ export default function AdminDashboardClient({
                             review itself — this is the only place it is shown. */}
                         {(r.review_title || r.review_body) && (
                           <p
-                            className="text-cyan-300/80 text-[10px] mt-1 max-w-[200px] truncate"
+                            className="text-cyan-300/80 text-[11px] mt-1 max-w-[200px] truncate"
                             title={[r.review_title, r.review_body]
                               .filter(Boolean)
                               .join(" — ")}
@@ -1409,7 +1409,7 @@ export default function AdminDashboardClient({
                           </p>
                         )}
                         {r.review_rating != null && (
-                          <p className="text-gray-500 text-[10px] mt-0.5">
+                          <p className="text-gray-500 text-[11px] mt-0.5">
                             {r.review_rating}/5 · {r.review_status}
                           </p>
                         )}
@@ -1432,7 +1432,7 @@ export default function AdminDashboardClient({
                             onClick={() => handleRenameUser(r)}
                             disabled={banLoading === "rename-" + r.id}
                             title="Assign this player a new, neutral display name"
-                            className="px-2.5 py-1 rounded-sm text-[10px] font-medium bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-300 border border-cyan-500/25 transition-colors disabled:opacity-50"
+                            className="px-2.5 py-1 rounded-sm text-[11px] font-medium bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-300 border border-cyan-500/25 transition-colors disabled:opacity-50"
                           >
                             {banLoading === "rename-" + r.id ? "..." : "Rename"}
                           </button>
@@ -1440,7 +1440,7 @@ export default function AdminDashboardClient({
                             onClick={() => handleToggleBan(r.reported_clerk_id, !r.reported_is_banned)}
                             disabled={banLoading === r.reported_clerk_id}
                             className={
-                              "px-2.5 py-1 rounded-sm text-[10px] font-medium transition-colors border disabled:opacity-50 " +
+                              "px-2.5 py-1 rounded-sm text-[11px] font-medium transition-colors border disabled:opacity-50 " +
                               (r.reported_is_banned
                                 ? "bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border-emerald-500/30"
                                 : "bg-red-500/20 hover:bg-red-500/30 text-red-300 border-red-500/30")
@@ -1455,14 +1455,14 @@ export default function AdminDashboardClient({
                           <button
                             onClick={() => handleResolveReport(r.id, "dismissed")}
                             disabled={banLoading === String(r.id)}
-                            className="px-2.5 py-1 rounded-sm text-[10px] font-medium bg-white/5 hover:bg-white/10 text-gray-400 border border-white/10 transition-colors disabled:opacity-50"
+                            className="px-2.5 py-1 rounded-sm text-[11px] font-medium bg-white/5 hover:bg-white/10 text-gray-400 border border-white/10 transition-colors disabled:opacity-50"
                           >
                             Dismiss
                           </button>
                           <button
                             onClick={() => handleResolveReport(r.id, "resolved")}
                             disabled={banLoading === String(r.id)}
-                            className="px-2.5 py-1 rounded-sm text-[10px] font-medium bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-300 border border-emerald-500/20 transition-colors disabled:opacity-50"
+                            className="px-2.5 py-1 rounded-sm text-[11px] font-medium bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-300 border border-emerald-500/20 transition-colors disabled:opacity-50"
                           >
                             Resolve
                           </button>
@@ -1524,7 +1524,7 @@ export default function AdminDashboardClient({
                     </div>
                     <a
                       href={"mailto:" + m.email}
-                      className="text-[#c9f7ff]/60 text-[10px] hover:text-[#f5ff3b] transition-colors"
+                      className="text-[#c9f7ff]/60 text-[11px] hover:text-[#f5ff3b] transition-colors"
                     >
                       {m.email}
                     </a>
@@ -1571,7 +1571,7 @@ export default function AdminDashboardClient({
                           {r.admin_name}
                         </span>
                         <AdminBadge />
-                        <span className="text-gray-500 text-[10px] font-mono">
+                        <span className="text-gray-500 text-[11px] font-mono">
                           {formatTimestamp(r.created_at)}
                         </span>
                       </div>
@@ -1759,7 +1759,7 @@ export default function AdminDashboardClient({
                       <span className="text-[#f5ff3b]">{"★".repeat(r.rating)}</span>
                       <span className="text-white/20">{"★".repeat(5 - r.rating)}</span>
                     </div>
-                    <div className="text-[#c9f7ff]/50 text-[10px]">
+                    <div className="text-[#c9f7ff]/50 text-[11px]">
                       {r.email} · {r.game || "platform"} · {formatTimestamp(r.createdAt)}
                     </div>
                   </div>
@@ -1876,6 +1876,6 @@ export default function AdminDashboardClient({
           </AsyncState>
         </div>
       )}
-    </main>
+    </div>
   );
 }

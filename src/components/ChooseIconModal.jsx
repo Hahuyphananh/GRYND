@@ -216,7 +216,7 @@ export default function ChooseIconModal({
                         <span className="absolute inset-0 animate-ping rounded-full border-2 border-[#00e5ff]" />
                       )}
                     </span>
-                    <span className="max-w-full truncate text-[10px] font-semibold text-[#9dd8ff]">
+                    <span className="max-w-full truncate text-[11px] font-semibold text-[#9dd8ff]">
                       {icon.name}
                     </span>
                   </button>

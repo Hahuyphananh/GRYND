@@ -99,6 +99,12 @@ export type PlayingCardProps = {
   /** A drop is in flight — dimmed but still rendered in place. */
   dimmed?: boolean;
   interactive?: boolean;
+  /**
+   * Let the page scroll from this card instead of claiming every gesture.
+   * Only set when the board is taller than the viewport: a board that fits
+   * has nothing to scroll, and `touch-none` is what makes the drag reliable.
+   */
+  touchScroll?: boolean;
   style?: CSSProperties;
   className?: string;
   /** Accessible name; falls back to the card's own identity. */
@@ -127,6 +133,7 @@ export default function PlayingCard({
   highlighted = false,
   dimmed = false,
   interactive = false,
+  touchScroll = false,
   style,
   className = "",
   label,
@@ -199,7 +206,9 @@ export default function PlayingCard({
       {...dataAttrs}
       style={outerStyle}
       className={`gr-focusable relative block h-full w-full select-none rounded-[6px] transition focus-visible:z-10 ${stateClasses} ${dim} ${
-        interactive ? "cursor-pointer touch-none" : "cursor-default"
+        interactive
+          ? `cursor-pointer ${touchScroll ? "touch-pan-y" : "touch-none"}`
+          : "cursor-default"
       } ${className}`}
     >
       <span
@@ -244,8 +253,8 @@ export default function PlayingCard({
           {frontCard && (
             <>
               <span className="flex items-center gap-[1px] pl-[10%] pt-[6%] font-black leading-none">
-                <span className="text-[clamp(9px,1.35vw,15px)]">{rankLabel(frontCard.rank)}</span>
-                <span className="text-[clamp(8px,1.1vw,13px)]">{suitGlyph(frontCard.suit)}</span>
+                <span className="text-[clamp(11px,1.35vw,15px)]">{rankLabel(frontCard.rank)}</span>
+                <span className="text-[clamp(10px,1.1vw,13px)]">{suitGlyph(frontCard.suit)}</span>
               </span>
               <span
                 aria-hidden="true"

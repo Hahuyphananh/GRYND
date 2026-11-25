@@ -205,7 +205,7 @@ export default function PublicProfilePage() {
 
   if (loading) {
     return (
-      <div className="relative min-h-screen flex items-center justify-center">
+      <div className="relative min-h-dvh flex items-center justify-center">
         <InteractiveCasinoBg variant="subtle" />
         <div className="animate-spin rounded-full h-8 w-8 border-2 border-[#00e5ff] border-t-transparent" />
       </div>
@@ -215,10 +215,10 @@ export default function PublicProfilePage() {
   if (!loading && (error || !profile)) {
     const notFound = /not found/i.test(error || "");
     return (
-      <div className="relative min-h-screen text-white">
+      <div className="relative min-h-dvh text-white">
         <InteractiveCasinoBg variant="subtle" />
         <NavigationBar currentPath="/profil" />
-        <div className="mx-auto max-w-2xl px-6 pt-24">
+        <div className="mx-auto max-w-2xl px-6 pt-6">
           <ErrorState
             title={notFound ? "Player not found" : "We couldn't load this profile"}
             description={
@@ -240,9 +240,9 @@ export default function PublicProfilePage() {
   const profileGlowClass = cosmeticEffectClass(profile.profileGlow?.visual);
 
   return (
-    <div className="relative min-h-screen text-white">
+    <div className="relative min-h-dvh text-white">
       <InteractiveCasinoBg variant="subtle" />
-      <div className="max-w-4xl mx-auto px-6 pt-24 pb-20">
+      <div className="max-w-4xl mx-auto px-6 pt-6 pb-20">
         <NavigationBar currentPath="/profil" />
 
         <div className="flex items-center justify-between mb-8">

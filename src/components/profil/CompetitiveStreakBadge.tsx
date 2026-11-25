@@ -87,7 +87,7 @@ export default function CompetitiveStreakBadge({
     >
       <Icon size={16} stroke={2} aria-hidden="true" className={`shrink-0 ${iconClass}`} />
       <span className="flex min-w-0 flex-col leading-tight">
-        <span className="truncate text-[10px] font-black uppercase tracking-[0.14em]">
+        <span className="truncate text-[11px] font-black uppercase tracking-[0.14em]">
           {label}
         </span>
         <span className="flex flex-wrap items-center gap-x-1 text-[11px] font-semibold">

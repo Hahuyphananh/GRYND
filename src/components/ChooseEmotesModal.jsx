@@ -271,7 +271,7 @@ export default function ChooseEmotesModal({ open, onClose }) {
                       type="button"
                       onClick={handleClearAll}
                       disabled={saving}
-                      className="shrink-0 rounded-lg border border-white/10 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-white/60 transition hover:bg-white/10 hover:text-white disabled:opacity-50"
+                      className="shrink-0 rounded-lg border border-white/10 px-2.5 py-1 text-[11px] font-bold uppercase tracking-wider text-white/60 transition hover:bg-white/10 hover:text-white disabled:opacity-50"
                     >
                       Clear all
                     </button>
@@ -316,11 +316,11 @@ export default function ChooseEmotesModal({ open, onClose }) {
                               </span>
                             )}
                           </span>
-                          <span className="max-w-full truncate text-[10px] font-semibold text-[#9dd8ff]">
+                          <span className="max-w-full truncate text-[11px] font-semibold text-[#9dd8ff]">
                             {entry.name}
                           </span>
                           <span
-                            className="text-[9px]"
+                            className="text-[11px]"
                             style={{ color: RARITY_COLORS[entry.rarity] || "#9ca3af" }}
                           >
                             {entry.rarity}

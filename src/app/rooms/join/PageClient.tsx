@@ -67,11 +67,11 @@ export default function JoinRoomPageClient({ signedIn }: { signedIn: boolean }) 
   };
 
   return (
-    <div className="relative min-h-screen">
+    <div className="relative min-h-dvh">
       <InteractiveCasinoBg variant="subtle" />
       <NavigationBar currentPath="/rooms" />
 
-      <main className="relative mx-auto w-full max-w-2xl px-4 pb-16 pt-24 sm:px-6">
+      <div className="relative mx-auto w-full max-w-2xl px-4 pb-16 pt-6 sm:px-6">
         <h1 className="text-2xl font-black text-white sm:text-3xl">
           {t("rooms.joinTitle", "Join a private room")}
         </h1>
@@ -148,7 +148,7 @@ export default function JoinRoomPageClient({ signedIn }: { signedIn: boolean }) 
             {t("rooms.backToFriends", "Back to your friends")}
           </Link>
         </p>
-      </main>
+      </div>
 
       <Footer />
     </div>

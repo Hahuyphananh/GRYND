@@ -141,7 +141,7 @@ export default function StreakUnlockModal() {
       className="fixed inset-0 z-[130] flex items-center justify-center bg-black/70 p-4"
     >
       <div className="w-full max-w-md rounded-2xl border border-amber-300/35 bg-surface p-5 text-white shadow-2xl">
-        <p className="text-[10px] font-black uppercase tracking-[0.24em] text-amber-200/85">
+        <p className="text-[11px] font-black uppercase tracking-[0.24em] text-amber-200/85">
           {streak}-day streak
         </p>
         <h2 className="mt-1 text-2xl font-black tracking-tight">Unlocked</h2>
@@ -170,19 +170,19 @@ export default function StreakUnlockModal() {
                   <span className="block text-xs font-bold text-white">
                     {label}
                   </span>
-                  <span className="block text-[10px] text-white/45">{blurb}</span>
+                  <span className="block text-[11px] text-white/45">{blurb}</span>
                 </span>
                 {canEquip ? (
                   <button
                     type="button"
                     onClick={() => void equip(itemId)}
                     disabled={equipping === itemId}
-                    className="shrink-0 rounded-lg border border-amber-300/45 bg-amber-300/15 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.12em] text-amber-100 hover:bg-amber-300/25 disabled:opacity-50"
+                    className="shrink-0 rounded-lg border border-amber-300/45 bg-amber-300/15 px-2.5 py-1 text-[11px] font-black uppercase tracking-[0.12em] text-amber-100 hover:bg-amber-300/25 disabled:opacity-50"
                   >
                     {equipping === itemId ? "Equipping…" : "Equip now"}
                   </button>
                 ) : (
-                  <span className="shrink-0 text-[10px] text-white/40">Profile</span>
+                  <span className="shrink-0 text-[11px] text-white/40">Profile</span>
                 )}
               </li>
             );

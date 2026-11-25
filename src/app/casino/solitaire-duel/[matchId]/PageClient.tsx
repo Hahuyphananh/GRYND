@@ -297,7 +297,7 @@ function Meter({
             <span
               data-testid={`solitaire-bot-rating-${tone}`}
               title="Opponent strength rating — not a player trophy"
-              className="inline-flex shrink-0 items-center gap-1 rounded-full border border-violet-400/40 bg-violet-400/10 px-1.5 py-0.5 font-mono text-[10px] font-bold text-violet-200"
+              className="inline-flex shrink-0 items-center gap-1 rounded-full border border-violet-400/40 bg-violet-400/10 px-1.5 py-0.5 font-mono text-[11px] font-bold text-violet-200"
             >
               <IconTrophy size={10} aria-hidden="true" />
               {ratingLabel}
@@ -309,14 +309,14 @@ function Meter({
             <span
               data-testid={`solitaire-trophies-${tone}`}
               title={`${Number(identity.trophies).toLocaleString()} Solitaire Duel trophies`}
-              className="inline-flex shrink-0 items-center gap-1 rounded-full border border-amber-400/40 bg-amber-400/10 px-1.5 py-0.5 font-mono text-[10px] font-bold text-amber-200"
+              className="inline-flex shrink-0 items-center gap-1 rounded-full border border-amber-400/40 bg-amber-400/10 px-1.5 py-0.5 font-mono text-[11px] font-bold text-amber-200"
             >
               <IconTrophy size={11} aria-hidden="true" />
               {Number(identity.trophies).toLocaleString()}
             </span>
           )}
           {completed && (
-            <span className="shrink-0 rounded-full border border-emerald-400/50 bg-emerald-400/15 px-2 py-0.5 text-[9px] font-black uppercase tracking-wider text-emerald-300">
+            <span className="shrink-0 rounded-full border border-emerald-400/50 bg-emerald-400/15 px-2 py-0.5 text-[11px] font-black uppercase tracking-wider text-emerald-300">
               Solved
             </span>
           )}
@@ -335,7 +335,7 @@ function Meter({
           style={{ width: `${clamped}%` }}
         />
       </div>
-      <p className="mt-1 truncate text-[10px] text-white/45">{detail}</p>
+      <p className="mt-1 truncate text-[11px] text-white/45">{detail}</p>
       {/* THE RECORDED RUN, UNFOLDING. Each bar is a checkpoint from the
           recording's OWN verified replay: its height is how many cards that run
           had on the foundations, and it lights up when the race clock reaches
@@ -375,7 +375,7 @@ function Meter({
         </div>
       )}
       {ghostTrail && ghostTrail.length > 1 && (
-        <p className="mt-1 text-[10px] text-white/35">
+        <p className="mt-1 text-[11px] text-white/35">
           Recorded run — their real pace on this deal
         </p>
       )}
@@ -1113,7 +1113,7 @@ export default function SolitaireDuelMatchPage() {
       autoStop={terminal}
       gameLabel="solitaire-duel"
     >
-      <div className="min-h-screen overflow-x-clip bg-linear-to-b from-[var(--tint-from--100c02)] via-[var(--tint-via--0b0902)] to-[var(--tint-to--070502)] px-2 pb-24 pt-20 text-white sm:px-6 md:pb-8">
+      <div className="min-h-dvh overflow-x-clip bg-linear-to-b from-[var(--tint-from--100c02)] via-[var(--tint-via--0b0902)] to-[var(--tint-to--070502)] px-2 pb-24 pt-6 text-white sm:px-6 md:pb-8">
         <NavigationBar currentPath="/casino" />
 
         <div className="mx-auto mt-4 w-full max-w-4xl">
@@ -1124,7 +1124,7 @@ export default function SolitaireDuelMatchPage() {
                 <IconCards className="h-6 w-6 shrink-0 text-amber-400 sm:h-7 sm:w-7" />
                 Solitaire Duel
               </h1>
-              <p className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[10px] font-semibold uppercase tracking-widest text-amber-200/60">
+              <p className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] font-semibold uppercase tracking-widest text-amber-200/60">
                 <span>{isPractice ? `Practice vs ${opponentName}` : "Rated 1v1"}</span>
                 <span aria-hidden="true">·</span>
                 <span>Same deal for both seats</span>
@@ -1143,7 +1143,7 @@ export default function SolitaireDuelMatchPage() {
               />
               <span
                 data-testid="solitaire-phase"
-                className={`rounded-full border px-3 py-1 text-[10px] font-black uppercase tracking-wider ${
+                className={`rounded-full border px-3 py-1 text-[11px] font-black uppercase tracking-wider ${
                   phase === "racing" && !expired
                     ? "border-amber-400/50 bg-amber-500/10 text-amber-200"
                     : terminal
@@ -1239,15 +1239,15 @@ export default function SolitaireDuelMatchPage() {
                       <span
                         data-testid="solitaire-bot-rating"
                         title="Opponent strength rating — not a player trophy"
-                        className="inline-flex items-center gap-1 rounded-full border border-amber-400/35 bg-amber-400/10 px-2 py-0.5 font-mono text-[10px] font-bold text-amber-200"
+                        className="inline-flex items-center gap-1 rounded-full border border-amber-400/35 bg-amber-400/10 px-2 py-0.5 font-mono text-[11px] font-bold text-amber-200"
                       >
                         <IconTrophy size={10} aria-hidden="true" />
                         {practiceBot.ratingLabel}
                       </span>
-                      <span className="rounded-full border border-white/15 bg-white/[0.04] px-2 py-0.5 text-[9px] font-black uppercase tracking-[0.12em] text-white/55">
+                      <span className="rounded-full border border-white/15 bg-white/[0.04] px-2 py-0.5 text-[11px] font-black uppercase tracking-[0.12em] text-white/55">
                         {practiceBot.difficultyLabel}
                       </span>
-                      <span className="rounded-full border border-emerald-400/30 bg-emerald-400/10 px-2 py-0.5 text-[9px] font-black uppercase tracking-[0.12em] text-emerald-300/80">
+                      <span className="rounded-full border border-emerald-400/30 bg-emerald-400/10 px-2 py-0.5 text-[11px] font-black uppercase tracking-[0.12em] text-emerald-300/80">
                         Unrated
                       </span>
                     </p>
@@ -1795,7 +1795,7 @@ function Fact({
 }) {
   return (
     <div className="rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2">
-      <p className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-white/45">
+      <p className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-white/45">
         {icon}
         {label}
       </p>

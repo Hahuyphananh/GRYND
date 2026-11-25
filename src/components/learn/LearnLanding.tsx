@@ -65,7 +65,7 @@ function DestinationCard({
       </span>
       <h3 className="mt-3 text-lg font-black tracking-tight text-white">{title}</h3>
       <p className="mt-1.5 flex-1 text-xs leading-relaxed text-white/55">{description}</p>
-      <span className="mt-3 text-[10px] font-bold uppercase tracking-[0.16em] text-white/35">
+      <span className="mt-3 text-[11px] font-bold uppercase tracking-[0.16em] text-white/35">
         {meta}
       </span>
       <span className="mt-3 inline-flex items-center gap-1.5 text-xs font-extrabold text-[color:var(--accent-strong)]">
@@ -97,7 +97,7 @@ export default function LearnLanding() {
   const allLessons = useMemo(() => orderedLessons(), []);
 
   return (
-    <div className="relative min-h-screen overflow-hidden bg-[color:var(--bg-page)] pb-24 text-white md:pb-0">
+    <div className="relative min-h-dvh overflow-hidden bg-[color:var(--bg-page)] pb-24 text-white md:pb-0">
       <div
         aria-hidden="true"
         className="pointer-events-none absolute inset-x-0 top-0 h-[560px] bg-[radial-gradient(ellipse_at_top,rgba(0,229,255,0.14),transparent_62%)]"
@@ -109,7 +109,7 @@ export default function LearnLanding() {
 
       <NavigationBar currentPath="/learn" />
 
-      <main className="relative mx-auto max-w-6xl px-4 pt-24 sm:px-6 md:pt-28">
+      <div className="relative mx-auto max-w-6xl px-4 pt-6 sm:px-6 md:pt-8">
         <p className="text-[11px] font-black uppercase tracking-[0.4em] text-cyan-300/80">
           {t("learn.kicker")}
         </p>
@@ -139,7 +139,7 @@ export default function LearnLanding() {
               </div>
             </div>
             <div className="min-w-0">
-              <p className="text-[10px] font-black uppercase tracking-[0.22em] text-[color:var(--text-muted)]">
+              <p className="text-[11px] font-black uppercase tracking-[0.22em] text-[color:var(--text-muted)]">
                 {t("learn.progress.title")}
               </p>
               <p className="mt-1 text-sm font-extrabold text-white">
@@ -155,7 +155,7 @@ export default function LearnLanding() {
                 })}
               </p>
               {isLoaded && (
-                <p className="mt-1.5 text-[10px] leading-relaxed text-white/35">
+                <p className="mt-1.5 text-[11px] leading-relaxed text-white/35">
                   {userId ? t("learn.progress.account") : t("learn.progress.guest")}
                 </p>
               )}
@@ -171,7 +171,7 @@ export default function LearnLanding() {
         </div>
 
         <section className="mt-8" aria-labelledby="learn-continue-title">
-          <p className="text-[10px] font-black uppercase tracking-[0.3em] text-[color:var(--accent-strong)]">
+          <p className="text-[11px] font-black uppercase tracking-[0.3em] text-[color:var(--accent-strong)]">
             {t("learn.continue.kicker")}
           </p>
           <h2 id="learn-continue-title" className="mt-1 text-lg font-extrabold text-white">
@@ -184,7 +184,7 @@ export default function LearnLanding() {
                 <IconStack2 size={24} aria-hidden="true" />
               </div>
               <div className="min-w-0">
-                <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-[color:var(--text-muted)]">
+                <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-[color:var(--text-muted)]">
                   {recommendedCourse ? t(recommendedCourse.titleKey) : ""}
                 </p>
                 <h3 className="mt-1 truncate text-xl font-black tracking-tight text-white">
@@ -250,7 +250,7 @@ export default function LearnLanding() {
         </section>
 
         <section className="mt-10" aria-labelledby="learn-destinations-title">
-          <p className="text-[10px] font-black uppercase tracking-[0.3em] text-[color:var(--accent-strong)]">
+          <p className="text-[11px] font-black uppercase tracking-[0.3em] text-[color:var(--accent-strong)]">
             {t("learn.destinations.kicker")}
           </p>
           <h2 id="learn-destinations-title" className="mt-1 text-2xl font-black tracking-tight">
@@ -313,7 +313,7 @@ export default function LearnLanding() {
         <section className="mt-10" aria-labelledby="learn-path-title">
           <div className="flex flex-wrap items-end justify-between gap-3">
             <div>
-              <p className="text-[10px] font-black uppercase tracking-[0.3em] text-[color:var(--accent-strong)]">
+              <p className="text-[11px] font-black uppercase tracking-[0.3em] text-[color:var(--accent-strong)]">
                 {t("learn.path.kicker")}
               </p>
               <h2 id="learn-path-title" className="mt-1 text-2xl font-black tracking-tight">
@@ -340,7 +340,7 @@ export default function LearnLanding() {
               ))}
           </div>
         </section>
-      </main>
+      </div>
 
       <Footer />
     </div>

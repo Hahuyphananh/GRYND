@@ -218,11 +218,11 @@ function RatingRow({ entry }) {
         <p className="text-lg font-bold tabular-nums text-[color:var(--state-gold)]">
           {formatNumber(entry.rating)}
         </p>
-        <p className="text-[10px] uppercase tracking-wider text-[color:var(--text-muted)]">
+        <p className="text-[11px] uppercase tracking-wider text-[color:var(--text-muted)]">
           Elo
         </p>
         {provisional && (
-          <p className="mt-1 inline-block rounded-full border border-[color:var(--border-warning)] px-1.5 py-px text-[9px] font-bold uppercase tracking-wider text-[color:var(--state-gold)]">
+          <p className="mt-1 inline-block rounded-full border border-[color:var(--border-warning)] px-1.5 py-px text-[11px] font-bold uppercase tracking-wider text-[color:var(--state-gold)]">
             Provisional {Number(entry.provisionalGamesCompleted || 0)}/
             {Number(entry.provisionalGamesTotal || 0)}
           </p>

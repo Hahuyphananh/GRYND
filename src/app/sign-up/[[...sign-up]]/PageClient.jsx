@@ -5,7 +5,7 @@ import InteractiveCasinoBg from "../../../components/InteractiveCasinoBg";
 
 export default function Page() {
   return (
-    <div className="relative min-h-screen flex items-center justify-center bg-[var(--tint-bg--001a33)]">
+    <div className="relative min-h-dvh flex items-center justify-center bg-[var(--tint-bg--001a33)]">
       <InteractiveCasinoBg variant="subtle" />
       <SignUp
         fallbackRedirectUrl="/sync"

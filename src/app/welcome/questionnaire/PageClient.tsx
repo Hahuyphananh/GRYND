@@ -351,7 +351,7 @@ export default function QuestionnairePageClient({ from }: Props) {
 
   // Pull the page up over the root layout's fixed-navbar padding — same
   // full-bleed shell as /welcome.
-  const fullBleed = "-mt-[68px] min-h-screen sm:-mt-16";
+  const fullBleed = "-mt-[68px] min-h-dvh sm:-mt-16";
 
   if (!isLoaded || status === "loading") {
     return (
@@ -447,7 +447,7 @@ export default function QuestionnairePageClient({ from }: Props) {
               />
             ))}
           </div>
-          <p className="text-[10px] font-bold tracking-widest text-[#9dd8ff]/60">
+          <p className="text-[11px] font-bold tracking-widest text-[#9dd8ff]/60">
             {t("onboarding.questionnaire.progress", {
               current: step + 1,
               total: TOTAL,
@@ -499,7 +499,7 @@ export default function QuestionnairePageClient({ from }: Props) {
               transition={{ duration: 0.28, ease: "easeOut" }}
             >
               {mode === "edit" && (
-                <span className="mb-3 inline-flex items-center gap-1.5 rounded-full border border-[#f0abfc]/50 bg-[#f0abfc]/10 px-3 py-1 text-[10px] font-black uppercase tracking-[0.2em] text-[#f0abfc]">
+                <span className="mb-3 inline-flex items-center gap-1.5 rounded-full border border-[#f0abfc]/50 bg-[#f0abfc]/10 px-3 py-1 text-[11px] font-black uppercase tracking-[0.2em] text-[#f0abfc]">
                   <IconPencil size={12} aria-hidden="true" />
                   {t("onboarding.questionnaire.edit.badge")}
                 </span>

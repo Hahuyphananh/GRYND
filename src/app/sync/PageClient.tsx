@@ -145,7 +145,7 @@ export default function SyncPage() {
 
   return (
     <div
-      className="flex items-center justify-center h-screen text-white"
+      className="flex items-center justify-center h-dvh text-white"
       style={{
         background: "linear-gradient(135deg, #001933 0%, #000d1a 100%)",
       }}

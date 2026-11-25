@@ -283,7 +283,7 @@ export default function MatchTimeline({
           Mistake Finder
         </p>
         <span
-          className={`rounded-full border px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider ${
+          className={`rounded-full border px-2 py-0.5 text-[11px] font-bold uppercase tracking-wider ${
             isPro
               ? "border-[#f5ff3b]/50 bg-[#f5ff3b]/10 text-[#f5ff3b]"
               : "border-white/15 bg-white/5 text-white/50"
@@ -401,14 +401,14 @@ export default function MatchTimeline({
                 >
                   <IconChevronRight size={14} aria-hidden="true" />
                 </button>
-                <span className="ml-auto font-mono text-[10px] text-white/50">
+                <span className="ml-auto font-mono text-[11px] text-white/50">
                   {formatClock(selected?.atMs ?? 0)} · {cursor + 1}/{events.length}
                 </span>
               </div>
 
               {selected && (
                 <div className="mt-2 rounded-lg border border-white/10 bg-black/25 p-2.5">
-                  <p className="text-[10px] uppercase tracking-wider text-white/45">
+                  <p className="text-[11px] uppercase tracking-wider text-white/45">
                     {selected.label} · move {selected.ply} · pause{" "}
                     {formatPause(selected.gapMs)}
                   </p>
@@ -450,7 +450,7 @@ export default function MatchTimeline({
                             setCursor(marker.index);
                           }}
                           data-testid="match-timeline-marker"
-                          className={`flex w-full items-center gap-1.5 rounded-md border px-2 py-1 text-left text-[10px] transition hover:brightness-125 ${meta.chip}`}
+                          className={`flex w-full items-center gap-1.5 rounded-md border px-2 py-1 text-left text-[11px] transition hover:brightness-125 ${meta.chip}`}
                         >
                           <Icon size={11} aria-hidden="true" />
                           <span className="font-bold">{meta.label}</span>
@@ -508,7 +508,7 @@ function SolitairePreview({
 
   if (!position.ok) {
     return (
-      <p className="mt-2 text-[10px] text-white/40" data-testid="match-timeline-preview">
+      <p className="mt-2 text-[11px] text-white/40" data-testid="match-timeline-preview">
         Position unavailable at this move.
       </p>
     );
@@ -526,7 +526,7 @@ function SolitairePreview({
 
   return (
     <div className="mt-2" data-testid="match-timeline-preview" data-ply={ply}>
-      <p className="text-[9px] uppercase tracking-wider text-white/40">
+      <p className="text-[11px] uppercase tracking-wider text-white/40">
         Your board · move {ply}
       </p>
       <div className="mt-1 grid grid-cols-7 gap-0.5">
@@ -539,7 +539,7 @@ function SolitairePreview({
               className="flex h-9 flex-col items-center justify-center rounded border border-white/10 bg-white/[0.04]"
             >
               <span
-                className={`text-[10px] font-black leading-none ${
+                className={`text-[11px] font-black leading-none ${
                   faceUp ? "text-white/85" : "text-white/25"
                 }`}
               >
@@ -556,7 +556,7 @@ function SolitairePreview({
           );
         })}
       </div>
-      <p className="mt-1 text-right font-mono text-[9px] text-white/45">
+      <p className="mt-1 text-right font-mono text-[11px] text-white/45">
         foundations {foundations}/52
       </p>
     </div>
@@ -588,7 +588,7 @@ function SudokuPreview({
       data-testid="match-timeline-preview"
       data-ply={ply}
     >
-      <p className="text-[9px] uppercase tracking-wider text-white/40">
+      <p className="text-[11px] uppercase tracking-wider text-white/40">
         Your board · move {ply}
       </p>
       <div
@@ -600,7 +600,7 @@ function SudokuPreview({
           return (
             <span
               key={index}
-              className={`flex aspect-square items-center justify-center bg-surface font-mono text-[9px] leading-none ${
+              className={`flex aspect-square items-center justify-center bg-surface font-mono text-[11px] leading-none ${
                 given
                   ? "font-black text-white/75"
                   : value
@@ -613,7 +613,7 @@ function SudokuPreview({
           );
         })}
       </div>
-      <p className="mt-1 text-right font-mono text-[9px] text-white/45">
+      <p className="mt-1 text-right font-mono text-[11px] text-white/45">
         move {ply}
       </p>
     </div>
@@ -623,7 +623,7 @@ function SudokuPreview({
 function Stat({ label, value }: { label: string; value: string }) {
   return (
     <div className="rounded-md border border-white/10 bg-white/[0.03] px-2 py-1">
-      <p className="text-[9px] uppercase tracking-wider text-white/40">{label}</p>
+      <p className="text-[11px] uppercase tracking-wider text-white/40">{label}</p>
       <p className="font-mono font-bold text-white/85">{value}</p>
     </div>
   );
@@ -634,7 +634,7 @@ function SummaryChip({ kind, value }: { kind: MarkerKind; value: number }) {
   const Icon = meta.icon;
   return (
     <span
-      className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-bold ${meta.chip}`}
+      className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-bold ${meta.chip}`}
     >
       <Icon size={11} aria-hidden="true" />
       {value} {meta.label.toLowerCase()}
@@ -657,7 +657,7 @@ function ProgressRow({
   const safeMax = Math.max(1, max);
   return (
     <div className="flex items-center gap-1.5">
-      <span className="w-14 shrink-0 truncate text-[9px] uppercase tracking-wider text-white/40">
+      <span className="w-14 shrink-0 truncate text-[11px] uppercase tracking-wider text-white/40">
         {label}
       </span>
       <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-white/10">
@@ -668,7 +668,7 @@ function ProgressRow({
           style={{ width: `${Math.max(0, Math.min(safeMax, value)) / safeMax * 100}%` }}
         />
       </div>
-      <span className="w-8 shrink-0 text-right font-mono text-[9px] text-white/55">
+      <span className="w-8 shrink-0 text-right font-mono text-[11px] text-white/55">
         {value}/{safeMax}
       </span>
     </div>

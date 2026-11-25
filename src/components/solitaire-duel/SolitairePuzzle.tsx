@@ -491,7 +491,7 @@ export default function SolitairePuzzle({ kind }: Props) {
     >
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <p className="text-[10px] font-black uppercase tracking-[0.3em] text-cyan-300/80">
+          <p className="text-[11px] font-black uppercase tracking-[0.3em] text-cyan-300/80">
             {kind === "daily"
               ? `GRYND · free · step ${currentStep} of ${totalSteps}`
               : "GRYND · practice"}
@@ -507,11 +507,11 @@ export default function SolitairePuzzle({ kind }: Props) {
 
         {kind === "unlimited" && offline && (
           <div className="rounded-xl border border-amber-300/30 bg-amber-400/10 px-3 py-2 text-right">
-            <p className="text-[10px] font-black uppercase tracking-[0.18em] text-amber-200/80">
+            <p className="text-[11px] font-black uppercase tracking-[0.18em] text-amber-200/80">
               Offline
             </p>
             <p className="font-mono text-lg text-white">Unlimited</p>
-            <p className="text-[9px] uppercase tracking-[0.12em] text-amber-100/50">not saved</p>
+            <p className="text-[11px] uppercase tracking-[0.12em] text-amber-100/50">not saved</p>
           </div>
         )}
 
@@ -519,14 +519,14 @@ export default function SolitairePuzzle({ kind }: Props) {
           <div className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-right">
             {allowance.unlimited ? (
               <>
-                <p className="text-[10px] font-black uppercase tracking-[0.18em] text-[#f5ff3b]">
+                <p className="text-[11px] font-black uppercase tracking-[0.18em] text-[#f5ff3b]">
                   GRYND PRO
                 </p>
                 <p className="font-mono text-lg text-white">Unlimited</p>
               </>
             ) : (
               <>
-                <p className="text-[10px] font-black uppercase tracking-[0.18em] text-white/40">
+                <p className="text-[11px] font-black uppercase tracking-[0.18em] text-white/40">
                   Today
                 </p>
                 <p className="font-mono text-lg text-white">
@@ -593,7 +593,7 @@ export default function SolitairePuzzle({ kind }: Props) {
                 }`}
               >
                 <p
-                  className={`text-[10px] font-black uppercase tracking-[0.18em] ${
+                  className={`text-[11px] font-black uppercase tracking-[0.18em] ${
                     judgement?.correct ? "text-emerald-300" : "text-rose-300"
                   }`}
                 >
@@ -718,7 +718,7 @@ export default function SolitairePuzzle({ kind }: Props) {
               </Link>
             )}
 
-            <p className="text-[10px] leading-relaxed text-white/35">
+            <p className="text-[11px] leading-relaxed text-white/35">
               {offline
                 ? "Offline · unlimited practice, nothing saved"
                 : kind === "unlimited" && allowance?.unlimited
@@ -756,7 +756,7 @@ export default function SolitairePuzzle({ kind }: Props) {
                 judgement.correct ? "bg-emerald-300" : "bg-rose-300"
               }`}
             />
-            <p className="text-[10px] font-black uppercase tracking-[0.2em] text-white/45">
+            <p className="text-[11px] font-black uppercase tracking-[0.2em] text-white/45">
               Daily puzzle
             </p>
             <h2
@@ -779,7 +779,7 @@ export default function SolitairePuzzle({ kind }: Props) {
             </div>
 
             <div className="mt-4 rounded-xl border border-white/10 bg-white/[0.04] p-3 text-left">
-              <p className="text-[10px] font-black uppercase tracking-[0.16em] text-white/40">
+              <p className="text-[11px] font-black uppercase tracking-[0.16em] text-white/40">
                 Steps solved
               </p>
               <p className="mt-1 font-mono text-2xl font-black text-white">

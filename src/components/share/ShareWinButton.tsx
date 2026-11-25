@@ -336,7 +336,7 @@ export default function ShareWinButton({
 
           <p
             aria-live="polite"
-            className="mt-1.5 min-h-[14px] text-[10px] text-emerald-300"
+            className="mt-1.5 min-h-[14px] text-[11px] text-emerald-300"
           >
             {status ?? ""}
           </p>

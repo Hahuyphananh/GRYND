@@ -65,7 +65,7 @@ import { viewForState } from "../../lib/solitaire-duel/rules";
 import type { SolitaireMove } from "../../lib/solitaire-duel/types";
 
 const CARD = "rounded-2xl border border-white/10 bg-[#06152f]/90 p-4 sm:p-5";
-const KICKER = "text-[10px] font-black uppercase tracking-[0.28em] text-[#00e5ff]/80";
+const KICKER = "text-[11px] font-black uppercase tracking-[0.28em] text-[#00e5ff]/80";
 const PRIMARY =
   "inline-flex min-h-10 items-center justify-center gap-2 rounded-xl bg-[#00e5ff] px-4 py-2 text-sm font-black text-[#00212b] transition hover:brightness-110 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#00e5ff] disabled:cursor-not-allowed disabled:opacity-40";
 const SECONDARY =
@@ -332,14 +332,14 @@ export default function LearnPracticePage({
   const categoriesWithExercises = categories;
 
   return (
-    <div className="relative min-h-screen overflow-hidden bg-page pb-24 text-white md:pb-0">
+    <div className="relative min-h-dvh overflow-hidden bg-page pb-24 text-white md:pb-0">
       <div
         aria-hidden="true"
         className="pointer-events-none absolute inset-x-0 top-0 h-[520px] bg-[radial-gradient(ellipse_at_top,rgba(0,255,163,0.1),transparent_62%)]"
       />
       <NavigationBar currentPath="/learn" />
 
-      <main className="relative mx-auto max-w-5xl px-4 pt-24 sm:px-6 md:pt-28">
+      <div className="relative mx-auto max-w-5xl px-4 pt-6 sm:px-6 md:pt-8">
         <Link
           href="/learn"
           className="inline-flex items-center gap-2 text-xs font-bold text-white/55 underline-offset-4 transition hover:text-white hover:underline focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#00e5ff]"
@@ -350,7 +350,7 @@ export default function LearnPracticePage({
 
         <LearnSubnav active="practice" />
 
-        <p className="mt-6 text-[10px] font-black uppercase tracking-[0.3em] text-[#00ffa3]/75">
+        <p className="mt-6 text-[11px] font-black uppercase tracking-[0.3em] text-[#00ffa3]/75">
           {t("learn.practice.kicker")}
         </p>
         <h1 className="mt-1 text-3xl font-black tracking-tight sm:text-4xl">
@@ -445,7 +445,7 @@ export default function LearnPracticePage({
                   {t(active.exercise.objectiveKey)}
                 </h2>
               </div>
-              <span className="rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.12em] text-[#9dd8ff]">
+              <span className="rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1 text-[11px] font-bold uppercase tracking-[0.12em] text-[#9dd8ff]">
                 {t("learn.practice.difficulty." + active.exercise.difficulty + ".label")}
               </span>
             </div>
@@ -481,7 +481,7 @@ export default function LearnPracticePage({
 
             {(active.hint || active.hintMessage) && (
               <div className="mt-3 rounded-xl border border-[#f5ff3b]/25 bg-[#1c1a05]/70 p-3">
-                <p className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-[0.16em] text-[#f5ff3b]">
+                <p className="flex items-center gap-1.5 text-[11px] font-black uppercase tracking-[0.16em] text-[#f5ff3b]">
                   <IconBulb size={13} aria-hidden="true" />
                   {active.hint
                     ? t("learn.player.hintLevel", {
@@ -508,7 +508,7 @@ export default function LearnPracticePage({
                       <IconCheck size={14} aria-hidden="true" />
                       {t("learn.practice.checkedMove")}
                     </button>
-                    <p className="mt-1 text-[10px] font-semibold text-white/40">
+                    <p className="mt-1 text-[11px] font-semibold text-white/40">
                       {t("learn.practice.checkedMoveNote")}
                     </p>
                   </div>
@@ -597,7 +597,7 @@ export default function LearnPracticePage({
               </h2>
 
               <div className="mt-4">
-                <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-[#9dd8ff]/70">
+                <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-[#9dd8ff]/70">
                   {t("learn.practice.categoryLabel")}
                 </p>
                 <div className="mt-2 grid gap-2 sm:grid-cols-2">
@@ -622,7 +622,7 @@ export default function LearnPracticePage({
 
               {skill && (
                 <div className="mt-4" aria-live="polite">
-                  <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-[#9dd8ff]/70">
+                  <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-[#9dd8ff]/70">
                     {t("learn.practice.skillLabel")}
                   </p>
                   <div className="mt-2 grid gap-2 sm:grid-cols-2">
@@ -647,7 +647,7 @@ export default function LearnPracticePage({
               )}
 
               <div className="mt-4">
-                <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-[#9dd8ff]/70">
+                <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-[#9dd8ff]/70">
                   {t("learn.practice.difficultyLabel")}
                 </p>
                 <div className="mt-2 grid gap-2 sm:grid-cols-3">
@@ -668,7 +668,7 @@ export default function LearnPracticePage({
                         <span className="mt-0.5 block text-[11px] font-semibold text-white/45">
                           {t("learn.practice.difficulty." + level + ".description")}
                         </span>
-                        <span className="mt-1 block font-mono text-[10px] font-bold text-[#9dd8ff]/70">
+                        <span className="mt-1 block font-mono text-[11px] font-bold text-[#9dd8ff]/70">
                           {count === 1
                             ? t("learn.practice.exerciseCountOne")
                             : t("learn.practice.exerciseCount", { count })}
@@ -715,7 +715,7 @@ export default function LearnPracticePage({
                 >
                   {t("learn.coaching.practiceEntry.title")}
                 </h2>
-                <span className="rounded-full border border-[#00e5ff]/30 bg-[#00e5ff]/10 px-2 py-0.5 text-[9px] font-black uppercase tracking-[0.14em] text-[#9dd8ff]">
+                <span className="rounded-full border border-[#00e5ff]/30 bg-[#00e5ff]/10 px-2 py-0.5 text-[11px] font-black uppercase tracking-[0.14em] text-[#9dd8ff]">
                   {t("learn.coaching.practiceEntry.badge")}
                 </span>
               </div>
@@ -741,7 +741,7 @@ export default function LearnPracticePage({
                 <h2 id="practice-progress-title" className="text-base font-extrabold text-white">
                   {t("learn.practice.progressTitle")}
                 </h2>
-                <span className="text-[10px] font-bold uppercase tracking-[0.12em] text-[#9dd8ff]/60">
+                <span className="text-[11px] font-bold uppercase tracking-[0.12em] text-[#9dd8ff]/60">
                   {userId ? t("learn.practice.accountNote") : t("learn.practice.guestNote")}
                 </span>
               </div>
@@ -761,7 +761,7 @@ export default function LearnPracticePage({
                         key={item.key}
                         className="rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2"
                       >
-                        <dt className="text-[10px] font-bold uppercase tracking-[0.12em] text-[#9dd8ff]/60">
+                        <dt className="text-[11px] font-bold uppercase tracking-[0.12em] text-[#9dd8ff]/60">
                           {t(`learn.practice.${item.key}`)}
                         </dt>
                         <dd className="mt-0.5 font-mono text-lg font-black text-white">
@@ -788,7 +788,7 @@ export default function LearnPracticePage({
                     </p>
                   )}
                   <div className="mt-3 space-y-1.5">
-                    <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-[#9dd8ff]/60">
+                    <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-[#9dd8ff]/60">
                       {t("learn.practice.categoryProgress")}
                     </p>
                     {categoriesWithExercises.map((category) => {
@@ -808,13 +808,13 @@ export default function LearnPracticePage({
                   </div>
                 </>
               )}
-              <p className="mt-3 text-[10px] font-semibold text-white/35">
+              <p className="mt-3 text-[11px] font-semibold text-white/35">
                 {t("learn.practice.separateNote")}
               </p>
             </section>
           </>
         )}
-      </main>
+      </div>
 
       <Footer />
     </div>

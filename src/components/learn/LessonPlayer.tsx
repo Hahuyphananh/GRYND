@@ -120,7 +120,7 @@ function CompletionScreen({
     : null;
 
   return (
-    <main className="relative mx-auto max-w-4xl px-4 pb-24 pt-24 sm:px-6 md:pt-28">
+    <div className="relative mx-auto max-w-4xl px-4 pb-24 pt-6 sm:px-6 md:pt-8">
       <Link
         href="/learn"
         className="inline-flex items-center gap-1.5 text-xs font-bold text-[#9dd8ff]/75 transition hover:text-[#00e5ff] focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#00e5ff]"
@@ -137,7 +137,7 @@ function CompletionScreen({
           <span className="inline-flex h-12 w-12 items-center justify-center rounded-2xl border border-[#00ffa3]/30 bg-[#00ffa3]/15 text-[#8dffd0]">
             <IconCheck size={26} aria-hidden="true" />
           </span>
-          <p className="mt-4 text-[10px] font-black uppercase tracking-[0.32em] text-[#00ffa3]/80">
+          <p className="mt-4 text-[11px] font-black uppercase tracking-[0.32em] text-[#00ffa3]/80">
             {t("learn.player.completionKicker")}
           </p>
           <h1 className="mt-2 text-3xl font-black leading-tight tracking-tight text-white sm:text-4xl">
@@ -179,7 +179,7 @@ function CompletionScreen({
 
           <aside className="space-y-4">
             <div className="rounded-2xl border border-white/10 bg-surface p-4">
-              <p className="text-[10px] font-black uppercase tracking-[0.18em] text-[#9dd8ff]/70">
+              <p className="text-[11px] font-black uppercase tracking-[0.18em] text-[#9dd8ff]/70">
                 {t("learn.player.courseProgress")}
               </p>
               <p className="mt-1 text-sm font-extrabold text-white">
@@ -198,12 +198,12 @@ function CompletionScreen({
             </div>
 
             <div className="rounded-2xl border border-white/10 bg-surface p-4">
-              <p className="text-[10px] font-black uppercase tracking-[0.18em] text-[#9dd8ff]/70">
+              <p className="text-[11px] font-black uppercase tracking-[0.18em] text-[#9dd8ff]/70">
                 {t("learn.player.nextLesson")}
               </p>
               {next ? (
                 <>
-                  <p className="mt-1 text-[10px] font-bold uppercase tracking-[0.14em] text-[#00e5ff]/70">
+                  <p className="mt-1 text-[11px] font-bold uppercase tracking-[0.14em] text-[#00e5ff]/70">
                     {nextCourse ? t(nextCourse.titleKey) : ""}
                   </p>
                   <p className="mt-0.5 text-sm font-extrabold leading-snug text-white">
@@ -255,7 +255,7 @@ function CompletionScreen({
           total: lesson.steps.length,
         })}
       </div>
-    </main>
+    </div>
   );
 }
 
@@ -498,7 +498,7 @@ function Player({ lesson }: { lesson: Lesson }) {
   if (phase && phase !== "guided") {
     const phases = lesson.phases;
     return (
-      <main className="relative mx-auto max-w-4xl px-4 pb-24 pt-24 sm:px-6 md:pt-28">
+      <div className="relative mx-auto max-w-4xl px-4 pb-24 pt-6 sm:px-6 md:pt-8">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <Link
             href="/learn"
@@ -514,7 +514,7 @@ function Player({ lesson }: { lesson: Lesson }) {
         </div>
 
         <header className="mt-4 border-b border-white/10 pb-4">
-          <p className="text-[10px] font-black uppercase tracking-[0.3em] text-[#00e5ff]/75">
+          <p className="text-[11px] font-black uppercase tracking-[0.3em] text-[#00e5ff]/75">
             {course ? t(course.titleKey) : t("learn.kicker")}
           </p>
           <h1 className="mt-1 text-3xl font-black leading-tight tracking-tight text-white sm:text-4xl">
@@ -569,12 +569,12 @@ function Player({ lesson }: { lesson: Lesson }) {
             />
           )}
         </div>
-      </main>
+      </div>
     );
   }
 
   return (
-    <main className="relative mx-auto max-w-[1440px] px-2 pb-24 pt-24 sm:px-6 md:pt-28">
+    <div className="relative mx-auto max-w-[1440px] px-2 pb-24 pt-6 sm:px-6 md:pt-8">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <Link
           href="/learn"
@@ -591,7 +591,7 @@ function Player({ lesson }: { lesson: Lesson }) {
 
       <header className="mt-4 flex flex-col gap-4 border-b border-white/10 pb-5 lg:flex-row lg:items-end lg:justify-between">
         <div className="min-w-0">
-          <p className="text-[10px] font-black uppercase tracking-[0.3em] text-[#00e5ff]/75">
+          <p className="text-[11px] font-black uppercase tracking-[0.3em] text-[#00e5ff]/75">
             {course ? t(course.titleKey) : t("learn.kicker")}
           </p>
           <h1 className="mt-1 text-3xl font-black leading-tight tracking-tight text-white sm:text-4xl">
@@ -603,14 +603,14 @@ function Player({ lesson }: { lesson: Lesson }) {
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-          <span className="rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.12em] text-[#9dd8ff]">
+          <span className="rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1 text-[11px] font-bold uppercase tracking-[0.12em] text-[#9dd8ff]">
             {t(`learn.difficulty.${lesson.difficulty}`)}
           </span>
-          <span className="inline-flex items-center gap-1 rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1 text-[10px] font-bold text-[#9dd8ff]">
+          <span className="inline-flex items-center gap-1 rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1 text-[11px] font-bold text-[#9dd8ff]">
             <IconClock size={12} aria-hidden="true" />
             {t("learn.lesson.minutes", { minutes: lesson.estimatedMinutes })}
           </span>
-          <span className="rounded-full border border-[#00e5ff]/25 bg-[#00e5ff]/10 px-2.5 py-1 font-mono text-[10px] font-bold text-[#9dd8ff]">
+          <span className="rounded-full border border-[#00e5ff]/25 bg-[#00e5ff]/10 px-2.5 py-1 font-mono text-[11px] font-bold text-[#9dd8ff]">
             {t("learn.player.stepOf", {
               step: session.stepIndex + 1,
               total: lesson.steps.length,
@@ -679,7 +679,7 @@ function Player({ lesson }: { lesson: Lesson }) {
               {t("learn.player.hint")}
             </button>
             {session.hintsUsed > 0 && (
-              <span className="text-[10px] font-semibold text-white/35">
+              <span className="text-[11px] font-semibold text-white/35">
                 {t("learn.player.hintsUsed", { count: session.hintsUsed })}
               </span>
             )}
@@ -737,10 +737,10 @@ function Player({ lesson }: { lesson: Lesson }) {
           </div>
           <section className="rounded-2xl border border-[#00e5ff]/25 bg-[#06152f]/90 p-4">
             <div className="flex items-center justify-between gap-3">
-              <p className="text-[10px] font-black uppercase tracking-[0.28em] text-[#00e5ff]/80">
+              <p className="text-[11px] font-black uppercase tracking-[0.28em] text-[#00e5ff]/80">
                 {t("learn.player.coach")}
               </p>
-              <span className="rounded-full bg-white/[0.05] px-2 py-0.5 font-mono text-[10px] font-bold text-[#9dd8ff]">
+              <span className="rounded-full bg-white/[0.05] px-2 py-0.5 font-mono text-[11px] font-bold text-[#9dd8ff]">
                 {t("learn.player.stepOf", {
                   step: Math.min(session.stepIndex + 1, lesson.steps.length),
                   total: lesson.steps.length,
@@ -748,7 +748,7 @@ function Player({ lesson }: { lesson: Lesson }) {
               </span>
             </div>
 
-            <p className="mt-3 text-[10px] font-bold uppercase tracking-[0.16em] text-[#9dd8ff]/50">
+            <p className="mt-3 text-[11px] font-bold uppercase tracking-[0.16em] text-[#9dd8ff]/50">
               {t("learn.player.objective")}
             </p>
             <p
@@ -791,7 +791,7 @@ function Player({ lesson }: { lesson: Lesson }) {
                   <span>
                     {t("learn.player.stepOf", { step: index + 1, total: lesson.steps.length })}
                   </span>
-                  <span className="text-[9px] uppercase tracking-[0.12em] opacity-60">
+                  <span className="text-[11px] uppercase tracking-[0.12em] opacity-60">
                     {index < session.stepIndex
                       ? t("learn.status.done")
                       : index === session.stepIndex
@@ -867,7 +867,7 @@ function Player({ lesson }: { lesson: Lesson }) {
 
           {(hint || hintMessage) && (
             <section className="rounded-2xl border border-[#f5ff3b]/25 bg-[#1c1a05]/70 p-3.5">
-              <p className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-[0.16em] text-[#f5ff3b]">
+              <p className="flex items-center gap-1.5 text-[11px] font-black uppercase tracking-[0.16em] text-[#f5ff3b]">
                 <IconBulb size={13} aria-hidden="true" />
                 {hint
                   ? t("learn.player.hintLevel", {
@@ -903,7 +903,7 @@ function Player({ lesson }: { lesson: Lesson }) {
           </div>
         </aside>
       </div>
-    </main>
+    </div>
   );
 }
 
@@ -912,7 +912,7 @@ export default function LessonPlayer({ lessonId }: { lessonId: string }) {
   if (!lesson) return null;
 
   return (
-    <div className="relative min-h-screen overflow-hidden bg-page pb-24 text-white md:pb-0">
+    <div className="relative min-h-dvh overflow-hidden bg-page pb-24 text-white md:pb-0">
       <div
         aria-hidden="true"
         className="pointer-events-none absolute inset-x-0 top-0 h-[560px] bg-[radial-gradient(ellipse_at_top,rgba(0,229,255,0.12),transparent_62%)]"

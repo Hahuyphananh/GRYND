@@ -195,7 +195,7 @@ export default function LobbyStatus({
         />
         <Row label={t("playHub.lobby.solo.statsBest")} value={formatDuration(summary.bestMs)} />
         <Row label={t("playHub.lobby.solo.statsAverage")} value={formatDuration(summary.averageMs)} />
-        <p className="text-[10px] leading-relaxed text-white/35 sm:col-span-2">
+        <p className="text-[11px] leading-relaxed text-white/35 sm:col-span-2">
           {t("playHub.lobby.solo.guest")}
         </p>
       </div>
@@ -216,7 +216,7 @@ export default function LobbyStatus({
         <Row label={t("playHub.lobby.daily.streak")} value={String(summary?.currentStreak ?? 0)} />
         <Row label={t("playHub.lobby.daily.longest")} value={String(summary?.longestStreak ?? 0)} />
         <Row label={t("playHub.lobby.daily.best")} value={formatDuration(summary?.bestMs)} />
-        <p className="text-[10px] leading-relaxed text-white/35 sm:col-span-2">
+        <p className="text-[11px] leading-relaxed text-white/35 sm:col-span-2">
           {t("playHub.lobby.daily.guest")}
         </p>
       </div>
@@ -262,7 +262,7 @@ export default function LobbyStatus({
             {t("playHub.lobby.dailyPuzzle.explanation")}
           </p>
         )}
-        <p className="text-[10px] leading-relaxed text-white/35">
+        <p className="text-[11px] leading-relaxed text-white/35">
           {t("playHub.lobby.dailyPuzzle.resets")}{" "}
           {t("playHub.lobby.dailyPuzzle.guest")}
         </p>
@@ -282,7 +282,7 @@ export default function LobbyStatus({
           label={t("playHub.statusTitle")}
           value={t("playHub.lobby.unlimited.unlimited")}
         />
-        <p className="text-[10px] leading-relaxed text-white/35">
+        <p className="text-[11px] leading-relaxed text-white/35">
           {t("playHub.lobby.unlimited.oneType")}
         </p>
       </div>
@@ -301,7 +301,7 @@ export default function LobbyStatus({
         label={t("playHub.lobby.unlimited.used", { used: allowance.used ?? 0 })}
         value={`${allowance.used ?? 0}/${limit}`}
       />
-      <p className="text-[10px] leading-relaxed text-white/35">
+      <p className="text-[11px] leading-relaxed text-white/35">
         {t("playHub.lobby.unlimited.oneType")} {t("playHub.lobby.unlimited.reset")}
       </p>
       {remaining === 0 && (

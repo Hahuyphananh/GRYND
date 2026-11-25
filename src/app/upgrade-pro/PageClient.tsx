@@ -176,10 +176,10 @@ export default function PageClient({
   );
 
   return (
-    <div className="relative min-h-screen bg-[color:var(--bg-page)] text-[color:var(--text-primary)]">
+    <div className="relative min-h-dvh bg-[color:var(--bg-page)] text-[color:var(--text-primary)]">
       <NavigationBar currentPath="/upgrade-pro" />
 
-      <main className="relative z-10 mx-auto max-w-5xl px-4 pb-20 pt-24 sm:pt-28">
+      <div className="relative z-10 mx-auto max-w-5xl px-4 pb-20 pt-6 sm:pt-8">
         <header className="mb-8 text-center">
           <h1 className="text-3xl font-black tracking-tight text-[color:var(--state-gold)] sm:text-5xl">
             {t("pro.headline")}
@@ -277,7 +277,7 @@ export default function PageClient({
             </li>
           </ul>
         </section>
-      </main>
+      </div>
 
       <Footer />
     </div>

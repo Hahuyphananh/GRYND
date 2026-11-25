@@ -51,7 +51,7 @@ export default function SocialProof() {
               <span className="block text-[11px] font-black uppercase tracking-[0.16em] text-white/85">
                 Trustpilot
               </span>
-              <span className="block truncate text-[10px] font-medium text-white/40">
+              <span className="block truncate text-[11px] font-medium text-white/40">
                 Read player reviews
               </span>
             </span>

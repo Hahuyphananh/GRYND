@@ -71,7 +71,7 @@ export default async function OperationsLogsPage({
   };
 
   return (
-    <main className="min-h-screen bg-surface px-4 py-8 text-[#c9f7ff] sm:px-6 lg:px-10">
+    <div className="min-h-dvh bg-surface px-4 py-8 text-[#c9f7ff] sm:px-6 lg:px-10">
       <div className="mx-auto max-w-6xl">
         <div className="mb-6 flex flex-wrap items-end justify-between gap-3">
           <div>
@@ -166,7 +166,7 @@ export default async function OperationsLogsPage({
                       <td className="px-4 py-2 text-[#7f9bbd]">
                         {entry.reason && <div className="text-[#a9c4dd]">{entry.reason}</div>}
                         {entry.detail && (
-                          <div className="mt-0.5 font-mono text-[10px] leading-relaxed">
+                          <div className="mt-0.5 font-mono text-[11px] leading-relaxed">
                             {Object.entries(entry.detail)
                               .map(([key, value]) => `${key}=${String(value)}`)
                               .join(" · ")}
@@ -187,6 +187,6 @@ export default async function OperationsLogsPage({
           <code className="font-mono">node deploy/ops.mjs audit-verify</code> to check it.
         </p>
       </div>
-    </main>
+    </div>
   );
 }

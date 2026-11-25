@@ -77,7 +77,7 @@ export default function PlayerLevelProgressCard({
           <p className="text-3xl font-black tabular-nums text-white">
             {format(progression.peakTrophies)}
           </p>
-          <p className="text-[10px] uppercase tracking-[0.18em] text-[#9dd8ff]/70">
+          <p className="text-[11px] uppercase tracking-[0.18em] text-[#9dd8ff]/70">
             {t("playerLevel.peakTrophies")}
           </p>
         </div>

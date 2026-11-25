@@ -125,7 +125,7 @@ export default function StreakWidget() {
               >
                 {current}
               </span>
-              <span className="pb-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-[color:var(--text-muted)]">
+              <span className="pb-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-[color:var(--text-muted)]">
                 {current === 1 ? "day" : "days"}
               </span>
             </span>

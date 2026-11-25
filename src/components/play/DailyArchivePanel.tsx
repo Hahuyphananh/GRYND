@@ -81,7 +81,7 @@ export default function DailyArchivePanel({ className = "" }: { className?: stri
         >
           Daily archive
         </h2>
-        <span className="rounded-full border border-[#FFD700]/40 bg-[#FFD700]/10 px-2 py-0.5 text-[10px] font-black tracking-wider text-[#FFD700]">
+        <span className="rounded-full border border-[#FFD700]/40 bg-[#FFD700]/10 px-2 py-0.5 text-[11px] font-black tracking-wider text-[#FFD700]">
           PRO
         </span>
         <span className="h-px flex-1 bg-white/10" />
@@ -147,7 +147,7 @@ export default function DailyArchivePanel({ className = "" }: { className?: stri
                     {dayLabel(day.dateKey)}
                   </span>
                   <span
-                    className={`text-[10px] font-black uppercase tracking-wider ${
+                    className={`text-[11px] font-black uppercase tracking-wider ${
                       day.completed ? "text-emerald-300" : "text-white/35"
                     }`}
                   >

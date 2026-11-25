@@ -79,7 +79,7 @@ test("the fade class has no opacity-0 resting state", () => {
 
 test("the fade is applied on navigation, and the wrapped children carry it", () => {
   // The fade must sit on the element that actually renders the page...
-  const classAt = wrapper.indexOf("route-fade-in min-h-screen");
+  const classAt = wrapper.indexOf("route-fade-in min-h-dvh");
   const childrenAt = wrapper.indexOf("{children}");
   const closingAt = wrapper.indexOf("</div>", classAt);
   assert.ok(classAt !== -1, `${WRAPPER} must apply the route fade class`);
@@ -91,7 +91,7 @@ test("the fade is applied on navigation, and the wrapped children carry it", () 
   // paint its content immediately rather than starting at opacity 0.
   assert.match(
     wrapper,
-    /className=\{[^}]*route-fade-in min-h-screen[^}]*\}/,
+    /className=\{[^}]*route-fade-in min-h-dvh[^}]*\}/,
     "the fade must be conditional, so a hard load paints immediately",
   );
   assert.match(wrapper, /firstMount/, "the condition must be the first mount");

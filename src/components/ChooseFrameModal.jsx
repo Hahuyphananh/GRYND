@@ -300,7 +300,7 @@ export default function ChooseFrameModal({ open, onClose, onEquipped }) {
                         {label}
                       </h3>
                       {hint && (
-                        <span className="text-[10px] text-[#9dd8ff]/60">
+                        <span className="text-[11px] text-[#9dd8ff]/60">
                           {hint}
                         </span>
                       )}

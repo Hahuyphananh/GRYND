@@ -90,15 +90,15 @@ export default function ContactMessageHistory({ title = "Your Messages" }) {
                 {new Date(m.created_at).toLocaleString()}
               </span>
               {m.status === "new" ? (
-                <span className="rounded-full bg-amber-500/15 border border-amber-500/30 px-2 py-0.5 text-[10px] font-medium text-amber-300">
+                <span className="rounded-full bg-amber-500/15 border border-amber-500/30 px-2 py-0.5 text-[11px] font-medium text-amber-300">
                   AWAITING REPLY
                 </span>
               ) : m.status === "replied" ? (
-                <span className="rounded-full bg-emerald-500/15 border border-emerald-500/30 px-2 py-0.5 text-[10px] font-medium text-emerald-300">
+                <span className="rounded-full bg-emerald-500/15 border border-emerald-500/30 px-2 py-0.5 text-[11px] font-medium text-emerald-300">
                   REPLIED
                 </span>
               ) : (
-                <span className="rounded-full bg-gray-500/15 border border-gray-500/30 px-2 py-0.5 text-[10px] font-medium text-gray-400">
+                <span className="rounded-full bg-gray-500/15 border border-gray-500/30 px-2 py-0.5 text-[11px] font-medium text-gray-400">
                   RESOLVED
                 </span>
               )}
@@ -119,7 +119,7 @@ export default function ContactMessageHistory({ title = "Your Messages" }) {
                         {r.admin_name}
                       </span>
                       <AdminBadge />
-                      <span className="text-[10px] text-[#c9f7ff]/40 font-mono">
+                      <span className="text-[11px] text-[#c9f7ff]/40 font-mono">
                         {new Date(r.created_at).toLocaleString()}
                       </span>
                     </div>

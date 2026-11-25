@@ -212,7 +212,7 @@ export default function StreakMilestonesCard() {
         <>
           <div className="grid gap-3 sm:grid-cols-3">
             <div className="rounded-lg border border-[color:var(--border-hairline)] bg-[color:var(--bg-panel)] p-3">
-              <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-[color:var(--text-muted)]">
+              <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-[color:var(--text-muted)]">
                 {t("rewards.currentStreak", "Current streak")}
               </p>
               <p className="mt-1 text-2xl font-black text-[color:var(--text-primary)]">
@@ -223,7 +223,7 @@ export default function StreakMilestonesCard() {
               </p>
             </div>
             <div className="rounded-lg border border-[color:var(--border-hairline)] bg-[color:var(--bg-panel)] p-3">
-              <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-[color:var(--text-muted)]">
+              <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-[color:var(--text-muted)]">
                 {t("rewards.bestStreak", "Best streak")}
               </p>
               <p className="mt-1 text-2xl font-black text-[color:var(--text-primary)]">
@@ -234,7 +234,7 @@ export default function StreakMilestonesCard() {
               </p>
             </div>
             <div className="rounded-lg border border-[color:var(--border-hairline)] bg-[color:var(--bg-panel)] p-3">
-              <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-[color:var(--text-muted)]">
+              <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-[color:var(--text-muted)]">
                 {t("rewards.currentTitle", "Current title")}
               </p>
               <p className="mt-1 text-lg font-bold text-[color:var(--accent-strong)]">
@@ -310,7 +310,7 @@ export default function StreakMilestonesCard() {
                       : "border-[color:var(--border-hairline)]",
                 ].join(" ")}
               >
-                <p className="flex items-center justify-between gap-1 text-[10px] font-bold uppercase tracking-[0.14em] text-[color:var(--text-muted)]">
+                <p className="flex items-center justify-between gap-1 text-[11px] font-bold uppercase tracking-[0.14em] text-[color:var(--text-muted)]">
                   {t("rewards.dayLabel", { day: milestone.days })}
                   {milestone.achieved && (
                     <IconCheck
@@ -330,7 +330,7 @@ export default function StreakMilestonesCard() {
                 >
                   {milestoneTitle(milestone)}
                 </p>
-                <p className="mt-0.5 text-[10px] font-semibold uppercase tracking-wider text-[color:var(--text-muted)]">
+                <p className="mt-0.5 text-[11px] font-semibold uppercase tracking-wider text-[color:var(--text-muted)]">
                   {milestone.achieved
                     ? t("rewards.achieved", "Achieved")
                     : milestone.isNext
@@ -361,7 +361,7 @@ export default function StreakMilestonesCard() {
                         {t("rewards.dayLabel", { day: milestone.day })}
                         {milestone.title ? ` — ${milestoneTitle({ days: milestone.day, title: milestone.title })}` : ""}
                       </p>
-                      <span className="text-[10px] font-bold uppercase tracking-wider text-[color:var(--text-muted)]">
+                      <span className="text-[11px] font-bold uppercase tracking-wider text-[color:var(--text-muted)]">
                         {milestone.achieved
                           ? t("rewards.unlocked", "Unlocked")
                           : milestone.isNext
@@ -402,7 +402,7 @@ export default function StreakMilestonesCard() {
                             {item.owned ? (
                               <>
                                 {isEquipped(item) && (
-                                  <span className="rounded-sm border border-[color:var(--accent-strong)] px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-[color:var(--accent-strong)]">
+                                  <span className="rounded-sm border border-[color:var(--accent-strong)] px-2 py-0.5 text-[11px] font-bold uppercase tracking-wider text-[color:var(--accent-strong)]">
                                     {t("rewards.equipped", "Equipped")}
                                   </span>
                                 )}
@@ -416,7 +416,7 @@ export default function StreakMilestonesCard() {
                                       ? t("rewards.unequipItem", { name: item.label })
                                       : t("rewards.equipItem", { name: item.label })
                                   }
-                                  className="rounded-sm bg-[color:var(--accent)] px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-[color:var(--bg-surface)] disabled:opacity-50"
+                                  className="rounded-sm bg-[color:var(--accent)] px-2 py-0.5 text-[11px] font-bold uppercase tracking-wider text-[color:var(--bg-surface)] disabled:opacity-50"
                                 >
                                   {equipBusy === item.id
                                     ? t("rewards.equipping", "Equipping…")
@@ -426,7 +426,7 @@ export default function StreakMilestonesCard() {
                                 </button>
                               </>
                             ) : (
-                              <span className="text-[10px] uppercase tracking-wider text-[color:var(--text-muted)]">
+                              <span className="text-[11px] uppercase tracking-wider text-[color:var(--text-muted)]">
                                 {t("rewards.dayLabel", { day: milestone.day })}
                               </span>
                             )}

@@ -96,7 +96,7 @@ export default function FriendChallengePage({ code }: { code: string | null }) {
   }, [code, joining, router]);
 
   return (
-    <main className="relative flex min-h-screen items-center justify-center overflow-hidden bg-page px-4 py-16 text-white">
+    <div className="relative flex min-h-dvh items-center justify-center overflow-hidden bg-page px-4 py-16 text-white">
       <div
         aria-hidden="true"
         className="pointer-events-none absolute inset-x-0 top-0 h-[420px] bg-[radial-gradient(ellipse_at_top,rgba(0,229,255,0.12),transparent_62%)]"
@@ -107,7 +107,7 @@ export default function FriendChallengePage({ code }: { code: string | null }) {
             <IconCards size={22} aria-hidden="true" />
           </span>
           <div>
-            <p className="text-[10px] font-black uppercase tracking-[0.24em] text-cyan-300/80">
+            <p className="text-[11px] font-black uppercase tracking-[0.24em] text-cyan-300/80">
               Friend Challenge
             </p>
             <h1 className="mt-0.5 text-2xl font-black tracking-tight">
@@ -181,7 +181,7 @@ export default function FriendChallengePage({ code }: { code: string | null }) {
           server owns the deal, the clock and the result.
         </p>
       </section>
-    </main>
+    </div>
   );
 }
 

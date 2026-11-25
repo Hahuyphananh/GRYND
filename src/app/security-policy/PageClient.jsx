@@ -58,7 +58,7 @@ const sections = [
 
 export default function SecurityPolicyPage() {
   return (
-    <div className="min-h-screen bg-linear-to-b from-page via-panel to-panel">
+    <div className="min-h-dvh bg-linear-to-b from-page via-panel to-panel">
       <NavigationBar currentPath="/" />
 
       <div className="mx-auto max-w-4xl px-4 py-16">

@@ -318,7 +318,7 @@ function FaqItem({ q, a }) {
 
 export default function FaqPage({ gameCards = [] }) {
   return (
-    <div className="relative min-h-screen overflow-x-clip bg-page text-white">
+    <div className="relative min-h-dvh overflow-x-clip bg-page text-white">
 
       <NavigationBar currentPath="/faq" />
 

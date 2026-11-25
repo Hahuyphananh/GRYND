@@ -49,14 +49,14 @@ export default function LearnCoursesPage() {
     courseFilter !== "all" || difficultyFilter !== "all" || statusFilter !== "all";
 
   return (
-    <div className="relative min-h-screen overflow-hidden bg-page pb-24 text-white md:pb-0">
+    <div className="relative min-h-dvh overflow-hidden bg-page pb-24 text-white md:pb-0">
       <div
         aria-hidden="true"
         className="pointer-events-none absolute inset-x-0 top-0 h-[520px] bg-[radial-gradient(ellipse_at_top,rgba(0,229,255,0.13),transparent_62%)]"
       />
       <NavigationBar currentPath="/learn" />
 
-      <main className="relative mx-auto max-w-6xl px-4 pt-24 sm:px-6 md:pt-28">
+      <div className="relative mx-auto max-w-6xl px-4 pt-6 sm:px-6 md:pt-8">
         <Link
           href="/learn"
           className="inline-flex items-center gap-2 text-xs font-bold text-white/55 underline-offset-4 transition hover:text-white hover:underline focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#00e5ff]"
@@ -69,7 +69,7 @@ export default function LearnCoursesPage() {
 
         <div className="mt-6 flex flex-wrap items-end justify-between gap-3">
           <div>
-            <p className="text-[10px] font-black uppercase tracking-[0.3em] text-[#00e5ff]/75">
+            <p className="text-[11px] font-black uppercase tracking-[0.3em] text-[#00e5ff]/75">
               {t("learn.path.kicker")}
             </p>
             <h1 className="mt-1 text-3xl font-black tracking-tight sm:text-4xl">
@@ -104,7 +104,7 @@ export default function LearnCoursesPage() {
 
         <section className="mt-10" aria-labelledby="learn-library-title">
           <div>
-            <p className="text-[10px] font-black uppercase tracking-[0.3em] text-[#00e5ff]/75">
+            <p className="text-[11px] font-black uppercase tracking-[0.3em] text-[#00e5ff]/75">
               {t("learn.library.kicker")}
             </p>
             <h2 id="learn-library-title" className="mt-1 text-2xl font-black tracking-tight">
@@ -117,7 +117,7 @@ export default function LearnCoursesPage() {
 
           <div className="mt-4 grid gap-3 rounded-2xl border border-white/10 bg-[#061020]/80 p-3 sm:grid-cols-3 sm:p-4">
             <label className="block">
-              <span className="mb-1.5 block text-[10px] font-bold uppercase tracking-[0.16em] text-[#9dd8ff]/70">
+              <span className="mb-1.5 block text-[11px] font-bold uppercase tracking-[0.16em] text-[#9dd8ff]/70">
                 {t("learn.library.course")}
               </span>
               <select
@@ -135,7 +135,7 @@ export default function LearnCoursesPage() {
             </label>
 
             <label className="block">
-              <span className="mb-1.5 block text-[10px] font-bold uppercase tracking-[0.16em] text-[#9dd8ff]/70">
+              <span className="mb-1.5 block text-[11px] font-bold uppercase tracking-[0.16em] text-[#9dd8ff]/70">
                 {t("learn.library.difficulty")}
               </span>
               <select
@@ -151,7 +151,7 @@ export default function LearnCoursesPage() {
             </label>
 
             <label className="block">
-              <span className="mb-1.5 block text-[10px] font-bold uppercase tracking-[0.16em] text-[#9dd8ff]/70">
+              <span className="mb-1.5 block text-[11px] font-bold uppercase tracking-[0.16em] text-[#9dd8ff]/70">
                 {t("learn.library.status")}
               </span>
               <select
@@ -200,7 +200,7 @@ export default function LearnCoursesPage() {
             </div>
           )}
         </section>
-      </main>
+      </div>
 
       <Footer />
     </div>

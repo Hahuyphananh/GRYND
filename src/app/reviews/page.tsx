@@ -44,10 +44,10 @@ export default async function ReviewsPage() {
   const reviewJsonLd = buildAppJsonLd({ stats: data?.stats, reviews: data?.reviews ?? [] });
 
   return (
-    <div className="relative min-h-screen">
+    <div className="relative min-h-dvh">
       <InteractiveCasinoBg variant="subtle" />
       <NavigationBar currentPath="/reviews" />
-      <div className="relative z-10 mx-auto max-w-6xl px-4 pb-16 pt-24">
+      <div className="relative z-10 mx-auto max-w-6xl px-4 pb-16 pt-6">
         <div className="mb-8">
           <Link
             href="/"

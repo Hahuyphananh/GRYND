@@ -35,7 +35,7 @@ export default function GuideArticle({ guide, related }: { guide: Guide; related
     .filter((game) => isGameAvailable(game.slug));
 
   return (
-    <div className="relative min-h-screen overflow-x-clip pb-16">
+    <div className="relative min-h-dvh overflow-x-clip pb-16">
       <NavigationBar currentPath="/guides" />
 
       <JsonLd data={buildGuideStructuredData(guide.slug)} />

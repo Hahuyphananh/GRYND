@@ -43,7 +43,7 @@ const LINK =
 
 export default function AccountDeletionPage() {
   return (
-    <div className="relative min-h-screen overflow-x-clip pb-16">
+    <div className="relative min-h-dvh overflow-x-clip pb-16">
       <NavigationBar currentPath="/account-deletion" />
 
       <div className="mx-auto max-w-3xl px-4 py-8 sm:py-12">

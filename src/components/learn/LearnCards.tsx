@@ -51,7 +51,7 @@ export function Meter({
 export function DifficultyBadge({ value }: { value: string }) {
   const { t } = useTranslation();
   return (
-    <span className="inline-flex items-center rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.12em] text-[#9dd8ff]">
+    <span className="inline-flex items-center rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1 text-[11px] font-bold uppercase tracking-[0.12em] text-[#9dd8ff]">
       {t(`learn.difficulty.${value}`)}
     </span>
   );
@@ -91,11 +91,11 @@ export function CourseCard({
       className={`flex flex-col rounded-2xl border p-4 transition-colors sm:p-5 ${stateClasses}`}
     >
       <div className="flex items-start justify-between gap-3">
-        <p className="text-[10px] font-black uppercase tracking-[0.28em] text-[#00e5ff]/80">
+        <p className="text-[11px] font-black uppercase tracking-[0.28em] text-[#00e5ff]/80">
           {t("learn.path.courseNumber", { number: index + 1 })}
         </p>
         <span
-          className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.12em] ${
+          className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-bold uppercase tracking-[0.12em] ${
             state === "completed"
               ? "bg-[#00ffa3]/15 text-[#8dffd0]"
               : state === "available"
@@ -121,7 +121,7 @@ export function CourseCard({
 
       <div className="mt-4 flex flex-wrap items-center gap-2">
         <DifficultyBadge value={courseDifficulty(course.id)} />
-        <span className="inline-flex items-center gap-1 rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1 text-[10px] font-bold text-[#9dd8ff]">
+        <span className="inline-flex items-center gap-1 rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1 text-[11px] font-bold text-[#9dd8ff]">
           <IconCards size={12} aria-hidden="true" />
           {t("learn.path.lessons", { count: stats.total })}
         </span>
@@ -177,11 +177,11 @@ export function LessonCard({ lesson }: { lesson: Lesson }) {
       className="flex flex-col rounded-2xl border border-white/10 bg-surface/80 p-4 transition-colors hover:border-[#00e5ff]/25"
     >
       <div className="flex items-start justify-between gap-2">
-        <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-[#00e5ff]/70">
+        <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-[#00e5ff]/70">
           {course ? t(course.titleKey) : ""}
         </p>
         <span
-          className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold ${
+          className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-bold ${
             status === "completed"
               ? "bg-[#00ffa3]/15 text-[#8dffd0]"
               : status === "in-progress"
@@ -212,7 +212,7 @@ export function LessonCard({ lesson }: { lesson: Lesson }) {
 
       {status === "in-progress" && (
         <div className="mt-3">
-          <p className="mb-1.5 text-[10px] font-bold text-[#9dd8ff]/80">
+          <p className="mb-1.5 text-[11px] font-bold text-[#9dd8ff]/80">
             {t("learn.lesson.stepProgress", { step, total: lesson.steps.length })}
           </p>
           <Meter

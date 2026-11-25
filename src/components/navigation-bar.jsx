@@ -539,7 +539,7 @@ function NavigationBarInner({ currentPath = "" }) {
                         >
                           {Number(profile.totalTrophies || 0).toLocaleString()}
                         </motion.span>
-                        <span className="text-[10px] uppercase tracking-wider text-[color:var(--text-muted)]">
+                        <span className="text-[11px] uppercase tracking-wider text-[color:var(--text-muted)]">
                           Trophies
                         </span>
                       </span>
@@ -566,11 +566,11 @@ function NavigationBarInner({ currentPath = "" }) {
                             t("nav.user_fallback")}
                           {isAdmin && <AdminBadge />}
                         </span>
-                        <span className="text-[10px] text-[color:var(--state-gold)]">
+                        <span className="text-[11px] text-[color:var(--state-gold)]">
                           {profile?.selectedTitle || "No title equipped"}
                         </span>
                         {profile?.streakTitle && (
-                          <span className="text-[10px] text-[color:var(--state-gold)]">
+                          <span className="text-[11px] text-[color:var(--state-gold)]">
                             <IconFlame size={12} className="mb-0.5 mr-0.5 inline" /> {profile.streakTitle}
                           </span>
                         )}
@@ -736,7 +736,7 @@ function NavigationBarInner({ currentPath = "" }) {
                     {navLabel(path, t)}
                   </Link>
                 ))}
-                <p className="px-1 pt-2 text-[10px] font-black uppercase tracking-[0.2em] text-[color:var(--text-muted)]">
+                <p className="px-1 pt-2 text-[11px] font-black uppercase tracking-[0.2em] text-[color:var(--text-muted)]">
                   Account
                 </p>
                 {ACCOUNT_ITEMS.map((item) => (

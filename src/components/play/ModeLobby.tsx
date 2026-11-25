@@ -106,7 +106,7 @@ export default function ModeLobby({
   const prefix = `playHub.lobby.${mode}`;
 
   return (
-    <div className="relative min-h-screen overflow-hidden bg-[color:var(--bg-page)] pb-24 text-[color:var(--text-primary)] md:pb-0">
+    <div className="relative min-h-dvh overflow-hidden bg-[color:var(--bg-page)] pb-24 text-[color:var(--text-primary)] md:pb-0">
       <div
         aria-hidden="true"
         className="pointer-events-none absolute inset-x-0 top-0 h-[480px] bg-[radial-gradient(ellipse_at_top,var(--lobby-glow),transparent_62%)]"
@@ -114,7 +114,7 @@ export default function ModeLobby({
       />
       <NavigationBar currentPath="/play" />
 
-      <main className="relative mx-auto max-w-5xl px-4 pt-24 sm:px-6 md:pt-28">
+      <div className="relative mx-auto max-w-5xl px-4 pt-6 sm:px-6 md:pt-8">
         <Link
           href="/play"
           className="inline-flex items-center gap-2 text-xs font-bold text-white/55 underline-offset-4 transition hover:text-white hover:underline focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#00e5ff]"
@@ -147,7 +147,7 @@ export default function ModeLobby({
                 </span>
                 <div className="min-w-0">
                   <p
-                    className="text-[10px] font-black uppercase tracking-[0.24em]"
+                    className="text-[11px] font-black uppercase tracking-[0.24em]"
                     style={{ color: palette.accent }}
                   >
                     {t(`${prefix}.kicker`)}
@@ -201,7 +201,7 @@ export default function ModeLobby({
             >
               <ModeTableau variant={meta.tableau} />
               <span
-                className="absolute bottom-3 left-3 rounded-full border bg-[#04060f]/80 px-2.5 py-0.5 text-[9px] font-black uppercase tracking-[0.16em] backdrop-blur-xs"
+                className="absolute bottom-3 left-3 rounded-full border bg-[#04060f]/80 px-2.5 py-0.5 text-[11px] font-black uppercase tracking-[0.16em] backdrop-blur-xs"
                 style={{ borderColor: palette.line, color: palette.accent }}
               >
                 {t(`playHub.cards.${mode}.tag`)}
@@ -209,7 +209,7 @@ export default function ModeLobby({
             </div>
           </div>
         </section>
-      </main>
+      </div>
 
       <Footer />
     </div>

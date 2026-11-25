@@ -91,7 +91,7 @@ export default function MfaRequiredPage() {
         : "border-[#00e5ff]/30 bg-[#00e5ff]/10 text-[#d8fbff]";
 
   return (
-    <div className="relative flex min-h-screen items-center justify-center px-4 py-16">
+    <div className="relative flex min-h-dvh items-center justify-center px-4 py-16">
       <InteractiveCasinoBg variant="subtle" />
       <div className="relative z-10 w-full max-w-lg rounded-2xl border border-[#f5ff3b]/30 bg-surface/90 p-8 shadow-[0_0_40px_rgba(245,255,59,0.15)] backdrop-blur-md">
         <h1 className="mb-3 text-2xl font-extrabold text-[#f5ff3b]">

@@ -841,7 +841,7 @@ export default function SoloSolitaireGame({ mode, daily, soloSummary = null }: S
           )}
         </div>
         <dl className="flex gap-2 text-center">          <div className="rounded-lg border border-white/10 bg-white/5 px-3 py-2">
-            <dt className="text-[10px] uppercase tracking-wider text-slate-400">Time</dt>
+            <dt className="text-[11px] uppercase tracking-wider text-slate-400">Time</dt>
             <dd className="font-mono text-lg text-white" aria-live="off">
               {session
                 ? session.timerStartedAtMs == null
@@ -855,7 +855,7 @@ export default function SoloSolitaireGame({ mode, daily, soloSummary = null }: S
               <dd
                 data-testid="solitaire-idle-countdown"
                 title="Time until this run forfeits for inactivity"
-                className={`font-mono text-[10px] leading-tight ${
+                className={`font-mono text-[11px] leading-tight ${
                   inactivityRemainingMs <= INACTIVITY_COUNTDOWN_MS
                     ? "text-amber-300"
                     : "text-slate-500"
@@ -866,11 +866,11 @@ export default function SoloSolitaireGame({ mode, daily, soloSummary = null }: S
             )}
           </div>
           <div className="rounded-lg border border-white/10 bg-white/5 px-3 py-2">
-            <dt className="text-[10px] uppercase tracking-wider text-slate-400">Moves</dt>
+            <dt className="text-[11px] uppercase tracking-wider text-slate-400">Moves</dt>
             <dd className="font-mono text-lg text-white">{moves}</dd>
           </div>
           <div className="rounded-lg border border-white/10 bg-white/5 px-3 py-2">
-            <dt className="text-[10px] uppercase tracking-wider text-slate-400">Best</dt>
+            <dt className="text-[11px] uppercase tracking-wider text-slate-400">Best</dt>
             <dd className="font-mono text-lg text-white">{formatDuration(bestMs)}</dd>
           </div>
         </dl>

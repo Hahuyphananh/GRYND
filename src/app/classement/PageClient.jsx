@@ -257,7 +257,7 @@ function Podium({ items, myClerkId, tab, category }) {
             )}
 
             {isMe && (
-              <span className="mt-0.5 rounded-full bg-[color:var(--accent)] px-1.5 py-px text-[9px] font-black uppercase tracking-wider text-[color:var(--on-accent)]">
+              <span className="mt-0.5 rounded-full bg-[color:var(--accent)] px-1.5 py-px text-[11px] font-black uppercase tracking-wider text-[color:var(--on-accent)]">
                 You
               </span>
             )}
@@ -268,7 +268,7 @@ function Podium({ items, myClerkId, tab, category }) {
             >
               {getMetricValue(item, tab)}
             </span>
-            <span className="text-[9px] uppercase tracking-wider text-cyan-200/60 sm:text-[10px]">
+            <span className="text-[11px] uppercase tracking-wider text-cyan-200/60 sm:text-[11px]">
               {metricLabel}
             </span>
           </Link>
@@ -354,7 +354,7 @@ export default function LeaderboardPage({ adSlot = null, hilltopSlot = null }) {
   const playHref = playHrefForTab(tab);
 
   return (
-    <div className="relative min-h-screen bg-[color:var(--bg-page)] text-[color:var(--text-primary)]">
+    <div className="relative min-h-dvh bg-[color:var(--bg-page)] text-[color:var(--text-primary)]">
 
       <NavigationBar currentPath="/classement" />
       <div className="relative z-10 mx-auto max-w-6xl px-4 py-24 sm:px-6">
@@ -380,14 +380,17 @@ export default function LeaderboardPage({ adSlot = null, hilltopSlot = null }) {
         {hilltopSlot}
 
         {/* Tab bar — scrolls horizontally on mobile instead of wrapping. */}
-        <div className="mb-6 -mx-4 overflow-x-auto px-4 pb-1 sm:mx-0 sm:px-0">
-          <div className="flex w-max min-w-full justify-start gap-2 sm:justify-center">
+        {/* Wrapping beats a horizontal strip here: seven tabs hidden off the
+            right edge of a phone are seven destinations the player never sees,
+            and they nested a second horizontal scroll inside the table's. */}
+        <div className="mb-6 -mx-4 px-4 sm:mx-0 sm:px-0">
+          <div className="flex flex-wrap justify-start gap-2 sm:justify-center">
             {TABS.map((x) => (
               <button
                 key={x}
                 onClick={() => setTab(x)}
                 aria-pressed={tab === x}
-                className={`shrink-0 whitespace-nowrap rounded-lg border px-4 py-2 text-sm font-semibold transition-all focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[color:var(--focus-ring)] focus-visible:ring-offset-2 focus-visible:ring-offset-[color:var(--bg-page)] ${tab === x ? "border-[color:var(--state-gold)] bg-[color:var(--state-gold)] text-[color:var(--on-accent)]" : "border-[color:var(--border-hairline)] bg-[color:var(--bg-surface)] text-[color:var(--accent-strong)] hover:bg-[color:var(--bg-panel)]"}`}
+                className={`shrink-0 whitespace-nowrap rounded-lg border px-3 py-1.5 text-xs font-semibold transition-all sm:px-4 sm:py-2 sm:text-sm focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[color:var(--focus-ring)] focus-visible:ring-offset-2 focus-visible:ring-offset-[color:var(--bg-page)] ${tab === x ? "border-[color:var(--state-gold)] bg-[color:var(--state-gold)] text-[color:var(--on-accent)]" : "border-[color:var(--border-hairline)] bg-[color:var(--bg-surface)] text-[color:var(--accent-strong)] hover:bg-[color:var(--bg-panel)]"}`}
               >
                 {x === "trophies"
                   ? "Trophies"
@@ -511,31 +514,31 @@ export default function LeaderboardPage({ adSlot = null, hilltopSlot = null }) {
                       {formatNumber(myStats.gamesWon)}W{" "}
                       <span className="text-red-300/90">{formatNumber(myStats.gamesLost)}L</span>
                     </div>
-                    <div className="text-[10px] uppercase tracking-wider text-cyan-200/70">Games won / lost</div>
+                    <div className="text-[11px] uppercase tracking-wider text-cyan-200/70">Games won / lost</div>
                   </div>
                   <div className="rounded-md bg-[color:var(--bg-panel)] px-3 py-2 text-center">
                     <div className="text-lg font-bold">
                       {formatNumber(myStats.gamesPlayed)}
                     </div>
-                    <div className="text-[10px] uppercase tracking-wider text-cyan-200/70">Games played</div>
+                    <div className="text-[11px] uppercase tracking-wider text-cyan-200/70">Games played</div>
                   </div>
                   <div className="rounded-md bg-[color:var(--bg-panel)] px-3 py-2 text-center">
                     <div className="text-lg font-bold text-[color:var(--state-gold)]">
                       {formatNumber(myStats.currentStreak)}
                     </div>
-                    <div className="text-[10px] uppercase tracking-wider text-cyan-200/70">Current win streak</div>
+                    <div className="text-[11px] uppercase tracking-wider text-cyan-200/70">Current win streak</div>
                   </div>
                   <div className="rounded-md bg-[color:var(--bg-panel)] px-3 py-2 text-center">
                     <div className="text-lg font-bold text-[color:var(--state-gold)]">
                       {formatNumber(myStats.bestStreak)}
                     </div>
-                    <div className="text-[10px] uppercase tracking-wider text-cyan-200/70">Best win streak</div>
+                    <div className="text-[11px] uppercase tracking-wider text-cyan-200/70">Best win streak</div>
                   </div>
                   <div className="rounded-md bg-[color:var(--bg-panel)] px-3 py-2 text-center">
                     <div className="truncate text-sm font-bold">
                       {myStats.favoriteGame || "N/A"}
                     </div>
-                    <div className="text-[10px] uppercase tracking-wider text-cyan-200/70">Favorite game</div>
+                    <div className="text-[11px] uppercase tracking-wider text-cyan-200/70">Favorite game</div>
                   </div>
                 </div>
               </>
@@ -603,7 +606,10 @@ export default function LeaderboardPage({ adSlot = null, hilltopSlot = null }) {
                   <tr className="border-b border-[color:var(--border-hairline)] text-[color:var(--state-gold)]">
                     <th className="px-2 py-2 text-xs uppercase tracking-wider sm:px-3">#</th>
                     <th className="px-2 py-2 text-xs uppercase tracking-wider sm:px-3">Player</th>
-                    <th className="px-2 py-2 text-right text-xs uppercase tracking-wider sm:px-3 sm:text-left">
+                    {/* The metric is a third column only from sm up; on a
+                        phone it moves under the name (see the row below), so
+                        nothing has to scroll sideways to be read. */}
+                    <th className="hidden px-2 py-2 text-right text-xs uppercase tracking-wider sm:table-cell sm:px-3 sm:text-left">
                       {tab === "trophies"
                         ? "Trophies"
                         : tab === "all-time"
@@ -649,7 +655,7 @@ export default function LeaderboardPage({ adSlot = null, hilltopSlot = null }) {
                               />
                               <span className="min-w-0">
                                 <span
-                                  className={`block max-w-[9rem] truncate font-semibold text-[color:var(--text-primary)] transition-colors hover:text-[color:var(--accent-strong)] hover:underline sm:max-w-none ${cosmeticEffectClass(item.profileFrame?.usernameEffect?.visual) || ""}`}
+                                  className={`block max-w-[6.5rem] truncate font-semibold text-[color:var(--text-primary)] transition-colors hover:text-[color:var(--accent-strong)] hover:underline sm:max-w-none ${cosmeticEffectClass(item.profileFrame?.usernameEffect?.visual) || ""}`}
                                 >
                                   {item.user?.name || item.name}
                                   {item.isPro && <ProBadge className="ml-1.5" />}
@@ -662,6 +668,9 @@ export default function LeaderboardPage({ adSlot = null, hilltopSlot = null }) {
                                     />
                                   )}
                                 </span>
+                                <span className="mt-0.5 block text-xs font-bold text-[color:var(--accent-strong)] sm:hidden">
+                                  {getMetricValue(item, tab)}
+                                </span>
                                 {!isStreakTab(tab) &&
                                   tab !== "trophies" &&
                                   tab !== "daily-deal" && (
@@ -670,7 +679,7 @@ export default function LeaderboardPage({ adSlot = null, hilltopSlot = null }) {
                               </span>
                             </Link>
                             {isMe ? (
-                              <span className="shrink-0 rounded-full bg-[color:var(--state-gold)] px-2 py-0.5 text-[10px] font-black uppercase tracking-wider text-[color:var(--on-accent)]">
+                              <span className="shrink-0 rounded-full bg-[color:var(--state-gold)] px-2 py-0.5 text-[11px] font-black uppercase tracking-wider text-[color:var(--on-accent)]">
                                 You
                               </span>
                             ) : (
@@ -683,7 +692,7 @@ export default function LeaderboardPage({ adSlot = null, hilltopSlot = null }) {
                             )}
                           </div>
                         </td>
-                        <td className="whitespace-nowrap px-2 py-3 text-right font-bold text-green-300 sm:px-3 sm:text-left">
+                        <td className="hidden whitespace-nowrap px-2 py-3 text-right font-bold text-green-300 sm:table-cell sm:px-3 sm:text-left">
                           {getMetricValue(item, tab)}
                         </td>
                       </tr>

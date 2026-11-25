@@ -53,7 +53,7 @@ import {
 import { LESSON_BY_ID } from "../../lib/solitaire-duel/lessonCatalog";
 
 const CARD = "rounded-2xl border border-white/10 bg-[#06152f]/90 p-4 sm:p-5";
-const KICKER = "text-[10px] font-black uppercase tracking-[0.28em] text-[#00e5ff]/80";
+const KICKER = "text-[11px] font-black uppercase tracking-[0.28em] text-[#00e5ff]/80";
 const PRIMARY =
   "inline-flex min-h-10 items-center justify-center gap-2 rounded-xl bg-[#00e5ff] px-4 py-2 text-sm font-black text-[#00212b] transition hover:brightness-110 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#00e5ff]";
 const SECONDARY =
@@ -109,7 +109,7 @@ function SkillRow({
   return (
     <div className={ROW}>
       <span className="min-w-0 truncate text-xs font-bold text-white/70">{label}</span>
-      <span className="flex shrink-0 items-center gap-3 font-mono text-[10px] font-bold text-[#9dd8ff]/75">
+      <span className="flex shrink-0 items-center gap-3 font-mono text-[11px] font-bold text-[#9dd8ff]/75">
         <span title={attemptsLabel}>{attempts}</span>
         <span title={completionsLabel}>{completions}</span>
         <span title={successLabel} className="text-[#8dffd0]">
@@ -225,14 +225,14 @@ export default function LearnCoachingPage({
   const report = state.status === "ready" ? state.report : null;
 
   return (
-    <div className="relative min-h-screen overflow-hidden bg-page pb-24 text-white md:pb-0">
+    <div className="relative min-h-dvh overflow-hidden bg-page pb-24 text-white md:pb-0">
       <div
         aria-hidden="true"
         className="pointer-events-none absolute inset-x-0 top-0 h-[520px] bg-[radial-gradient(ellipse_at_top,rgba(0,229,255,0.12),transparent_62%)]"
       />
       <NavigationBar currentPath="/learn" />
 
-      <main className="relative mx-auto max-w-5xl px-4 pt-24 sm:px-6 md:pt-28">
+      <div className="relative mx-auto max-w-5xl px-4 pt-6 sm:px-6 md:pt-8">
         <Link
           href="/learn"
           className="inline-flex items-center gap-2 text-xs font-bold text-white/55 underline-offset-4 transition hover:text-white hover:underline focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#00e5ff]"
@@ -249,7 +249,7 @@ export default function LearnCoachingPage({
             <h1 className="text-3xl font-black tracking-tight sm:text-4xl">
               {t("learn.coaching.title")}
             </h1>
-            <span className="rounded-full border border-[#f5ff3b]/35 bg-[#f5ff3b]/10 px-2 py-0.5 text-[9px] font-black uppercase tracking-[0.16em] text-[#ffe9a3]">
+            <span className="rounded-full border border-[#f5ff3b]/35 bg-[#f5ff3b]/10 px-2 py-0.5 text-[11px] font-black uppercase tracking-[0.16em] text-[#ffe9a3]">
               {t("learn.coaching.proBadge")}
             </span>
           </div>
@@ -308,7 +308,7 @@ export default function LearnCoachingPage({
 
             <div className="mt-4 grid gap-3 sm:grid-cols-3">
               <div className="rounded-xl border border-white/10 bg-white/[0.03] p-3">
-                <p className="text-[10px] font-black uppercase tracking-[0.16em] text-[#00e5ff]/80">
+                <p className="text-[11px] font-black uppercase tracking-[0.16em] text-[#00e5ff]/80">
                   {t("learn.coaching.locked.whatTitle")}
                 </p>
                 <p className="mt-1 text-xs leading-relaxed text-white/55">
@@ -316,7 +316,7 @@ export default function LearnCoachingPage({
                 </p>
               </div>
               <div className="rounded-xl border border-white/10 bg-white/[0.03] p-3">
-                <p className="text-[10px] font-black uppercase tracking-[0.16em] text-[#00ffa3]/80">
+                <p className="text-[11px] font-black uppercase tracking-[0.16em] text-[#00ffa3]/80">
                   {t("learn.coaching.locked.whyTitle")}
                 </p>
                 <p className="mt-1 text-xs leading-relaxed text-white/55">
@@ -324,7 +324,7 @@ export default function LearnCoachingPage({
                 </p>
               </div>
               <div className="rounded-xl border border-white/10 bg-white/[0.03] p-3">
-                <p className="text-[10px] font-black uppercase tracking-[0.16em] text-[#ffe9a3]/80">
+                <p className="text-[11px] font-black uppercase tracking-[0.16em] text-[#ffe9a3]/80">
                   {t("learn.coaching.locked.extraTitle")}
                 </p>
                 <p className="mt-1 text-xs leading-relaxed text-white/55">
@@ -403,7 +403,7 @@ export default function LearnCoachingPage({
           </p>
         ) : (
           <div data-testid="coaching-report">
-            <p className="mt-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-white/30">
+            <p className="mt-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-white/30">
               {t("learn.coaching.updated", { time: generatedAt(report.generatedAt) })}
             </p>
 
@@ -450,14 +450,14 @@ export default function LearnCoachingPage({
                     key={tile.key}
                     className="rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2"
                   >
-                    <p className="flex items-center gap-1 text-[9px] font-bold uppercase tracking-[0.12em] text-[#9dd8ff]/60">
+                    <p className="flex items-center gap-1 text-[11px] font-bold uppercase tracking-[0.12em] text-[#9dd8ff]/60">
                       {tile.icon}
                       {t(`learn.coaching.totals.${tile.key}`)}
                     </p>
                     <p className="mt-0.5 font-mono text-lg font-black text-white">
                       {tile.value}
                     </p>
-                    <p className="mt-0.5 truncate text-[10px] font-semibold text-white/35">
+                    <p className="mt-0.5 truncate text-[11px] font-semibold text-white/35">
                       {tile.sub}
                     </p>
                   </div>
@@ -600,7 +600,7 @@ export default function LearnCoachingPage({
                   {t("learn.coaching.plan.title")}
                 </h2>
                 {report.plan.available && (
-                  <span className="rounded-full border border-[#00ffa3]/25 bg-[#00ffa3]/10 px-2 py-0.5 font-mono text-[10px] font-black text-[#8dffd0]">
+                  <span className="rounded-full border border-[#00ffa3]/25 bg-[#00ffa3]/10 px-2 py-0.5 font-mono text-[11px] font-black text-[#8dffd0]">
                     {t("learn.coaching.plan.minutes", {
                       count: report.plan.dailyMinutes,
                     })}
@@ -615,7 +615,7 @@ export default function LearnCoachingPage({
                 <div className="mt-3 grid gap-3 sm:grid-cols-2">
                   <div className="space-y-1.5">
                     <div className={ROW}>
-                      <span className="text-[10px] font-bold uppercase tracking-[0.12em] text-[#9dd8ff]/60">
+                      <span className="text-[11px] font-bold uppercase tracking-[0.12em] text-[#9dd8ff]/60">
                         {t("learn.coaching.plan.focus")}
                       </span>
                       <span className="text-xs font-extrabold text-white">
@@ -625,7 +625,7 @@ export default function LearnCoachingPage({
                       </span>
                     </div>
                     <div className={ROW}>
-                      <span className="text-[10px] font-bold uppercase tracking-[0.12em] text-[#9dd8ff]/60">
+                      <span className="text-[11px] font-bold uppercase tracking-[0.12em] text-[#9dd8ff]/60">
                         {t("learn.coaching.plan.difficulty")}
                       </span>
                       <span className="text-xs font-extrabold text-white">
@@ -637,7 +637,7 @@ export default function LearnCoachingPage({
                       </span>
                     </div>
                     <div className={ROW}>
-                      <span className="text-[10px] font-bold uppercase tracking-[0.12em] text-[#9dd8ff]/60">
+                      <span className="text-[11px] font-bold uppercase tracking-[0.12em] text-[#9dd8ff]/60">
                         {t("learn.coaching.plan.lesson")}
                       </span>
                       <span className="min-w-0 truncate text-xs font-extrabold text-white">
@@ -667,7 +667,7 @@ export default function LearnCoachingPage({
                                 title: lessonTitle(item.lessonId),
                               })}
                         </span>
-                        <span className="shrink-0 font-mono text-[10px] font-bold text-[#8dffd0]">
+                        <span className="shrink-0 font-mono text-[11px] font-bold text-[#8dffd0]">
                           {t("learn.coaching.plan.minutes", {
                             count: item.minutes,
                           })}
@@ -826,7 +826,7 @@ export default function LearnCoachingPage({
                         ));
                       })()}
                     </div>
-                    <p className="mt-2 text-[10px] font-semibold text-white/35">
+                    <p className="mt-2 text-[11px] font-semibold text-white/35">
                       {t("learn.coaching.history.legend")}
                     </p>
                   </>
@@ -868,7 +868,7 @@ export default function LearnCoachingPage({
                         <span className="text-xs font-bold text-white/60">
                           {row.label}
                         </span>
-                        <span className="flex items-center gap-2 font-mono text-[10px] font-bold text-[#9dd8ff]/75">
+                        <span className="flex items-center gap-2 font-mono text-[11px] font-bold text-[#9dd8ff]/75">
                           <span className="text-white/35">{row.previous}</span>
                           <span aria-hidden="true">→</span>
                           <span>{row.current}</span>
@@ -878,7 +878,7 @@ export default function LearnCoachingPage({
                         </span>
                       </div>
                     ))}
-                    <p className="pt-1 text-[10px] font-semibold text-white/35">
+                    <p className="pt-1 text-[11px] font-semibold text-white/35">
                       {t("learn.coaching.comparison.current")} /{" "}
                       {t("learn.coaching.comparison.previous")}
                     </p>
@@ -891,7 +891,7 @@ export default function LearnCoachingPage({
               </section>
             </div>
 
-            <p className="mt-4 flex items-start gap-2 rounded-xl border border-white/8 bg-white/[0.02] p-3 text-[10px] leading-relaxed text-white/35">
+            <p className="mt-4 flex items-start gap-2 rounded-xl border border-white/8 bg-white/[0.02] p-3 text-[11px] leading-relaxed text-white/35">
               <IconChartBar
                 size={13}
                 aria-hidden="true"
@@ -911,7 +911,7 @@ export default function LearnCoachingPage({
             {t("learn.subnav.back")}
           </Link>
         </div>
-      </main>
+      </div>
 
       <Footer />
     </div>

@@ -111,7 +111,7 @@ function Chip({
       type="button"
       onClick={onClick}
       aria-pressed={active}
-      className={`rounded-full border px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.1em] transition focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-cyan-300 motion-reduce:transition-none ${
+      className={`rounded-full border px-2.5 py-1 text-[11px] font-bold uppercase tracking-[0.1em] transition focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-cyan-300 motion-reduce:transition-none ${
         active
           ? "border-cyan-300/60 bg-cyan-300/15 text-cyan-50"
           : "border-white/10 bg-white/[0.03] text-white/50 hover:border-white/25 hover:text-white"
@@ -314,7 +314,7 @@ export default function StrategicPuzzlePlayer({ puzzles }: { puzzles: PlayerPuzz
     >
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
-          <p className="text-[10px] font-black uppercase tracking-[0.3em] text-cyan-300/80">
+          <p className="text-[11px] font-black uppercase tracking-[0.3em] text-cyan-300/80">
             {t("puzzlePlayer.eyebrow")}
           </p>
           <h1
@@ -333,17 +333,17 @@ export default function StrategicPuzzlePlayer({ puzzles }: { puzzles: PlayerPuzz
               type="button"
               onClick={() => setBrowsing(true)}
               data-testid="puzzle-back-to-library"
-              className="inline-flex items-center gap-1 rounded-full border border-white/15 bg-white/5 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.12em] text-white/60 transition hover:border-white/30 hover:text-white focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-cyan-300 motion-reduce:transition-none"
+              className="inline-flex items-center gap-1 rounded-full border border-white/15 bg-white/5 px-2.5 py-1 text-[11px] font-black uppercase tracking-[0.12em] text-white/60 transition hover:border-white/30 hover:text-white focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-cyan-300 motion-reduce:transition-none"
             >
               <IconArrowLeft size={12} aria-hidden="true" />
               {t("puzzlePlayer.library.title")}
             </button>
           )}
-          <span className="rounded-full border border-white/15 bg-white/5 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.14em] text-white/65">
+          <span className="rounded-full border border-white/15 bg-white/5 px-2.5 py-1 text-[11px] font-black uppercase tracking-[0.14em] text-white/65">
             {categoryName}
           </span>
           <span
-            className={`rounded-full border px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.14em] ${levelTone}`}
+            className={`rounded-full border px-2.5 py-1 text-[11px] font-black uppercase tracking-[0.14em] ${levelTone}`}
           >
             {levelName}
           </span>
@@ -357,7 +357,7 @@ export default function StrategicPuzzlePlayer({ puzzles }: { puzzles: PlayerPuzz
       >
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="min-w-0">
-            <p className="text-[10px] font-black uppercase tracking-[0.18em] text-white/45">
+            <p className="text-[11px] font-black uppercase tracking-[0.18em] text-white/45">
               {t("puzzlePlayer.library.title")}
             </p>
             <p className="mt-0.5 text-xs text-white/50">
@@ -370,7 +370,7 @@ export default function StrategicPuzzlePlayer({ puzzles }: { puzzles: PlayerPuzz
                 type="button"
                 onClick={() => pick(continueIndex)}
                 data-testid="puzzle-continue"
-                className="inline-flex items-center gap-1.5 rounded-lg border border-cyan-300/40 bg-cyan-300/10 px-2.5 py-1.5 text-[10px] font-black uppercase tracking-[0.12em] text-cyan-100 transition hover:bg-cyan-300/20 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-cyan-300 motion-reduce:transition-none"
+                className="inline-flex items-center gap-1.5 rounded-lg border border-cyan-300/40 bg-cyan-300/10 px-2.5 py-1.5 text-[11px] font-black uppercase tracking-[0.12em] text-cyan-100 transition hover:bg-cyan-300/20 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-cyan-300 motion-reduce:transition-none"
               >
                 {t("puzzlePlayer.library.continue")}
               </button>
@@ -382,7 +382,7 @@ export default function StrategicPuzzlePlayer({ puzzles }: { puzzles: PlayerPuzz
                   pick(puzzles.findIndex((entry) => entry.id === nextChallenge.id))
                 }
                 data-testid="puzzle-next-challenge"
-                className="inline-flex items-center gap-1.5 rounded-lg border border-white/15 px-2.5 py-1.5 text-[10px] font-black uppercase tracking-[0.12em] text-white/60 transition hover:border-white/30 hover:text-white focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-cyan-300 motion-reduce:transition-none"
+                className="inline-flex items-center gap-1.5 rounded-lg border border-white/15 px-2.5 py-1.5 text-[11px] font-black uppercase tracking-[0.12em] text-white/60 transition hover:border-white/30 hover:text-white focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-cyan-300 motion-reduce:transition-none"
               >
                 {t("puzzlePlayer.library.next")}
                 <IconArrowRight size={13} aria-hidden="true" />
@@ -397,7 +397,7 @@ export default function StrategicPuzzlePlayer({ puzzles }: { puzzles: PlayerPuzz
             className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-amber-300/30 bg-amber-300/10 px-3 py-2"
           >
             <div className="min-w-0">
-              <p className="text-[10px] font-black uppercase tracking-[0.14em] text-amber-200/85">
+              <p className="text-[11px] font-black uppercase tracking-[0.14em] text-amber-200/85">
                 {t("puzzlePlayer.library.daily")} ·{" "}
                 <span className="font-mono normal-case tracking-normal">{dayKey}</span>
               </p>
@@ -407,7 +407,7 @@ export default function StrategicPuzzlePlayer({ puzzles }: { puzzles: PlayerPuzz
                   category: t(`puzzleLibrary.categories.${daily.category}.name`),
                 })}
               </p>
-              <p className="text-[10px] text-amber-100/50">
+              <p className="text-[11px] text-amber-100/50">
                 {t("puzzlePlayer.library.dailyNote", { date: dayKey })}
               </p>
             </div>
@@ -415,7 +415,7 @@ export default function StrategicPuzzlePlayer({ puzzles }: { puzzles: PlayerPuzz
               type="button"
               onClick={() => pick(dailyNumber - 1)}
               data-testid="puzzle-play-daily"
-              className="inline-flex items-center gap-1.5 rounded-lg border border-amber-300/45 bg-amber-300/15 px-2.5 py-1.5 text-[10px] font-black uppercase tracking-[0.12em] text-amber-50 transition hover:bg-amber-300/25 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-amber-300 motion-reduce:transition-none"
+              className="inline-flex items-center gap-1.5 rounded-lg border border-amber-300/45 bg-amber-300/15 px-2.5 py-1.5 text-[11px] font-black uppercase tracking-[0.12em] text-amber-50 transition hover:bg-amber-300/25 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-amber-300 motion-reduce:transition-none"
             >
               {t("puzzlePlayer.library.playDaily")}
             </button>
@@ -540,7 +540,7 @@ export default function StrategicPuzzlePlayer({ puzzles }: { puzzles: PlayerPuzz
                         {statusLabel(status)}
                       </span>
                     </span>
-                    <span className="mt-1 flex items-center justify-between gap-2 text-[10px] text-white/45">
+                    <span className="mt-1 flex items-center justify-between gap-2 text-[11px] text-white/45">
                       <span>{t(entry.levelKey)}</span>
                       {entryRecord?.completed &&
                         entryRecord.version === entry.spec.version &&
@@ -609,7 +609,7 @@ export default function StrategicPuzzlePlayer({ puzzles }: { puzzles: PlayerPuzz
             </dl>
 
             <div className="mt-4">
-              <p className="text-[10px] font-black uppercase tracking-[0.18em] text-cyan-200/80">
+              <p className="text-[11px] font-black uppercase tracking-[0.18em] text-cyan-200/80">
                 {t("puzzlePlayer.intro.objective")}
               </p>
               <ul className="mt-1.5 space-y-1 text-sm leading-relaxed text-white/80">
@@ -627,7 +627,7 @@ export default function StrategicPuzzlePlayer({ puzzles }: { puzzles: PlayerPuzz
               </ul>
             </div>
 
-            <p className="mt-4 text-[10px] font-black uppercase tracking-[0.18em] text-white/40">
+            <p className="mt-4 text-[11px] font-black uppercase tracking-[0.18em] text-white/40">
               {t("puzzlePlayer.intro.constraints")}
             </p>
             <ul className="mt-1 space-y-0.5 text-xs text-white/55">
@@ -652,7 +652,7 @@ export default function StrategicPuzzlePlayer({ puzzles }: { puzzles: PlayerPuzz
               <GlitchSay size="sm" message={glitchMessage} />
             </div>
             <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-3">
-              <p className="text-[10px] font-black uppercase tracking-[0.18em] text-white/40">
+              <p className="text-[11px] font-black uppercase tracking-[0.18em] text-white/40">
                 {t("puzzlePlayer.intro.skill")}
               </p>
               <p className="mt-1 text-sm font-semibold text-white/85">{categoryDescription}</p>
@@ -661,7 +661,7 @@ export default function StrategicPuzzlePlayer({ puzzles }: { puzzles: PlayerPuzz
 
             {isProgressLoaded && record && (
               <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-3">
-                <p className="text-[10px] font-black uppercase tracking-[0.18em] text-white/40">
+                <p className="text-[11px] font-black uppercase tracking-[0.18em] text-white/40">
                   {t("puzzlePlayer.library.attempts", { count: record.attempts })}
                 </p>
                 {record.completed && record.bestMoves != null && (
@@ -675,7 +675,7 @@ export default function StrategicPuzzlePlayer({ puzzles }: { puzzles: PlayerPuzz
                   </p>
                 )}
                 {puzzleStatus(savedProgress, puzzle) === "completed" && (
-                  <p className="mt-1 text-[10px] font-bold uppercase tracking-[0.12em] text-emerald-300/80">
+                  <p className="mt-1 text-[11px] font-bold uppercase tracking-[0.12em] text-emerald-300/80">
                     {t("puzzlePlayer.library.replay")}
                   </p>
                 )}
@@ -686,7 +686,7 @@ export default function StrategicPuzzlePlayer({ puzzles }: { puzzles: PlayerPuzz
               <button
                 type="button"
                 onClick={() => pick(index - 1)}
-                className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-white/15 px-2.5 py-2 text-[10px] font-black uppercase tracking-[0.12em] text-white/60 transition hover:border-white/30 hover:text-white focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-cyan-300 motion-reduce:transition-none"
+                className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-white/15 px-2.5 py-2 text-[11px] font-black uppercase tracking-[0.12em] text-white/60 transition hover:border-white/30 hover:text-white focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-cyan-300 motion-reduce:transition-none"
               >
                 <IconArrowLeft size={14} aria-hidden="true" />
                 {t("puzzlePlayer.hud.previous")}
@@ -694,7 +694,7 @@ export default function StrategicPuzzlePlayer({ puzzles }: { puzzles: PlayerPuzz
               <button
                 type="button"
                 onClick={() => pick(index + 1)}
-                className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-white/15 px-2.5 py-2 text-[10px] font-black uppercase tracking-[0.12em] text-white/60 transition hover:border-white/30 hover:text-white focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-cyan-300 motion-reduce:transition-none"
+                className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-white/15 px-2.5 py-2 text-[11px] font-black uppercase tracking-[0.12em] text-white/60 transition hover:border-white/30 hover:text-white focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-cyan-300 motion-reduce:transition-none"
               >
                 {t("puzzlePlayer.hud.next")}
                 <IconArrowRight size={14} aria-hidden="true" />
@@ -703,7 +703,7 @@ export default function StrategicPuzzlePlayer({ puzzles }: { puzzles: PlayerPuzz
 
             <Link
               href="/play"
-              className="block text-center text-[10px] font-bold uppercase tracking-[0.12em] text-white/40 underline-offset-4 hover:text-white hover:underline"
+              className="block text-center text-[11px] font-bold uppercase tracking-[0.12em] text-white/40 underline-offset-4 hover:text-white hover:underline"
             >
               {t("puzzlePlayer.hud.exit")}
             </Link>
@@ -716,7 +716,7 @@ export default function StrategicPuzzlePlayer({ puzzles }: { puzzles: PlayerPuzz
           <div className="rounded-2xl border border-white/10 bg-black/20 p-3 sm:p-4">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div className="min-w-0">
-                <p className="text-[10px] font-black uppercase tracking-[0.18em] text-cyan-200/80">
+                <p className="text-[11px] font-black uppercase tracking-[0.18em] text-cyan-200/80">
                   {t("puzzlePlayer.hud.objective")}
                 </p>
                 <ul className="mt-1 space-y-0.5 text-sm leading-relaxed text-white/85">
@@ -733,7 +733,7 @@ export default function StrategicPuzzlePlayer({ puzzles }: { puzzles: PlayerPuzz
                 </ul>
               </div>
 
-              <dl className="grid grid-cols-3 gap-2 text-center text-[10px]">
+              <dl className="grid grid-cols-3 gap-2 text-center text-[11px]">
                 <div className="rounded-lg border border-white/10 bg-white/[0.03] px-2.5 py-1.5">
                   <dt className="uppercase tracking-[0.1em] text-white/40">
                     {t("puzzlePlayer.hud.moves")}
@@ -758,7 +758,7 @@ export default function StrategicPuzzlePlayer({ puzzles }: { puzzles: PlayerPuzz
             </div>
 
             <div className="mt-3">
-              <div className="flex items-center justify-between text-[10px] font-bold uppercase tracking-[0.12em] text-white/45">
+              <div className="flex items-center justify-between text-[11px] font-bold uppercase tracking-[0.12em] text-white/45">
                 <span>{t("puzzlePlayer.hud.progress")}</span>
                 <span className="font-mono text-white/70">
                   {progress.current} / {progress.target}
@@ -809,13 +809,13 @@ export default function StrategicPuzzlePlayer({ puzzles }: { puzzles: PlayerPuzz
 
               <div className="mt-3 grid gap-3 sm:grid-cols-2">
                 <div>
-                  <p className="text-[10px] font-black uppercase tracking-[0.16em] text-emerald-300/85">
+                  <p className="text-[11px] font-black uppercase tracking-[0.16em] text-emerald-300/85">
                     {t("puzzlePlayer.complete.concept")}
                   </p>
                   <p className="mt-1 text-xs leading-relaxed text-emerald-100/80">{concept}</p>
                 </div>
                 <div>
-                  <p className="text-[10px] font-black uppercase tracking-[0.16em] text-emerald-300/85">
+                  <p className="text-[11px] font-black uppercase tracking-[0.16em] text-emerald-300/85">
                     {t("puzzlePlayer.complete.explanation")}
                   </p>
                   <p className="mt-1 text-xs leading-relaxed text-emerald-100/80">
@@ -833,7 +833,7 @@ export default function StrategicPuzzlePlayer({ puzzles }: { puzzles: PlayerPuzz
                 </div>
               </div>
 
-              <ul className="mt-3 flex flex-wrap gap-2 text-[10px] font-bold uppercase tracking-[0.1em] text-emerald-100/75">
+              <ul className="mt-3 flex flex-wrap gap-2 text-[11px] font-bold uppercase tracking-[0.1em] text-emerald-100/75">
                 <li className="rounded-full border border-emerald-300/25 bg-emerald-300/5 px-2 py-0.5">
                   {t("puzzlePlayer.complete.revealed", { count: session.stats.revealed })}
                 </li>
@@ -867,7 +867,7 @@ export default function StrategicPuzzlePlayer({ puzzles }: { puzzles: PlayerPuzz
                   type="button"
                   onClick={restart}
                   data-testid="puzzle-retry"
-                  className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-emerald-300/50 bg-emerald-300/15 px-3 py-2 text-[10px] font-black uppercase tracking-[0.12em] text-emerald-50 transition hover:bg-emerald-300/25 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-emerald-300 motion-reduce:transition-none"
+                  className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-emerald-300/50 bg-emerald-300/15 px-3 py-2 text-[11px] font-black uppercase tracking-[0.12em] text-emerald-50 transition hover:bg-emerald-300/25 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-emerald-300 motion-reduce:transition-none"
                 >
                   <IconRefresh size={14} aria-hidden="true" />
                   {t("puzzlePlayer.complete.retry")}
@@ -876,14 +876,14 @@ export default function StrategicPuzzlePlayer({ puzzles }: { puzzles: PlayerPuzz
                   type="button"
                   onClick={() => pick(index + 1)}
                   data-testid="puzzle-next"
-                  className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-white/20 px-3 py-2 text-[10px] font-black uppercase tracking-[0.12em] text-white/75 transition hover:border-white/40 hover:text-white focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-cyan-300 motion-reduce:transition-none"
+                  className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-white/20 px-3 py-2 text-[11px] font-black uppercase tracking-[0.12em] text-white/75 transition hover:border-white/40 hover:text-white focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-cyan-300 motion-reduce:transition-none"
                 >
                   {t("puzzlePlayer.complete.next")}
                   <IconArrowRight size={14} aria-hidden="true" />
                 </button>
                 <Link
                   href="/play"
-                  className="inline-flex items-center rounded-lg border border-transparent px-3 py-2 text-[10px] font-bold uppercase tracking-[0.12em] text-white/45 underline-offset-4 hover:text-white hover:underline"
+                  className="inline-flex items-center rounded-lg border border-transparent px-3 py-2 text-[11px] font-bold uppercase tracking-[0.12em] text-white/45 underline-offset-4 hover:text-white hover:underline"
                 >
                   {t("puzzlePlayer.complete.exit")}
                 </Link>
@@ -925,7 +925,7 @@ export default function StrategicPuzzlePlayer({ puzzles }: { puzzles: PlayerPuzz
                     {t(`puzzlePlayer.feedback.${feedback.status === "no-progress" ? "noProgress" : feedback.status}`)}
                   </span>
                   {feedback.revealed > 0 && (
-                    <span className="ml-auto shrink-0 font-mono text-[10px] opacity-70">
+                    <span className="ml-auto shrink-0 font-mono text-[11px] opacity-70">
                       +{feedback.revealed}
                     </span>
                   )}
@@ -940,10 +940,10 @@ export default function StrategicPuzzlePlayer({ puzzles }: { puzzles: PlayerPuzz
                 </div>
                 <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-3">
                   <div className="flex items-center justify-between gap-2">
-                    <p className="text-[10px] font-black uppercase tracking-[0.18em] text-white/45">
+                    <p className="text-[11px] font-black uppercase tracking-[0.18em] text-white/45">
                       {t("puzzlePlayer.hud.hints")}
                     </p>
-                    <span className="font-mono text-[10px] text-white/40">
+                    <span className="font-mono text-[11px] text-white/40">
                       {hintsShown}/{puzzle.hints.length}
                     </span>
                   </div>
@@ -955,7 +955,7 @@ export default function StrategicPuzzlePlayer({ puzzles }: { puzzles: PlayerPuzz
                         data-testid="puzzle-hint"
                         className="rounded-lg border border-cyan-300/20 bg-cyan-300/5 px-2.5 py-2 text-xs leading-relaxed text-cyan-50/90"
                       >
-                        <span className="mr-1.5 font-mono text-[10px] text-cyan-300/70">
+                        <span className="mr-1.5 font-mono text-[11px] text-cyan-300/70">
                           {t("puzzlePlayer.hud.hintUsed", { number: hintIndex + 1 })}
                         </span>
                         {t(hint.key, hint.params ?? {})}
@@ -968,7 +968,7 @@ export default function StrategicPuzzlePlayer({ puzzles }: { puzzles: PlayerPuzz
                     onClick={showHint}
                     disabled={hintsShown >= puzzle.hints.length}
                     data-testid="puzzle-show-hint"
-                    className="mt-2 inline-flex w-full items-center justify-center gap-1.5 rounded-lg border border-cyan-300/40 bg-cyan-300/10 px-2.5 py-2 text-[10px] font-black uppercase tracking-[0.12em] text-cyan-100 transition hover:bg-cyan-300/20 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-cyan-300 disabled:cursor-not-allowed disabled:opacity-40 motion-reduce:transition-none"
+                    className="mt-2 inline-flex w-full items-center justify-center gap-1.5 rounded-lg border border-cyan-300/40 bg-cyan-300/10 px-2.5 py-2 text-[11px] font-black uppercase tracking-[0.12em] text-cyan-100 transition hover:bg-cyan-300/20 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-cyan-300 disabled:cursor-not-allowed disabled:opacity-40 motion-reduce:transition-none"
                   >
                     <IconBulb size={14} aria-hidden="true" />
                     {hintsShown >= puzzle.hints.length
@@ -984,14 +984,14 @@ export default function StrategicPuzzlePlayer({ puzzles }: { puzzles: PlayerPuzz
                     type="button"
                     onClick={restart}
                     data-testid="puzzle-restart"
-                    className="inline-flex w-full items-center justify-center gap-1.5 rounded-lg border border-white/15 px-2.5 py-2 text-[10px] font-black uppercase tracking-[0.12em] text-white/60 transition hover:border-white/30 hover:text-white focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-cyan-300 motion-reduce:transition-none"
+                    className="inline-flex w-full items-center justify-center gap-1.5 rounded-lg border border-white/15 px-2.5 py-2 text-[11px] font-black uppercase tracking-[0.12em] text-white/60 transition hover:border-white/30 hover:text-white focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-cyan-300 motion-reduce:transition-none"
                   >
                     <IconRefresh size={14} aria-hidden="true" />
                     {t("puzzlePlayer.hud.restart")}
                   </button>
                   <Link
                     href="/play"
-                    className="block rounded-lg border border-transparent px-2.5 py-2 text-center text-[10px] font-bold uppercase tracking-[0.12em] text-white/40 underline-offset-4 hover:text-white hover:underline"
+                    className="block rounded-lg border border-transparent px-2.5 py-2 text-center text-[11px] font-bold uppercase tracking-[0.12em] text-white/40 underline-offset-4 hover:text-white hover:underline"
                   >
                     {t("puzzlePlayer.hud.exit")}
                   </Link>

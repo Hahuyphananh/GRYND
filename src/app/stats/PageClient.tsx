@@ -28,10 +28,10 @@ export default function StatsPageClient({
   const { t } = useTranslation();
 
   return (
-    <div className="relative min-h-screen bg-[color:var(--bg-page)] text-[color:var(--text-primary)]">
+    <div className="relative min-h-dvh bg-[color:var(--bg-page)] text-[color:var(--text-primary)]">
       <NavigationBar currentPath="/stats" />
 
-      <main className="relative mx-auto w-full max-w-6xl px-4 pb-16 pt-24 sm:px-6">
+      <div className="relative mx-auto w-full max-w-6xl px-4 pb-16 pt-6 sm:px-6">
         <header className="mb-6">
           <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-[color:var(--accent-strong)]">
             GRYND PRO
@@ -53,7 +53,7 @@ export default function StatsPageClient({
           pro={pro}
           membershipUnavailable={membershipUnavailable}
         />
-      </main>
+      </div>
 
       <Footer />
     </div>

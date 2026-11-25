@@ -84,7 +84,7 @@ export default function EmoteWheel({
         }`}
       >
         <div className="mb-2 flex items-center justify-between">
-          <span className="text-[10px] font-bold uppercase tracking-[0.16em] text-[#00e5ff]/70">
+          <span className="text-[11px] font-bold uppercase tracking-[0.16em] text-[#00e5ff]/70">
             Emotes
           </span>
           <button
@@ -109,7 +109,7 @@ export default function EmoteWheel({
               className="flex h-14 items-center justify-center rounded-xl border border-white/10 bg-surface transition hover:border-[#00e5ff]/70 disabled:cursor-not-allowed disabled:opacity-40"
             >
               {emote.kind === "word" ? (
-                <span className="max-w-[4.5rem] text-center text-[9px] font-black leading-[1.05] tracking-tight text-[#f5ff3b]">
+                <span className="max-w-[4.5rem] text-center text-[11px] font-black leading-[1.05] tracking-tight text-[#f5ff3b]">
                   {emote.value}
                 </span>
               ) : (
@@ -122,20 +122,20 @@ export default function EmoteWheel({
         {/* Two columns: the controls are two buttons, and stacking them made the
             inline tray tall enough to push the chat composer out of its panel. */}
         <div className="mt-2 grid grid-cols-2 gap-1.5 border-t border-white/10 pt-2">
-          <span className="col-span-2 text-center text-[9px] font-bold uppercase tracking-[0.16em] text-white/40">
+          <span className="col-span-2 text-center text-[11px] font-bold uppercase tracking-[0.16em] text-white/40">
             Emote controls
           </span>
           <button
             type="button"
             onClick={onToggleSend}
-            className="rounded-lg border border-white/10 px-2 py-1.5 text-[10px] font-bold uppercase tracking-wider text-white/70 transition hover:bg-white/10"
+            className="rounded-lg border border-white/10 px-2 py-1.5 text-[11px] font-bold uppercase tracking-wider text-white/70 transition hover:bg-white/10"
           >
             {sendEnabled ? "Disable sending" : "Enable sending"}
           </button>
           <button
             type="button"
             onClick={onToggleMute}
-            className="rounded-lg border border-white/10 px-2 py-1.5 text-[10px] font-bold uppercase tracking-wider text-white/70 transition hover:bg-white/10"
+            className="rounded-lg border border-white/10 px-2 py-1.5 text-[11px] font-bold uppercase tracking-wider text-white/70 transition hover:bg-white/10"
           >
             {muteOpponent ? "Unmute opponent" : "Mute opponent emotes"}
           </button>

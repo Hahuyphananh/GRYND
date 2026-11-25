@@ -242,7 +242,7 @@ export default function WelcomePageClient({ replay = false, fromQuestionnaire = 
     [status, step, goTo],
   );
 
-  const fullBleed = "-mt-[68px] min-h-screen sm:-mt-16";
+  const fullBleed = "-mt-[68px] min-h-dvh sm:-mt-16";
   const recommendedLabel = t(MODE_LABEL_KEYS[recommended]);
 
   if (!isLoaded || status === "loading") {
@@ -377,7 +377,7 @@ export default function WelcomePageClient({ replay = false, fromQuestionnaire = 
               <div className="flex items-start gap-3">
                 <div className="flex flex-col items-center gap-1">
                   <PlayingCard card={null} faceUp={false} style={{ width: 44, height: 62 }} />
-                  <span className="text-[9px] font-bold uppercase tracking-wider text-[#9dd8ff]/70">
+                  <span className="text-[11px] font-bold uppercase tracking-wider text-[#9dd8ff]/70">
                     {t("onboarding.solitaire.board.stock")}
                   </span>
                 </div>
@@ -387,7 +387,7 @@ export default function WelcomePageClient({ replay = false, fromQuestionnaire = 
                     faceUp
                     style={{ width: 44, height: 62 }}
                   />
-                  <span className="text-[9px] font-bold uppercase tracking-wider text-[#9dd8ff]/70">
+                  <span className="text-[11px] font-bold uppercase tracking-wider text-[#9dd8ff]/70">
                     {t("onboarding.solitaire.board.waste")}
                   </span>
                 </div>
@@ -409,7 +409,7 @@ export default function WelcomePageClient({ replay = false, fromQuestionnaire = 
                 ))}
               </div>
             </div>
-            <p className="mt-2 text-center text-[9px] font-bold uppercase tracking-wider text-[#9dd8ff]/70">
+            <p className="mt-2 text-center text-[11px] font-bold uppercase tracking-wider text-[#9dd8ff]/70">
               {t("onboarding.solitaire.board.foundations")}
             </p>
             <div className="mt-4 flex items-end justify-center gap-2">
@@ -431,7 +431,7 @@ export default function WelcomePageClient({ replay = false, fromQuestionnaire = 
                 </div>
               ))}
             </div>
-            <p className="mt-2 text-center text-[9px] font-bold uppercase tracking-wider text-[#9dd8ff]/70">
+            <p className="mt-2 text-center text-[11px] font-bold uppercase tracking-wider text-[#9dd8ff]/70">
               {t("onboarding.solitaire.board.tableau")}
             </p>
           </div>
@@ -560,7 +560,7 @@ export default function WelcomePageClient({ replay = false, fromQuestionnaire = 
                   <div className="mb-1 flex items-center gap-2">
                     <h3 className="text-sm font-extrabold text-white">{t(key)}</h3>
                     {isRecommended && (
-                      <span className="rounded-full border border-[#FFD700]/50 bg-[#FFD700]/10 px-2 py-0.5 text-[9px] font-black uppercase tracking-widest text-[#FFD700]">
+                      <span className="rounded-full border border-[#FFD700]/50 bg-[#FFD700]/10 px-2 py-0.5 text-[11px] font-black uppercase tracking-widest text-[#FFD700]">
                         {t("onboarding.solitaire.modes.recommended")}
                       </span>
                     )}
@@ -676,7 +676,7 @@ export default function WelcomePageClient({ replay = false, fromQuestionnaire = 
                 />
               ))}
             </div>
-            <p className="text-[10px] font-bold tracking-widest text-[#9dd8ff]/60">
+            <p className="text-[11px] font-bold tracking-widest text-[#9dd8ff]/60">
               {step + 1} / {TOTAL_STEPS}
             </p>
           </div>
