@@ -111,6 +111,38 @@ export function getSiteUrl(): string {
 }
 
 /**
+ * The apex hostname of the canonical site (`grynd.dedyn.io`), derived from the
+ * one origin above so the two can never disagree.
+ */
+const APEX_HOSTNAME = new URL(CANONICAL_SITE_URL).hostname.replace(/^www\./, "");
+
+/**
+ * The absolute URL a request on the apex has to be redirected to, or null when
+ * the request is already on the canonical origin.
+ *
+ * www is where the app is served and what every emitted URL names. The apex
+ * answers the same HTML, so without this every page is reachable — and
+ * indexable — under two hostnames: a canonical tag mitigates that but does not
+ * merge the two, and Search Console reports them as separate properties.
+ *
+ * `/api` is deliberately NOT redirected. The apex→www hop is cross-origin, and
+ * a browser drops the reply to a cross-origin write unless the target answers
+ * CORS — the failure that once made "Create Game" silently do nothing on the
+ * apex. API callers are expected to call www, which is what the app itself does
+ * (getSiteUrl above).
+ */
+export function apexRedirectUrl(
+  hostname: string,
+  pathname: string,
+  search = ""
+): string | null {
+  const host = hostname.toLowerCase().replace(/\.$/, "");
+  if (host !== APEX_HOSTNAME) return null;
+  if (pathname.startsWith("/api")) return null;
+  return new URL(`${pathname}${search}`, CANONICAL_SITE_URL).toString();
+}
+
+/**
  * The canonical URL for `href` when the page is running on a non-canonical
  * alias of the canonical origin (the apex, while www serves), or null when it
  * is already where it belongs.

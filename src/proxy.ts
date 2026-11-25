@@ -26,6 +26,7 @@ import { eq } from "drizzle-orm";
 import { cacheGet, cacheSet } from "./lib/redis/cache";
 import { CacheKeys, CacheTTL } from "./lib/redis/keys";
 import { isGameLandingSlug } from "./lib/gameLandingPages";
+import { apexRedirectUrl } from "./lib/siteUrl";
 import { LEGACY_GUIDE_SLUGS, isGuideSlug } from "./lib/guides";
 import { applyEmbedFramePolicy } from "./lib/platform/framing";
 import { applyPortalFramePolicy } from "./lib/portal/framing";
@@ -1015,6 +1016,21 @@ const hasClerkSecretKey = Boolean(process.env.CLERK_SECRET_KEY);
 // `pg` driver cannot load on the Edge runtime — it crashed every request
 // with MIDDLEWARE_INVOCATION_FAILED after the Neon → Supabase migration.
 export default async function proxy(req: NextRequest, event: NextFetchEvent) {
+  // ── Apex → www ────────────────────────────────────────────────────────
+  // Before auth, maintenance and routing, and before the Clerk/no-Clerk split
+  // below: one hostname per page is a property of the request, not of the
+  // signed-in state. A crawler asking the apex for a page must get a redirect,
+  // never a second copy of the same HTML (see apexRedirectUrl in lib/siteUrl.ts
+  // for why /api is excluded).
+  const apexTarget = apexRedirectUrl(
+    req.headers.get("host") || "",
+    req.nextUrl.pathname,
+    req.nextUrl.search
+  );
+  if (apexTarget) {
+    return applySecurityHeaders(NextResponse.redirect(apexTarget, 308));
+  }
+
   if (!hasClerkSecretKey) {
     const response = applySecurityHeaders(NextResponse.next());
     // Local/dev without Clerk still serves /play, so its framing policy has to

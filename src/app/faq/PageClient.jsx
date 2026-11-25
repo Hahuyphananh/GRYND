@@ -58,9 +58,9 @@ const faqSections = [
         q: "What is GRYND?",
         a: (
           <>
-            GRYND is a collection of competitive, one-versus-one skill games played in the browser.
-            Every match is a real duel against another player, results feed a per-game rating and a
-            trophy ladder, and every game has its own page that explains the rules, the scoring and
+            GRYND is a competitive, one-versus-one Solitaire site played in the browser.
+            Every match is a real duel against another player on the same deal, results feed a
+            Solitaire rating and a trophy ladder, and every mode has its own page that explains
             the strategy before you commit to a match.{" "}
             <Link href="/games" className="text-[#00e5ff] underline hover:text-[#f5ff3b]">
               Browse the full catalogue

@@ -2085,7 +2085,9 @@ shadow-[var(--shadow-raise)]"
 
                         if (status.state !== "in_game" || !spectateUrl) return null;
 
-                        const allowedSpectateGames = new Set(["chess", "four-in-a-row"]);
+                        // Solitaire Duel is the only game the platform ships, so it
+                        // is the only presence this button can spectate.
+                        const allowedSpectateGames = new Set(["solitaire-duel"]);
                         if (!allowedSpectateGames.has(gameKey)) return null;
 
                         return (

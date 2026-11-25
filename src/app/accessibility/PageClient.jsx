@@ -51,7 +51,7 @@ const sections = [
   {
     title: "Real-Time & Skill Games",
     content: [
-      "Some of our games are real-time and require fast reactions or rapid input (for example, Precision timing challenges). These games may be difficult or impossible for users with certain motor or cognitive disabilities. Where a game offers one, the free practice (fun/AI) mode can be used without wagering, and no penalty applies for choosing not to play a game that does not suit your abilities. We are working to increase accessibility options across our games.",
+      "Solitaire Duel is turn-based, so there is no reaction-time requirement: you can take as long as you need on your turn. The timed surfaces, such as the daily puzzle, are optional, and free practice against the AI bot lets you learn the game with no opponent waiting on you. Nothing here requires rapid input, and no penalty applies for choosing not to play a mode that does not suit your abilities. We are working to increase accessibility options across the site.",
     ],
   },
   {

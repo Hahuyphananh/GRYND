@@ -38,9 +38,9 @@ export const viewport = {
 
 export const metadata = {
   metadataBase: new URL(SITE_URL),
-  title: "GRYND — Competitive PvP Skill Gaming",
+  title: "GRYND — Competitive 1v1 Solitaire",
   description:
-    "Challenge real players in competitive games, climb the leaderboard, and prove your skill.",
+    "Play free Klondike Solitaire duels against a real opponent on the same deal. Ranked ladder, daily challenge, puzzles, trophies and match history.",
   // Explicit icon metadata so the browser tab uses our smalllogo.
   // (Next.js also auto-generates a <link rel="icon"> from
   // src/app/icon.png, but listing it here keeps the intent obvious
@@ -72,9 +72,9 @@ export const metadata = {
   // Both fields are intentionally page-owned now. Every public page declares
   // its own canonical (via `alternates.canonical`) and its own `openGraph.url`.
   openGraph: {
-    title: "GRYND — Competitive PvP Skill Gaming",
+    title: "GRYND — Competitive 1v1 Solitaire",
     description:
-      "Challenge real players in competitive games, climb the leaderboard, and prove your skill.",
+      "Play free Klondike Solitaire duels against a real opponent on the same deal. Ranked ladder, daily challenge, puzzles, trophies and match history.",
     siteName: "GRYND",
     locale: "en_US",
     type: "website",
@@ -83,15 +83,15 @@ export const metadata = {
         url: ogImageUrl("/images/og-banner.png"),
         width: 1200,
         height: 630,
-        alt: "GRYND — Competitive PvP Skill Gaming",
+        alt: "GRYND — Competitive 1v1 Solitaire",
       },
     ],
   },
   twitter: {
     card: "summary_large_image",
-    title: "GRYND — Competitive PvP Skill Gaming",
+    title: "GRYND — Competitive 1v1 Solitaire",
     description:
-      "Challenge real players in competitive games, climb the leaderboard, and prove your skill.",
+      "Play free Klondike Solitaire duels against a real opponent on the same deal. Ranked ladder, daily challenge, puzzles, trophies and match history.",
     images: [ogImageUrl("/images/og-banner.png")],
   },
 };

@@ -12,7 +12,7 @@ import { pageMetadata, DEFAULT_OG_IMAGE } from "../../lib/seo";
 
 export const metadata = pageMetadata({
   title: "Player Reviews",
-  description: "See what players say about GRYND. Real reviews from verified players of our skill-based Solitaire games.",
+  description: "See what players say about GRYND. Real reviews from verified players of our competitive Solitaire.",
   path: "/reviews",
   image: DEFAULT_OG_IMAGE,
 });

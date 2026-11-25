@@ -199,6 +199,12 @@ const MODE_PAGES: SeoPage[] = [
   // crawl — see EXCLUDED_FROM_SITEMAP.
   { path: "/play/ai", group: "modes", changeFrequency: "weekly", priority: 0.6 },
   { path: "/play/ranked", group: "modes", changeFrequency: "daily", priority: 0.7 },
+  // Puzzle Ranked and Puzzle vs AI are their own routes with their own queues,
+  // not aliases of /play/ranked and /play/ai, so each owns a URL in the crawl.
+  // Strategic puzzles is the curated, multi-move set behind them.
+  { path: "/play/puzzle-ranked", group: "modes", changeFrequency: "daily", priority: 0.6 },
+  { path: "/play/puzzle-ai", group: "modes", changeFrequency: "weekly", priority: 0.5 },
+  { path: "/play/strategic-puzzles", group: "modes", changeFrequency: "weekly", priority: 0.5 },
   { path: "/play/daily-puzzle", group: "modes", changeFrequency: "daily", priority: 0.6 },
   { path: "/play/unlimited-puzzles", group: "modes", changeFrequency: "daily", priority: 0.6 },
   // The two single-player surfaces outside /play. `/daily` is the challenge —
