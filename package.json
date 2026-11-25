@@ -80,7 +80,6 @@
     "test:guest-progress": "node --import tsx --test --experimental-test-module-mocks",
     "test:guest-progress-ui": "node --import tsx --test",
     "test:guest-post-match": "node --import tsx --test tests/guest-post-match-cta.test.mjs",
-    "test:portal-export": "node --import tsx --test",
     "test:portal-surface": "node --import tsx --test",
     "dev:solitaire-standalone": "vite --config standalone/solitaire-duel/vite.config.mts",
     "build:solitaire-standalone": "vite build --config standalone/solitaire-duel/vite.config.mts",
