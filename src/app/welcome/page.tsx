@@ -4,9 +4,9 @@ import PageClient from "./PageClient";
 export const metadata: Metadata = {
   robots: { index: false, follow: false },
 
-  title: "Welcome to Grynd | GRYND",
+  title: "Welcome to GRYND Solitaire | GRYND",
   description:
-    "Welcome to GRYND — the competitive PvP skill-gaming platform. Learn how tokens, PvP matches and ranked trophies work before you jump in.",
+    "Welcome to GRYND — the competitive Solitaire platform. Glitch shows you the board, teaches the rules, and guides your first real game.",
 };
 
 export default async function Page({

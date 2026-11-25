@@ -32,8 +32,25 @@ export const CacheKeys = {
       `${PREFIX}:lb:daily-streak:${type}:${limit}:${offset}`,
 
     /**
+     * Per-game ranked win-streak board.
+     * grynd:lb:competitive-streak:{game}:{limit}:{offset}
+     */
+    competitiveStreak: (game: string, limit: number, offset: number) =>
+      `${PREFIX}:lb:competitive-streak:${game}:${limit}:${offset}`,
+
+    /**
+     * grynd:lb:daily-deal:{limit}:{offset}
+     *
+     * The Daily Deal best-time board, read from the official daily result
+     * rows. A new completion can only improve a time, so a settlement purge
+     * covers it too.
+     */
+    dailyDealBestTime: (limit: number, offset: number) =>
+      `${PREFIX}:lb:daily-deal:${limit}:${offset}`,
+
+    /**
      * Patterns for the ranking boards every settlement can affect
-     * (all-time, weekly, daily-streak). The per-game boards are NOT here:
+     * (all-time, weekly, daily-streak, daily deal). The per-game boards are NOT here:
      * they are the Elo boards under `rating` below, and they are purged
      * eagerly by that game's own settlement instead of by a debounced
      * full-table purge. `all` (below) still wipes everything for the
@@ -43,6 +60,8 @@ export const CacheKeys = {
       `${PREFIX}:lb:all-time:*`,
       `${PREFIX}:lb:weekly:*`,
       `${PREFIX}:lb:daily-streak:*`,
+      `${PREFIX}:lb:daily-deal:*`,
+      `${PREFIX}:lb:competitive-streak:*`,
     ],
 
     /** Wildcard pattern for eviction of ALL leaderboard keys */
@@ -103,6 +122,20 @@ export const CacheKeys = {
 
     /** Every page of the cross-game Overall Trophies board. */
     overallAll: `${PREFIX}:trophy:overall:*`,
+
+    /** grynd:trophy:peak:{limit}:{offset} — all-time high-water marks. */
+    peak: (limit: number, offset: number) =>
+      `${PREFIX}:trophy:peak:${limit}:${offset}`,
+
+    /** Every page of the all-time peak trophy board. */
+    peakAll: `${PREFIX}:trophy:peak:*`,
+
+    /** grynd:trophy:gains:{period}:{limit}:{offset} */
+    gains: (period: string, limit: number, offset: number) =>
+      `${PREFIX}:trophy:gains:${period}:${limit}:${offset}`,
+
+    /** Every page of the weekly/monthly/yearly trophy-gain boards. */
+    gainsAll: `${PREFIX}:trophy:gains:*`,
 
     /** Wildcard pattern for eviction of ALL trophy boards. */
     all: `${PREFIX}:trophy:*`,

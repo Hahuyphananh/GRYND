@@ -4,7 +4,7 @@
 //
 // The GRYND PRO pitch — ONE presentational component shared by the reusable
 // modal (UpgradeProModal) and the /upgrade-pro landing page, so the offer, the
-// perk list, the THREE billing options and the CTA are written once.
+// perk list, the two billing options and the CTA are written once.
 //
 // IT DERIVES NO PRICE OF ITS OWN. `plan.billingOptions` is resolved server-side
 // from the plan catalog / the bound Stripe prices and passed down, so the
@@ -25,6 +25,13 @@ import {
 import { formatMoney } from "../lib/currency";
 import { ADVERTISED_PRO_BENEFITS } from "../lib/proBenefits";
 import type { ProPlanDisplay } from "../lib/membershipDisplay";
+import type { ProTestimonial } from "../lib/featuredReview";
+import {
+  DEFAULT_PRO_TRIAL_REMINDER_DAYS,
+  PRO_TRIAL_DAYS,
+  type ProTrialReminderDays,
+} from "../lib/proTrial";
+import ProTrialTimeline from "./ProTrialTimeline";
 
 export type UpgradeProContentProps = {
   plan: ProPlanDisplay;
@@ -40,12 +47,27 @@ export type UpgradeProContentProps = {
   error?: string | null;
   /** `modal` is the compact dialog; `page` is the full landing hero. */
   variant?: "modal" | "page";
+  /**
+   * A real, approved player review from the /reviews wall (see
+   * lib/featuredReview.ts). Null renders nothing — the paywall never invents a
+   * quote, a rating or a reviewer.
+   */
+  testimonial?: ProTestimonial | null;
+  /**
+   * Server-resolved trial eligibility. `true` shows the free-trial timeline and
+   * the trial CTA, `false` a returning customer gets the plain subscription CTA
+   * plus a line saying the trial was already used, and `null` (unknown) shows
+   * the plain CTA without either promise.
+   */
+  trialEligible?: boolean | null;
+  /** The caller's subscription is a free trial (entitlement still active). */
+  trialing?: boolean;
   imagePriority?: boolean;
-  onUpgrade: (interval: ProBillingInterval) => void;
+  onUpgrade: (interval: ProBillingInterval, reminderDays: ProTrialReminderDays) => void;
   /** An existing member switching interval (only offered when active). */
   onChangeInterval?: (interval: ProBillingInterval) => void;
   onManage: () => void;
-  onSignIn: () => void;
+  onSignIn: (reminderDays: ProTrialReminderDays) => void;
   onDismiss?: () => void;
 };
 
@@ -92,14 +114,14 @@ function BillingCard({
       data-testid={`pro-interval-${interval}`}
       data-selected={selected ? "true" : "false"}
       onClick={onSelect}
-      className={`relative flex h-full flex-col rounded-xl border p-3 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff] ${
+      className={`relative flex h-full flex-col rounded-xl border p-3 text-left transition focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#00e5ff] ${
         selected
           ? "border-[#f5ff3b] bg-[#f5ff3b]/10 shadow-[0_0_22px_rgba(245,255,59,0.25)]"
-          : "border-[#00e5ff]/25 bg-[#04122e]/70 hover:border-[#00e5ff]/50"
+          : "border-[#00e5ff]/25 bg-surface/80 hover:border-[#00e5ff]/50"
       }`}
     >
       {option.badge && (
-        <span className="absolute -top-2.5 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-full border border-[#f5ff3b]/60 bg-[#0b224f] px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-[#f5ff3b]">
+        <span className="absolute -top-2.5 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-full border border-[#f5ff3b]/60 bg-surface px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-[#f5ff3b]">
           {t("pro.badge.best_value")}
         </span>
       )}
@@ -118,14 +140,6 @@ function BillingCard({
         </span>
       </span>
 
-      {option.monthlyEquivalentCents !== null && (
-        <span className="mt-0.5 text-[11px] text-[#9dd8ff]/75">
-          {t("pro.equivalent", {
-            amount: formatMoney(option.monthlyEquivalentCents, option.currency),
-          })}
-        </span>
-      )}
-
       <span className="mt-2 space-y-0.5">
         {option.savings.map((saving) => (
           <span
@@ -133,15 +147,18 @@ function BillingCard({
             className="block text-[11px] font-medium leading-snug text-[#00ffa6]"
           >
             {t("pro.save", {
-              amount: formatMoney(saving.amountCents, option.currency),
-              percent: saving.percent,
-              versus: t(`pro.interval.${saving.versus}`).toLowerCase(),
+              amount: formatMoney(
+                option.monthlyEquivalentCents ?? option.priceCents,
+                option.currency,
+              ),
+              percent: Math.round(saving.percent),
+              versus: t(`pro.interval.${saving.versus}`),
             })}
           </span>
         ))}
         {option.savings.length === 0 && (
           <span className="block text-[11px] leading-snug text-[#9dd8ff]/70">
-            {t("pro.flexible_weekly")}
+            {t("pro.flexible_monthly")}
           </span>
         )}
       </span>
@@ -155,6 +172,102 @@ function BillingCard({
   );
 }
 
+/**
+ * A deliberately static preview of the analytics dashboard. The offer has to
+ * show what "graphs" means before a player pays; this samples the real surface
+ * (an Elo line with its range and gain) without importing the dashboard, which
+ * needs an account, a PRO check and a network round-trip. Every figure here is
+ * marked as a sample — nothing claims to be the visitor's own data.
+ */
+/** Split "Title — detail" so the title can carry the weight and the detail can
+ * explain it, without duplicating the offer copy into a second data model. */
+function splitBenefitLabel(label: string): { title: string; detail: string | null } {
+  const separator = " — ";
+  const at = label.indexOf(separator);
+  if (at < 0) return { title: label, detail: null };
+  return { title: label.slice(0, at), detail: label.slice(at + separator.length) };
+}
+
+function AnalyticsPreview({
+  t,
+}: {
+  t: (key: string, params?: Record<string, unknown>) => string;
+}) {
+  return (
+    <figure
+      data-testid="pro-analytics-preview"
+      className="rounded-xl border border-[#00e5ff]/25 bg-surface/85 p-3 text-left"
+    >
+      <figcaption className="flex items-center justify-between gap-2">
+        <span className="text-[10px] font-bold uppercase tracking-wider text-[#00e5ff]">
+          {t("pro.preview.title")}
+        </span>
+        <span className="rounded-full border border-[#9dd8ff]/30 bg-[#9dd8ff]/10 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-[#9dd8ff]/80">
+          {t("pro.preview.sample")}
+        </span>
+      </figcaption>
+
+      <svg
+        viewBox="0 0 220 88"
+        role="img"
+        aria-label={t("pro.preview.alt")}
+        className="mt-2 h-auto w-full"
+      >
+        {[22, 44, 66].map((y) => (
+          <line
+            key={y}
+            x1="4"
+            x2="216"
+            y1={y}
+            y2={y}
+            stroke="#00e5ff"
+            strokeOpacity="0.12"
+            strokeWidth="1"
+          />
+        ))}
+        <path
+          d="M6 70 L32 62 L58 66 L84 51 L110 56 L136 39 L162 33 L194 18 L194 80 L6 80 Z"
+          fill="#00ffa6"
+          fillOpacity="0.12"
+        />
+        <path
+          d="M6 70 L32 62 L58 66 L84 51 L110 56 L136 39 L162 33 L194 18"
+          fill="none"
+          stroke="#00ffa6"
+          strokeWidth="2.5"
+          strokeLinejoin="round"
+          strokeLinecap="round"
+        />
+        <circle
+          cx="194"
+          cy="18"
+          r="3.5"
+          fill="#f5ff3b"
+          stroke="#07101f"
+          strokeWidth="1.5"
+        />
+        <text x="6" y="84" fontSize="8" className="fill-[#9dd8ff]/70">
+          {t("pro.preview.range")}
+        </text>
+        <text
+          x="214"
+          y="84"
+          textAnchor="end"
+          fontSize="9"
+          fontWeight="700"
+          className="fill-[#00ffa6]"
+        >
+          {t("pro.preview.gain")}
+        </text>
+      </svg>
+
+      <p className="mt-1 text-[10px] leading-snug text-[#9dd8ff]/55">
+        {t("pro.preview.caption")}
+      </p>
+    </figure>
+  );
+}
+
 export default function UpgradeProContent({
   plan,
   active,
@@ -164,6 +277,9 @@ export default function UpgradeProContent({
   busy = false,
   error = null,
   variant = "modal",
+  testimonial = null,
+  trialEligible = null,
+  trialing = false,
   imagePriority = false,
   onUpgrade,
   onChangeInterval,
@@ -173,6 +289,12 @@ export default function UpgradeProContent({
 }: UpgradeProContentProps) {
   const { t } = useTranslation();
   const isPage = variant === "page";
+  // The reminder slot the member picks in the trial timeline. It is lifted here
+  // because it also travels with the checkout request; it never decides a price
+  // and it never decides entitlement.
+  const [reminderDays, setReminderDays] = useState<ProTrialReminderDays>(
+    DEFAULT_PRO_TRIAL_REMINDER_DAYS,
+  );
 
   // A member starts on the option they actually hold; a visitor starts on the
   // recommended (yearly) one. The selection is client-side only — it chooses
@@ -188,6 +310,19 @@ export default function UpgradeProContent({
   const selectedOption = optionFor(plan, selected) ?? plan.billingOptions[0];
   if (!selectedOption) return null;
 
+  // The founder ANCHOR quotes the two recurring amounts as they resolve for
+  // this visitor, so the scarcity line can never advertise a price the cards
+  // below do not show.
+  const monthlyOption = optionFor(plan, "monthly");
+  const yearlyOption = optionFor(plan, "yearly");
+
+  // What the selected option costs per week, derived from its own amount so the
+  // "is it worth it?" line can never disagree with the price card above it.
+  const weeklyCents =
+    selectedOption.interval === "monthly"
+      ? Math.round((selectedOption.priceCents * 12) / 52)
+      : Math.round(selectedOption.priceCents / 52);
+
   const renewsOn =
     active && currentPeriodEnd ? new Date(currentPeriodEnd).toLocaleDateString() : null;
 
@@ -199,10 +334,16 @@ export default function UpgradeProContent({
       ? switchingInterval
         ? t("pro.cta.switch", { interval: t(`pro.interval.${selected}`) })
         : t("pro.cta.manage")
-      : t("pro.cta.subscribe", {
-          price: selectedOption.priceDisplay,
-          unit: t(`pro.unit.${selected}`),
-        });
+      : trialEligible === true
+        ? t("pro.cta.subscribe", {
+            price: selectedOption.priceDisplay,
+            days: PRO_TRIAL_DAYS,
+            unit: t(`pro.unit.${selected}`),
+          })
+        : t("pro.cta.plain_subscribe", {
+            price: selectedOption.priceDisplay,
+            unit: t(`pro.unit.${selected}`),
+          });
 
   const handlePrimary = () => {
     if (active) {
@@ -211,15 +352,15 @@ export default function UpgradeProContent({
       return;
     }
     if (!signedIn) {
-      onSignIn();
+      onSignIn(reminderDays);
       return;
     }
-    onUpgrade(selected);
+    onUpgrade(selected, reminderDays);
   };
 
   return (
     <section
-      className={`relative overflow-hidden rounded-2xl border border-[#f5ff3b]/40 bg-[#040d24]/95 shadow-[0_0_40px_rgba(245,255,59,0.18)] ${
+      className={`relative overflow-hidden rounded-2xl border border-[#f5ff3b]/40 bg-surface/95 shadow-[0_0_40px_rgba(245,255,59,0.18)] ${
         isPage ? "p-6 sm:p-8" : "p-5 sm:p-6"
       }`}
       aria-labelledby="grynd-pro-heading"
@@ -229,7 +370,7 @@ export default function UpgradeProContent({
           type="button"
           onClick={onDismiss}
           aria-label={t("pro.close")}
-          className="absolute right-3 top-3 z-10 rounded-lg border border-[#00e5ff]/30 bg-[#0b224f]/80 px-2 py-1 text-sm text-[#9dd8ff] transition hover:text-[#00e5ff] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff]"
+          className="absolute right-3 top-3 z-10 rounded-lg border border-[#00e5ff]/30 bg-surface/90 px-2 py-1 text-sm text-[#9dd8ff] transition hover:text-[#00e5ff] focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#00e5ff]"
         >
           ✕
         </button>
@@ -268,11 +409,45 @@ export default function UpgradeProContent({
             {t("pro.lead")}
           </p>
 
-          {/* ── Three billing options ─────────────────────────────────── */}
+          {!active && (
+            <div className="mt-4">
+              <span
+                data-testid="pro-founder-anchor"
+                className="inline-flex items-center rounded-full border border-[#f5ff3b]/60 bg-[#f5ff3b]/10 px-3 py-1 text-[11px] font-bold uppercase tracking-wider text-[#f5ff3b]"
+              >
+                {t("pro.founder_anchor")}
+              </span>
+              <p
+                data-testid="pro-discount-percent"
+                className="mt-1 text-xl font-black leading-tight text-[#f5ff3b]"
+              >
+                {t("pro.discount_line", {
+                  percent: yearlyOption?.savings[0]
+                    ? Math.round(yearlyOption.savings[0].percent)
+                    : 0,
+                  yearly: yearlyOption?.priceDisplay ?? "",
+                  monthly: yearlyOption
+                    ? formatMoney(
+                        yearlyOption.monthlyEquivalentCents ?? yearlyOption.priceCents,
+                        yearlyOption.currency,
+                      )
+                    : "",
+                })}
+              </p>
+              <p className="mt-2 text-xs leading-snug text-[#00ffa6]">
+                {t("pro.founder_scarcity", {
+                  price: monthlyOption?.priceDisplay ?? "",
+                  yearly: yearlyOption?.priceDisplay ?? "",
+                })}
+              </p>
+            </div>
+          )}
+
+          {/* ── Two recurring options ─────────────────────────────────── */}
           <div
             role="radiogroup"
             aria-label={t("pro.interval_group")}
-            className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-3"
+            className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-2"
           >
             {PRO_BILLING_INTERVALS.map((interval) => {
               const option = optionFor(plan, interval);
@@ -296,12 +471,23 @@ export default function UpgradeProContent({
           {/* ── Status ────────────────────────────────────────────────── */}
           {active ? (
             <p className="mt-3 text-xs font-semibold text-green-400">
-              {renewsOn
-                ? t("pro.active_renews", { date: renewsOn })
-                : t("pro.active_plain")}
+              {trialing && renewsOn
+                ? t("pro.active_trial", { date: renewsOn })
+                : renewsOn
+                  ? t("pro.active_renews", { date: renewsOn })
+                  : t("pro.active_plain")}
             </p>
           ) : (
             <p className="mt-3 text-xs text-[#9dd8ff]/70">{t("pro.cancel_anytime")}</p>
+          )}
+
+          {!active && signedIn && trialEligible === false && (
+            <p
+              data-testid="pro-trial-used-note"
+              className="mt-3 rounded-lg border border-[#00e5ff]/20 bg-surface/70 px-3 py-2 text-xs leading-snug text-[#9dd8ff]/80"
+            >
+              {t("pro.trial.used_note")}
+            </p>
           )}
 
           {error && (
@@ -310,13 +496,13 @@ export default function UpgradeProContent({
             </p>
           )}
 
-          <div className={`mt-4 flex flex-wrap gap-3 ${isPage ? "" : "justify-center"}`}>
+          <div className={`mt-4 flex flex-wrap items-center gap-3 ${isPage ? "" : "justify-center"}`}>
             <button
               type="button"
               onClick={handlePrimary}
               disabled={busy}
               data-testid="pro-primary-cta"
-              className="inline-flex items-center justify-center rounded-xl border border-[#f5ff3b]/60 bg-gradient-to-r from-[#ffd700] via-[#f5ff3b] to-[#ffb800] px-5 py-2.5 font-bold text-[#1f1700] transition hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#f5ff3b] disabled:opacity-60"
+              className="inline-flex items-center justify-center rounded-xl border border-[#f5ff3b]/60 bg-linear-to-r from-[#ffd700] via-[#f5ff3b] to-[#ffb800] px-5 py-2.5 font-bold text-[#1f1700] transition hover:brightness-110 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#f5ff3b] disabled:opacity-60"
             >
               {ctaLabel}
             </button>
@@ -325,30 +511,107 @@ export default function UpgradeProContent({
                 type="button"
                 onClick={onManage}
                 disabled={busy}
-                className="inline-flex items-center justify-center rounded-xl border border-[#00e5ff]/60 bg-[#00e5ff]/15 px-5 py-2.5 font-semibold text-[#00e5ff] transition hover:bg-[#00e5ff]/25 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff] disabled:opacity-60"
+                className="inline-flex items-center justify-center rounded-xl border border-[#00e5ff]/60 bg-[#00e5ff]/15 px-5 py-2.5 font-semibold text-[#00e5ff] transition hover:bg-[#00e5ff]/25 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#00e5ff] disabled:opacity-60"
               >
                 {t("pro.cta.manage")}
               </button>
             )}
+
           </div>
+
+          {/* ── Social proof: one real approved review, or nothing. ────── */}
+          {!active && testimonial && (
+            <figure
+              data-testid="pro-testimonial"
+              className="mt-5 rounded-xl border border-[#00e5ff]/25 bg-surface/85 p-4 text-left"
+            >
+              <figcaption className="flex items-center justify-between gap-2">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-[#00e5ff]">
+                  {t("pro.testimonial_title")}
+                </span>
+                <span className="text-xs tracking-[0.15em] text-[#f5ff3b]" aria-hidden>
+                  {"★".repeat(testimonial.rating)}
+                  {"☆".repeat(Math.max(0, 5 - testimonial.rating))}
+                </span>
+              </figcaption>
+              <span className="sr-only">
+                {t("pro.testimonial_rating", { rating: testimonial.rating })}
+              </span>
+              <blockquote className="mt-2 text-sm italic leading-relaxed text-[#d8fbff]">
+                “{testimonial.quote}”
+              </blockquote>
+              <p className="mt-2 text-[11px] text-[#9dd8ff]/70">
+                — {testimonial.author ?? t("pro.testimonial_anonymous")} ·{" "}
+                {t("pro.testimonial_verified")}
+              </p>
+            </figure>
+          )}
+
+          {/* ── Trial timeline: three slides, and every promise is wired ── */}
+          {!active && trialEligible === true && (
+            <ProTrialTimeline
+              priceDisplay={selectedOption.priceDisplay}
+              unit={t(`pro.unit.${selected}`)}
+              reminderDays={reminderDays}
+              onReminderChange={setReminderDays}
+            />
+          )}
 
           {/* ── Benefits ──────────────────────────────────────────────── */}
           <h3 className={`mt-6 text-sm font-bold uppercase tracking-wider text-[#00e5ff] ${isPage ? "" : "text-center"}`}>
             {t("pro.benefits_title")}
           </h3>
-          <ul className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
-            {BENEFIT_IDS.map((id) => (
-              <li key={id} className="flex items-start gap-2 text-sm text-[#d8fbff]">
-                <span aria-hidden className="mt-0.5 text-[#00ffa6]">
-                  ✓
-                </span>
-                <span>{t(`pro.benefit.${id}`)}</span>
-              </li>
-            ))}
-          </ul>
+          <p
+            data-testid="pro-value-line"
+            className="mt-2 text-xs leading-snug text-[#9dd8ff]/80"
+          >
+            {t("pro.value_line", {
+              price: selectedOption.priceDisplay,
+              unit: t(`pro.unit.${selected}`),
+              weekly: formatMoney(weeklyCents, selectedOption.currency),
+            })}
+          </p>
+          <div className="mt-3 grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_230px] lg:items-start">
+            <ul className="grid grid-cols-1 gap-3">
+              {BENEFIT_IDS.map((id) => {
+                const { title, detail } = splitBenefitLabel(t(`pro.benefit.${id}`));
+                return (
+                  <li key={id} className="flex items-start gap-2 text-sm text-[#d8fbff]">
+                    <span aria-hidden className="mt-0.5 text-[#00ffa6]">
+                      ✓
+                    </span>
+                    <span>
+                      <strong className="font-semibold text-white">{title}</strong>
+                      {detail ? (
+                        <span className="text-[#9dd8ff]/85"> — {detail}</span>
+                      ) : null}
+                    </span>
+                  </li>
+                );
+              })}
+            </ul>
+            <AnalyticsPreview t={t} />
+          </div>
 
           {!active && (
-            <p className="mt-4 text-xs text-[#9dd8ff]/60">{t("pro.no_advantage")}</p>
+            <>
+              <section
+                data-testid="pro-team-note"
+                className="mt-6 rounded-xl border border-[#00e5ff]/20 bg-surface/70 p-4 text-left"
+              >
+                <h3 className="text-xs font-bold uppercase tracking-wider text-[#00e5ff]">
+                  {t("pro.team_title")}
+                </h3>
+                <p className="mt-2 text-xs leading-relaxed text-[#c9f7ff]/85">
+                  {t("pro.team_body")}
+                </p>
+                <p className="mt-2 text-[11px] font-semibold text-[#9dd8ff]/70">
+                  {t("pro.team_signature")}
+                </p>
+              </section>
+
+              <p className="mt-4 text-xs text-[#9dd8ff]/60">{t("pro.no_advantage")}</p>
+            </>
           )}
         </div>
       </div>

@@ -38,7 +38,8 @@ export interface RoomView {
   /** English label; the UI localises it with `rooms.game_<key>`. */
   gameLabel: string | null;
   mode: string;
-  settings: { stake: number };
+  /** Server-validated room settings, including the open-for timer. */
+  settings: { stake: number; timerSeconds: number };
   /** open | starting | started | declined | expired | cancelled | failed */
   status: string;
   matchId: string | null;

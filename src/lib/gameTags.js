@@ -47,8 +47,6 @@
 //   docs/PERSONALIZATION.md. `chance` and `skill` are mutually exclusive: a
 //   game whose outcome is primarily luck is not also primarily ability.
 
-import { WAGER_GAME_KEYS } from "./defaultWagers";
-
 /** Every tag the engine understands. A test asserts each tagged game only
  *  uses values from this list. */
 export const GAME_TAGS = [
@@ -75,113 +73,6 @@ export const GAME_TAGS = [
  *   tags  the traits above
  */
 export const GAME_CATALOG = [
-  // Simultaneous 1v1 on independent 10x10 mine boards: the mine layout is
-  // luck (chance), but reading the clues and racing the clock is a real
-  // competitive core.
-  { id: "mines-pvp", href: "/games/mines-pvp", tags: ["pvp", "chance", "competitive"] },
-
-  // Flip pairs on a 4x4 grid: memory is ability (skill), the rules take
-  // seconds to learn (casual).
-  { id: "memory-grid", href: "/games/memory-grid", tags: ["pvp", "skill", "casual"] },
-
-  // "Outthink your opponent move by move": the archetypal strategy/skill game,
-  // and the archetypal ranked one.
-  { id: "chess", href: "/games/chess", tags: ["pvp", "strategy", "skill", "competitive"] },
-
-  // Same 10-ball draw for both players (chance) with timed taps (fast_paced);
-  // the rules need no teaching (casual).
-  { id: "keno", href: "/games/keno", tags: ["pvp", "chance", "fast_paced", "casual"] },
-
-  // "Fast card duels. Match colors and numbers": fast_paced, instantly
-  // readable (casual), head-to-head against the AI or one online opponent
-  // (pvp). The multi-seat table mode was retired.
-  { id: "uno", href: "/games/neon-flush", tags: ["pvp", "fast_paced", "casual"] },
-
-  // Best-of-7 mind games: a round resolves in a click (fast_paced) and there
-  // is nothing to learn (casual).
-  { id: "rps", href: "/games/rps", tags: ["pvp", "fast_paced", "casual"] },
-
-  // Head-to-head tower survival: placement planning (strategy) and
-  // collapse-risk reading (skill) in a ranked 1v1 duel (competitive).
-  {
-    id: "tower-arena",
-    href: "/games/tower-arena",
-    tags: ["pvp", "strategy", "skill", "competitive"],
-  },
-
-  // Align 4 discs: pure planning (strategy) against one opponent (skill).
-  {
-    id: "four-in-a-row",
-    href: "/games/four-in-a-row",
-    tags: ["pvp", "strategy", "skill"],
-  },
-
-  // "Every safe pick either of you makes narrows the odds": climb-and-bank
-  // reads are ability (skill) and the staked race is competitive.
-  {
-    id: "lane-runner",
-    href: "/games/lane-runner",
-    tags: ["pvp", "skill", "competitive", "fast_paced"],
-  },
-
-  // Aiming and table planning: ability (skill) over a plan (strategy).
-  { id: "pool-masters", href: "/games/pool-masters", tags: ["pvp", "skill", "strategy"] },
-
-  // Hex-grid territory conquest: capture planning (strategy) decided by play
-  // (skill), on the ranked ladder (competitive).
-  {
-    id: "hex-duel",
-    href: "/games/hex-duel",
-    tags: ["pvp", "strategy", "skill", "competitive"],
-  },
-
-  // Hidden numbers and shrinking ranges: prediction/mind games (strategy) —
-  // guessing right is reading the opponent, not the dice (skill).
-  { id: "odds", href: "/games/odds", tags: ["pvp", "strategy", "skill"] },
-
-  // Stop closest to the target: reaction timing (skill + fast_paced) in a
-  // staked 1v1 duel (competitive).
-  {
-    id: "precision",
-    href: "/games/precision",
-    tags: ["pvp", "skill", "fast_paced", "competitive"],
-  },
-
-  // Take turns claiming boxes: pencil-and-paper planning (strategy) decided by
-  // play (skill).
-  {
-    id: "dots-and-boxes",
-    href: "/games/dots-and-boxes",
-    tags: ["pvp", "strategy", "skill"],
-  },
-
-  // Turn-based putting on a physics course: aiming and power control are the
-  // whole game (skill), best-of-5 holes with a seconds-short learning curve
-  // (casual), head-to-head against one opponent (pvp).
-  { id: "mini-golf", href: "/games/mini-golf", tags: ["pvp", "skill", "casual"] },
-
-  // Both seats race the SAME server-selected passage and the first to type it
-  // correctly wins: raw ability (skill) decided under a clock (fast_paced), in
-  // a ranked 1v1 duel (competitive). Nothing is drawn during play, so it is not
-  // tagged `chance`, and it is not a pick-up game (no `casual`).
-  {
-    id: "speed-typing",
-    href: "/games/speed-typing",
-    tags: ["pvp", "skill", "fast_paced", "competitive"],
-  },
-
-  // Take turns claiming cells on a 3x3 board: reading the opponent and planning
-  // a line is the whole game (strategy), the outcome is decided by play and not
-  // by anything drawn (skill), on the ranked ladder (competitive). It is the
-  // shortest game in the catalog to learn, but it is a solved duel rather than a
-  // pick-up game, so it is not tagged `casual` — and nothing is rolled or dealt,
-  // so it is never `chance`.
-  {
-    id: "tic-tac-toe",
-    href: "/games/tic-tac-toe",
-    tags: ["pvp", "strategy", "skill", "competitive"],
-  },
-
   // Solitaire Duel is a 1v1 race over ONE server-generated Klondike deal: both
   // seats receive the exact same starting position and play it simultaneously,
   // so nothing is drawn during play and the outcome is a pure function of each
@@ -195,83 +86,6 @@ export const GAME_CATALOG = [
     href: "/games/solitaire-duel",
     tags: ["pvp", "skill", "fast_paced", "competitive"],
   },
-
-  // Sudoku Duel is a solved once, raced together: the server generates ONE 9x9
-  // puzzle and both seats solve it simultaneously, so nothing is drawn during
-  // play and the outcome is pure solving ability (skill, never `chance`). It is
-  // a rated ladder duel (competitive) with no time limit — the first correct
-  // board wins — so it is not `fast_paced`, and it is a ranked duel rather than
-  // a pick-up game, so it is not `casual`. Deliberately not tagged `strategy`:
-  // unlike chess or tic-tac-toe, there is no opponent to read or plan against,
-  // only the puzzle in front of you.
-  {
-    id: "sudoku-duel",
-    href: "/games/sudoku-duel",
-    tags: ["pvp", "skill", "competitive"],
-  },
-
-  // Barricade is a 9x9 race in which each turn is one action — step your pawn or
-  // drop a two-square barricade that blocks BOTH players — and the first pawn to
-  // the far baseline wins. Reading the position and the opponent is the whole
-  // game (strategy) and it is decided entirely by play, with nothing drawn or
-  // hidden (skill, never `chance`): both pawns, every barricade and both
-  // reserves are public, and the server derives the winner from its own frozen
-  // position (src/lib/barricade/rules.ts). It is a rated ladder duel
-  // (`competitive`) — the id is registered in RATED_GAMES, so its results move
-  // that game's own Elo and trophy rows. Turn-based with no clock and a board a
-  // new player can read in a minute, but it is a planned positional duel rather
-  // than a pick-up game, so it is not tagged `casual` and not `fast_paced`.
-  {
-    id: "barricade",
-    href: "/games/barrier-blitz",
-    tags: ["pvp", "strategy", "skill", "competitive"],
-  },
-
-  // Dominoes is a 1v1 block-dominoes duel over ONE shared chain: reading which
-  // end to feed, counting the tiles still out and blocking the opponent is the
-  // whole game (strategy), but the seven tiles you are dealt and the order of
-  // the face-down pile are chance — so it is tagged `chance`, never `skill`.
-  // It is a rated ladder duel (`competitive`; the id is registered in
-  // RATED_GAMES) with a fifteen-second turn window, and it is the one game here
-  // whose rules most players already know, so it is also `casual`.
-  {
-    id: "dominoes",
-    href: "/games/dominoes",
-    tags: ["pvp", "strategy", "chance", "casual", "competitive"],
-  },
-
-  // Hillstrike is a 1v1 tank-artillery duel on one shared, seeded battlefield:
-  // each tank has 100 HP and every action — a shot, a drive or a build — is
-  // resolved by the shared engine from the stored position. Reading the arc,
-  // trading a turn's actions between damage, range and cover, and using the
-  // collapse of a tower is a plan (strategy) executed by aiming ability (skill),
-  // and nothing is drawn
-  // during play — the battlefield is generated once from a stored seed and is
-  // identical for both seats — so it is never `chance`. It is a rated ladder
-  // duel (`competitive`; the id is registered in RATED_GAMES). A drag-aim
-  // interface is quick to pick up, but the match is a planned duel rather than
-  // a pick-up game, so it is not tagged `casual`, and each shot resolves over
-  // seconds rather than in a click, so it is not `fast_paced`.
-  {
-    id: "hillstrike",
-    href: "/games/hillstrike",
-    tags: ["pvp", "strategy", "skill", "competitive"],
-  },
-
-  // Battleship is a 1v1 duel on two hidden 14x10 boards: you place your own
-  // fleet, then both seats lock one shot per round and the server resolves them
-  // together. Reading the board, probing for the enemy hulls and deciding where
-  // a hit is worth pursuing is planning (strategy), and the outcome turns on
-  // that reading rather than on anything rolled during play (skill — the fleets
-  // are placed, not dealt, so it is never `chance`). It is a rated ladder duel
-  // (`competitive`; the id is registered in RATED_GAMES) with free AI practice.
-  // Turn-based with short rounds but no reflex test, so not `fast_paced`, and a
-  // planned duel rather than a pick-up game, so not `casual`.
-  {
-    id: "battleship",
-    href: "/games/battleship",
-    tags: ["pvp", "strategy", "skill", "competitive"],
-  },
 ];
 
 /** The default (featured) order — exactly the lobby's order. Returned for any
@@ -283,20 +97,11 @@ export const GAMES_BY_ID = Object.fromEntries(GAME_CATALOG.map((game) => [game.i
 
 // ── Token-wager support ────────────────────────────────────────────────────
 //
-// Q1 ("Rewards") and Q4 ("Earning tokens") care about games where a player can
-// put tokens at stake — and GRYND already has that fact in one place:
-// src/lib/defaultWagers.js (the catalog the Settings page and
-// /api/user/default-wagers validate against). Reused rather than re-tagged, so
-// adding a wager to a game automatically feeds the engine.
-//
-// One catalog id differs from its wager key (the wager catalog predates the
-// lobby rename); everything else matches by id. Dice Flush's entry was removed
-// with the game: it is no longer a catalogue id, so it needs no mapping.
-const WAGER_KEY_BY_GAME_ID = {
-  "mines-pvp": "mines",
-};
+// The coin economy is retired: no game supports a wager, so the "tokens"
+// signal can never reorder the lobby. The helper stays (the recommendation
+// engine calls it) and answers false for every game.
 
-/** Does this game support a configurable token wager? */
-export function supportsTokenWager(gameId) {
-  return WAGER_GAME_KEYS.includes(WAGER_KEY_BY_GAME_ID[gameId] ?? gameId);
+/** Does this game support a configurable token wager? No game does. */
+export function supportsTokenWager() {
+  return false;
 }

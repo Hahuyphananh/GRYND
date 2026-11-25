@@ -9,6 +9,7 @@ import {
   gameLandingUrl,
   relatedGames,
 } from "../../../lib/gameLandingPages";
+import { pageMetadata, DEFAULT_SOCIAL_IMAGE } from "../../../lib/seo";
 
 /**
  * /games/<slug> — the PUBLIC, indexable landing page for a game.
@@ -83,29 +84,13 @@ export async function generateMetadata({
   const canonical = game ? gameLandingPath(slug) : "/games";
   const ogUrl = game ? gameLandingUrl(slug) : `${SITE_ORIGIN}/games`;
 
-  return {
-    title,
+  return pageMetadata({
+    title: headline,
     description,
-    alternates: { canonical },
-    // Only the (unreachable) fallback is noindex; a real game page is indexable
-    // and owns its own canonical.
+    path: canonical,
+    image: game ? game.ogImage : DEFAULT_SOCIAL_IMAGE,
     ...(game ? {} : { robots: { index: false, follow: true } }),
-    openGraph: {
-      title,
-      description,
-      url: ogUrl,
-      siteName: "GRYND",
-      locale: "en_US",
-      type: "website",
-      images: [{ url: image, width: 1200, height: 630, alt: headline }],
-    },
-    twitter: {
-      card: "summary_large_image",
-      title,
-      description,
-      images: [image],
-    },
-  };
+  });
 }
 
 export default async function GameLandingRoute({

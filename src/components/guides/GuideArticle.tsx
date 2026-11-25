@@ -1,9 +1,12 @@
 import Link from "next/link";
 import NavigationBar from "../navigation-bar";
 import Footer from "../Footer";
+import AdSenseScript from "../AdSenseScript";
+import AdSlot from "../AdSlot";
 import JsonLd from "../seo/JsonLd";
 import { guidePath, type Guide } from "../../lib/guides";
 import { GAME_LANDING_BY_SLUG, gameLandingPath } from "../../lib/gameLandingPages";
+import { isGameAvailable } from "../../lib/gameAvailability";
 import { buildGuideStructuredData } from "../../lib/guideJsonLd";
 
 /**
@@ -26,13 +29,23 @@ export default function GuideArticle({ guide, related }: { guide: Guide; related
   // is authored against real games (tests/guides.test.mjs asserts it).
   const games = guide.gameSlugs
     .map((slug) => GAME_LANDING_BY_SLUG[slug])
-    .filter((game): game is NonNullable<typeof game> => Boolean(game));
+    .filter((game): game is NonNullable<typeof game> => Boolean(game))
+    // An archived game keeps its guide prose but is not linked from the guide
+    // rail while it is inactive.
+    .filter((game) => isGameAvailable(game.slug));
 
   return (
     <div className="relative min-h-screen overflow-x-clip pb-16">
       <NavigationBar currentPath="/guides" />
 
       <JsonLd data={buildGuideStructuredData(guide.slug)} />
+
+      {/* The editorial placement (lib/ads.ts → "guides"). It lives HERE, in the
+          one guide component, so every article carries it identically and a new
+          guide cannot ship without it. Still server-gated: no tag and no slot
+          for a GRYND PRO member, and nothing at all when the placement has no
+          configured unit id. */}
+      <AdSenseScript />
 
       <div className="mx-auto max-w-3xl px-4 py-8 sm:py-12">
         {/* Breadcrumb — real links, and it tells a visitor where this page
@@ -102,7 +115,7 @@ export default function GuideArticle({ guide, related }: { guide: Guide; related
         {games.length > 0 && (
           <section
             aria-labelledby="guide-games-heading"
-            className="mt-12 rounded-2xl border border-[#00e5ff]/25 bg-[#040d24] p-6"
+            className="mt-12 rounded-2xl border border-[#00e5ff]/25 bg-surface p-6"
           >
             <h2
               id="guide-games-heading"
@@ -119,7 +132,7 @@ export default function GuideArticle({ guide, related }: { guide: Guide; related
                 <li key={game.slug}>
                   <Link
                     href={gameLandingPath(game.slug)}
-                    className="block h-full rounded-xl border border-[#00e5ff]/30 bg-[#061329] p-4 transition-all hover:-translate-y-0.5 hover:border-[#00e5ff]/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff]"
+                    className="block h-full rounded-xl border border-[#00e5ff]/30 bg-surface p-4 transition-all hover:-translate-y-0.5 hover:border-[#00e5ff]/60 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#00e5ff]"
                   >
                     <span className="block font-bold text-[#f5ff3b]">{game.name}</span>
                     <span className="mt-1 block text-sm leading-relaxed text-[#9dd8ff]">
@@ -146,7 +159,7 @@ export default function GuideArticle({ guide, related }: { guide: Guide; related
                 <li key={entry.slug}>
                   <Link
                     href={guidePath(entry.slug)}
-                    className="block rounded-xl border border-[#00e5ff]/25 bg-[#040d24] p-4 transition-all hover:border-[#00e5ff]/55 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff]"
+                    className="block rounded-xl border border-[#00e5ff]/25 bg-surface p-4 transition-all hover:border-[#00e5ff]/55 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#00e5ff]"
                   >
                     <span className="block font-bold text-[#00e5ff]">{entry.title}</span>
                     <span className="mt-1 block text-sm leading-relaxed text-[#9dd8ff]">
@@ -162,7 +175,7 @@ export default function GuideArticle({ guide, related }: { guide: Guide; related
         {/* ── Informational links ─────────────────────────────────────────── */}
         <nav
           aria-labelledby="guide-info-heading"
-          className="mt-10 rounded-2xl border border-[#00e5ff]/25 bg-[#040d24] p-6"
+          className="mt-10 rounded-2xl border border-[#00e5ff]/25 bg-surface p-6"
         >
           <h2 id="guide-info-heading" className="text-xl font-black tracking-tight text-[#f5ff3b]">
             Keep going
@@ -206,7 +219,7 @@ export default function GuideArticle({ guide, related }: { guide: Guide; related
         {/* ── Closing CTA ─────────────────────────────────────────────────── */}
         <section
           aria-labelledby="guide-cta-heading"
-          className="mt-10 rounded-2xl border border-[#f5ff3b]/35 bg-gradient-to-r from-[#0a214d]/90 to-[#08142f]/90 p-6"
+          className="mt-10 rounded-2xl border border-[#f5ff3b]/35 bg-linear-to-r from-[#0a214d]/90 to-[#08142f]/90 p-6"
         >
           <h2
             id="guide-cta-heading"
@@ -220,13 +233,14 @@ export default function GuideArticle({ guide, related }: { guide: Guide; related
           </p>
           <Link
             href="/games"
-            className="mt-4 inline-flex items-center justify-center gap-2 rounded-lg border border-[#f5ff3b]/60 bg-[#f5ff3b] px-6 py-3 text-base font-bold text-[#041125] transition-all hover:bg-[#f5ff3b]/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#f5ff3b] focus-visible:ring-offset-2 focus-visible:ring-offset-[#08142f]"
+            className="mt-4 inline-flex items-center justify-center gap-2 rounded-lg border border-[#f5ff3b]/60 bg-[#f5ff3b] px-6 py-3 text-base font-bold text-[#041125] transition-all hover:bg-[#f5ff3b]/90 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#f5ff3b] focus-visible:ring-offset-2 focus-visible:ring-offset-[#08142f]"
           >
             Choose a game
           </Link>
         </section>
       </div>
 
+      <AdSlot placement="guides" />
       <Footer />
     </div>
   );

@@ -40,6 +40,7 @@
 import { and, desc, eq, inArray } from "drizzle-orm";
 import type Stripe from "stripe";
 import { db } from "../../db/client";
+import { hasActiveProTrial } from "../streaks/trial";
 import { tokenSubscriptionPlans, tokenSubscriptions } from "../../db/schema";
 import { getStripe } from "../stripe";
 import { MANAGED_PAYMENTS_TAX_CODE } from "./packages";
@@ -124,20 +125,26 @@ export const LEGACY_MEMBERSHIP_PLAN_KEYS = [
  * catalog / Stripe — this constant exists so the upgrade surface still renders
  * an honest number on a cold/failed read instead of a blank CTA.
  */
-export const FALLBACK_PRO_PRICE_CENTS = 999;
+export const FALLBACK_PRO_PRICE_CENTS = 499;
 
-/** The user's current membership state — server-authoritative. */
+/**
+ * The user's current membership state — server-authoritative.
+ *
+ * PRO is an active paid subscription OR an unexpired streak trial (Day 7, and
+ * every completed 30-day loop after Day 365). The trial is a timestamp on
+ * `user_streaks`, not a subscription row, so billing and entitlements stay
+ * separate: cancelling a trial is simply letting the clock run out.
+ */
 export async function getMembershipTier(
   clerkId: string
 ): Promise<MembershipTier> {
-  return (await findActiveSubscription(clerkId)) ? "pro" : "free";
+  if (await findActiveSubscription(clerkId)) return "pro";
+  return (await hasActiveProTrial(clerkId)) ? "pro" : "free";
 }
 
 // ── Membership perks (GRYND PRO) ───────────────────────────────────────────
 // GRYND PRO sells ad-free browsing, advanced statistics / performance
-// analytics, detailed match history, the profile-customization cosmetics
-// (custom chat color, profile accent), priority support and PRIORITY
-// MATCHMAKING. It NEVER grants:
+// analytics, unlimited match analysis and private custom rooms. It NEVER grants:
 //
 //   * tokens or any other currency,
 //   * XP multipliers,
@@ -145,17 +152,14 @@ export async function getMembershipTier(
 //   * a wider skill window, a bypassed game/mode/region constraint, or any
 //     influence over a match's outcome.
 //
-// PRIORITY MATCHMAKING — what it is and is NOT:
+// PRIORITY MATCHMAKING — implemented, but deliberately NOT sold:
 //   A verified ACTIVE subscriber is preferred over an otherwise EQUIVALENT free
 //   candidate in the queue worker's candidate ORDERING only. Membership never
-//   widens the trophy/Elo compatibility window (so a Pro member is never paired
-//   outside the same skill band a free player is held to), never overrides the
-//   game / mode / region / player-count constraints, and never changes a
-//   result. Skill compatibility stays the primary criterion: a strictly closer
-//   match always beats a less compatible Pro candidate. The priority is
-//   bounded (a small skill tolerance) and the existing wait-time window
-//   widening keeps free players from starving.
-//   See src/lib/quickQueue.ts + src/lib/quickQueueWorker.ts.
+//   widens the trophy/Elo compatibility window, never overrides the game /
+//   mode / region / player-count constraints, and never changes a result.
+//   See src/lib/quickQueue.ts + src/lib/quickQueueWorker.ts. It is absent from
+//   the offer (src/lib/proBenefits.ts) until the queues are large enough that
+//   a tie-break does not read as "the queues are empty".
 //
 // Free players get the complete game: all games, ranked play, Elo,
 // leaderboards, free tournaments, profiles, match history, progression and
@@ -182,6 +186,23 @@ function priceProductId(price: Stripe.Price): string | null {
   const product = price.product as string | Stripe.Product | null;
   if (!product) return null;
   return typeof product === "string" ? product : product.id;
+}
+
+/**
+ * True when a price is denominated in the catalog's BASE currency (CAD).
+ *
+ * The plan rows were historically bound to USD prices (the catalog predates the
+ * CAD switch). Those bindings still resolve, so reading `unit_amount` from one
+ * and labelling it with the CAD symbol would advertise a price — and a
+ * currency — Stripe does not charge. Only a base-currency price may supply a
+ * base amount or be picked as the product's matching price; a foreign-currency
+ * price is treated like a missing binding and re-resolved from the catalog.
+ *
+ * The currency is compared case-insensitively because Stripe returns lowercase
+ * ISO codes, but a hand-written id or a stale payload is not guaranteed to.
+ */
+function priceMatchesBaseCurrency(price: Stripe.Price): boolean {
+  return (price.currency || "").toLowerCase() === BASE_CURRENCY;
 }
 
 /**
@@ -213,7 +234,10 @@ function priceMatchesSpec(
  * Best-effort: the product-search API may be unavailable, in which case we
  * fall back to the persisted id / a fresh create.
  */
-async function findProductIdByPlanKey(stripe: Stripe, planKey: string): Promise<string | null> {
+async function findProductByPlanKey(
+  stripe: Stripe,
+  planKey: string,
+): Promise<{ id: string; defaultPrice: string | null } | null> {
   const safeKey = planKey.replace(/[^a-z0-9_-]/gi, "");
   if (!safeKey) return null;
   try {
@@ -221,7 +245,14 @@ async function findProductIdByPlanKey(stripe: Stripe, planKey: string): Promise<
       query: `metadata['planKey']:'${safeKey}'`,
       limit: 1,
     });
-    return found.data[0]?.id ?? null;
+    const product = found.data[0];
+    if (!product) return null;
+    const rawDefault = product.default_price;
+    return {
+      id: product.id,
+      defaultPrice:
+        typeof rawDefault === "string" ? rawDefault : (rawDefault?.id ?? null),
+    };
   } catch {
     return null;
   }
@@ -252,13 +283,14 @@ export async function ensureSubscriptionPlanStripe(
   const stripe = getStripe();
 
   const bound: StripePriceIds = {
-    weekly: plan.stripePriceIdWeekly ?? null,
     monthly: plan.stripePriceId,
     yearly: plan.stripePriceIdYearly ?? null,
   };
 
   let productId = plan.stripeProductId;
   let changed = false;
+  /** The product's current Stripe default price, when we could read it. */
+  let productDefaultPrice: string | null = null;
 
   // If only a price id is known (e.g. pasted from the Dashboard), resolve its
   // product so we never create a duplicate product for an existing price. A
@@ -293,6 +325,9 @@ export async function ensureSubscriptionPlanStripe(
     // used the ineligible `txcd_99999999`).
     try {
       const existingProduct = await stripe.products.retrieve(productId);
+      const rawDefault = existingProduct.default_price;
+      productDefaultPrice =
+        typeof rawDefault === "string" ? rawDefault : (rawDefault?.id ?? null);
       try {
         await stripe.products.update(productId, {
           tax_code: MANAGED_PAYMENTS_TAX_CODE,
@@ -319,8 +354,12 @@ export async function ensureSubscriptionPlanStripe(
   // Adopt the real product before creating one, so a lost binding can never
   // produce a second GRYND PRO product.
   if (!productId) {
-    productId = await findProductIdByPlanKey(stripe, plan.key);
-    if (productId) changed = true;
+    const adopted = await findProductByPlanKey(stripe, plan.key);
+    if (adopted) {
+      productId = adopted.id;
+      productDefaultPrice = adopted.defaultPrice;
+      changed = true;
+    }
   }
 
   if (!productId) {
@@ -355,7 +394,7 @@ export async function ensureSubscriptionPlanStripe(
     return productPrices;
   };
 
-  const priceIds: StripePriceIds = { weekly: null, monthly: null, yearly: null };
+  const priceIds: StripePriceIds = { monthly: null, yearly: null };
 
   for (const interval of PRO_BILLING_INTERVALS) {
     const existingId = bound[interval];
@@ -402,6 +441,26 @@ export async function ensureSubscriptionPlanStripe(
     changed = true;
   }
 
+  // Stripe's OWN default for the product is what the product page and invoice
+  // defaults quote. It had drifted to a price in a different currency from the
+  // ones the plan sells, so the same membership advertised two currencies. The
+  // default is not used by checkout (the session always names an explicit
+  // price id), so this is a consistency repair, not a pricing change: point it
+  // at the monthly base-currency price the plan actually sells.
+  if (priceIds.monthly && productDefaultPrice !== priceIds.monthly) {
+    try {
+      await stripe.products.update(productId, {
+        default_price: priceIds.monthly,
+      });
+    } catch (err) {
+      // Non-fatal: checkout uses the resolved price id, never the default.
+      console.warn(
+        "[stripe] Could not reconcile the GRYND PRO product default price:",
+        err,
+      );
+    }
+  }
+
   if (changed) {
     await db
       .update(tokenSubscriptionPlans)
@@ -410,7 +469,6 @@ export async function ensureSubscriptionPlanStripe(
         // The monthly option keeps the ORIGINAL column so existing rows and the
         // existing monthly checkout path read exactly as before.
         stripePriceId: priceIds.monthly,
-        stripePriceIdWeekly: priceIds.weekly,
         stripePriceIdYearly: priceIds.yearly,
         updatedAt: new Date(),
       })
@@ -454,7 +512,6 @@ async function readPlanPrices(plan: SubscriptionPlanBundle): Promise<{
   > = {};
 
   const bound: StripePriceIds = {
-    weekly: plan.stripePriceIdWeekly ?? null,
     monthly: plan.stripePriceId,
     yearly: plan.stripePriceIdYearly ?? null,
   };
@@ -467,7 +524,10 @@ async function readPlanPrices(plan: SubscriptionPlanBundle): Promise<{
       const priceId = bound[interval];
       if (priceId) {
         try {
-          price = await getStripe().prices.retrieve(priceId);
+          const boundPrice = await getStripe().prices.retrieve(priceId);
+          // A price in another currency is a legacy binding (the catalog is
+          // CAD): its amount must never be shown as a CAD price.
+          price = priceMatchesBaseCurrency(boundPrice) ? boundPrice : null;
         } catch {
           // fall through to the product lookup / catalog amount
           price = null;
@@ -487,6 +547,7 @@ async function readPlanPrices(plan: SubscriptionPlanBundle): Promise<{
         price =
           productPrices.find(
             (candidate) =>
+              priceMatchesBaseCurrency(candidate) &&
               candidate.recurring?.interval === PRO_STRIPE_INTERVAL[interval],
           ) ?? null;
       }
@@ -627,28 +688,35 @@ export async function getProPlanDisplay(
     priceDisplay: formatAmountFromCents(FALLBACK_PRO_PRICE_CENTS),
     badge: "Pro",
     perks: [...PRO_PLAN_FALLBACK_PERKS],
-    // The three options are always present, so the upgrade surface can render
-    // its selector even when the plan row (or Stripe) cannot be read.
+    // Both billing options are always present, so the upgrade surface can
+    // render its selector even when the plan row (or Stripe) cannot be read.
     billingOptions: buildProBillingOptions(),
   };
 
-  const rows = await db
-    .select({
-      id: tokenSubscriptionPlans.id,
-      key: tokenSubscriptionPlans.key,
-      name: tokenSubscriptionPlans.name,
-      monthlyTokens: tokenSubscriptionPlans.monthlyTokens,
-      priceCents: tokenSubscriptionPlans.priceCents,
-      badge: tokenSubscriptionPlans.badge,
-      perks: tokenSubscriptionPlans.perks,
-      stripeProductId: tokenSubscriptionPlans.stripeProductId,
-      stripePriceId: tokenSubscriptionPlans.stripePriceId,
-      stripePriceIdWeekly: tokenSubscriptionPlans.stripePriceIdWeekly,
-      stripePriceIdYearly: tokenSubscriptionPlans.stripePriceIdYearly,
-    })
-    .from(tokenSubscriptionPlans)
-    .where(eq(tokenSubscriptionPlans.key, CANONICAL_MEMBERSHIP_PLAN_KEY))
-    .limit(1)
+  // The getter itself can throw before a query is ever built (e.g. the pool
+  // refuses to start when the CA bundle is missing), so the read is deferred
+  // into a promise: a `.catch()` chained onto `db.select(...)` would never see
+  // that throw and the upgrade page would 500 instead of showing the fallback.
+  const rows = await Promise.resolve()
+    .then(() =>
+      db
+        .select({
+          id: tokenSubscriptionPlans.id,
+          key: tokenSubscriptionPlans.key,
+          name: tokenSubscriptionPlans.name,
+          monthlyTokens: tokenSubscriptionPlans.monthlyTokens,
+          priceCents: tokenSubscriptionPlans.priceCents,
+          badge: tokenSubscriptionPlans.badge,
+          perks: tokenSubscriptionPlans.perks,
+          stripeProductId: tokenSubscriptionPlans.stripeProductId,
+          stripePriceId: tokenSubscriptionPlans.stripePriceId,
+          stripePriceIdWeekly: tokenSubscriptionPlans.stripePriceIdWeekly,
+          stripePriceIdYearly: tokenSubscriptionPlans.stripePriceIdYearly,
+        })
+        .from(tokenSubscriptionPlans)
+        .where(eq(tokenSubscriptionPlans.key, CANONICAL_MEMBERSHIP_PLAN_KEY))
+        .limit(1),
+    )
     .catch((err) => {
       // A cold/unreadable database must not blank the upgrade surface — the
       // catalog fallback is an honest display price for the same plan.
@@ -758,7 +826,9 @@ export async function resolveBillingIntervalForPriceId(
       .where(eq(tokenSubscriptionPlans.key, CANONICAL_MEMBERSHIP_PLAN_KEY))
       .limit(1);
     if (!row) return null;
-    if (row.stripePriceIdWeekly && row.stripePriceIdWeekly === priceId) return "weekly";
+    // Weekly is retired: an existing weekly subscriber's price no longer maps
+    // to a sellable interval, so it resolves to null and the UI simply says
+    // "your current plan" instead of inventing a cadence.
     if (row.stripePriceIdYearly && row.stripePriceIdYearly === priceId) return "yearly";
     if (row.stripePriceId && row.stripePriceId === priceId) return "monthly";
     return null;
@@ -820,6 +890,40 @@ export async function findActiveSubscription(clerkId: string) {
         eq(tokenSubscriptions.clerkId, clerkId),
         inArray(tokenSubscriptions.status, ACTIVE_SUBSCRIPTION_STATUSES)
       )
+    )
+    .orderBy(desc(tokenSubscriptions.createdAt))
+    .limit(1);
+  return rows[0] ?? null;
+}
+
+/**
+ * Has this account EVER held a subscription? — the free-trial guard.
+ *
+ * The trial is granted ONCE per customer. A subscription row is written on the
+ * first successful checkout and it stays (status `canceled`) after cancelling,
+ * so a returning member cannot take a second free trial. This is deliberately
+ * independent of the status: the question is "ever subscribed", not "subscribed
+ * now". Read-only.
+ */
+export async function hasPriorSubscription(clerkId: string): Promise<boolean> {
+  const rows = await db
+    .select({ id: tokenSubscriptions.id })
+    .from(tokenSubscriptions)
+    .where(eq(tokenSubscriptions.clerkId, clerkId))
+    .limit(1);
+  return rows.length > 0;
+}
+
+/** The caller's subscription row currently in `trialing`, or null. */
+export async function findTrialingSubscription(clerkId: string) {
+  const rows = await db
+    .select()
+    .from(tokenSubscriptions)
+    .where(
+      and(
+        eq(tokenSubscriptions.clerkId, clerkId),
+        eq(tokenSubscriptions.status, "trialing"),
+      ),
     )
     .orderBy(desc(tokenSubscriptions.createdAt))
     .limit(1);

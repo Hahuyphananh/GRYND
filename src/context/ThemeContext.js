@@ -5,7 +5,7 @@
 // The app's light/dark switch.
 //
 // The theme is carried on <html data-theme="light|dark">, which is what
-// src/app/light-theme.css (generated — see scripts/generate-light-theme.mjs)
+// the light token block in src/app/globals.css
 // keys its whole override layer off. It is NOT carried by Tailwind's `dark`
 // class alone: the app has no `dark:` variants, so flipping that class would
 // change nothing. The class is kept in sync anyway, because `darkMode:
@@ -43,7 +43,7 @@ export const THEMES = ["dark", "light"];
  * so the mobile address bar matches the page instead of banding against it.
  *
  * MUST equal the generator's PAGE constant
- * (scripts/generate-light-theme.mjs) and the value baked into the bootstrap
+ * (the light block in globals.css) and the value baked into the bootstrap
  * script in src/app/layout.tsx — three copies of one colour, because none of
  * them can import the others (the generator is build-time, the bootstrap runs
  * before any module loads).

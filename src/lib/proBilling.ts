@@ -1,35 +1,39 @@
 // src/lib/proBilling.ts
 //
-// The GRYND PRO billing catalog — THREE recurring options for ONE membership.
+// The GRYND PRO billing catalog — a monthly subscription and a yearly one.
 //
-// WHY THIS FILE EXISTS: the upgrade surface must show three prices and their
+// WHY THIS FILE EXISTS: the upgrade surface must show the prices and their
 // savings, and the savings must be DERIVED, not typed into a component as
 // marketing copy. This module owns the approved amounts, the annualised maths
 // and the savings calculations, and it has NO server imports (no DB, no Stripe
 // SDK), so both the server resolver and the client components can read it.
 //
 // It is deliberately NOT the price authority. The authoritative price for a
-// given interval is the bound Stripe Price, resolved server-side by
+// recurring option is the bound Stripe Price, resolved server-side by
 // `src/lib/stripe/subscriptions.ts` and handed to the client as
 // `ProPlanDisplay.billingOptions`. These constants are (a) the approved catalog
 // amounts used when Stripe is unreachable and (b) the input to the checkout
 // price sync. Savings are always computed from whichever amounts are in play,
-// never hardcoded, so a catalog/Stripe change can never leave the page
-// advertising a stale "you save X".
+// never hardcoded.
+//
+// ── The founder rate ─────────────────────────────────────────────────────
+//
+// The catalog is the EARLY SUPPORTER / FOUNDER rate: half the intended public
+// price, offered while the site is small. The weekly option was retired in the
+// same change — a weekly cadence is the most expensive way to pay for a
+// membership and the least useful to an indie project — leaving two honest
+// options: monthly for flexibility, yearly for the better rate.
 //
 // ── The currency ──────────────────────────────────────────────────────────
 //
 // The catalog amounts are CAD (the base currency — lib/currency.ts). The
 // upgrade surface may present a different currency when BOTH are true: the
 // visitor's country maps to it, and the bound Stripe Price carries an amount
-// for it in `currency_options`. That second condition is not a detail — an
-// unconfigured currency must never be shown, or the page would advertise a
-// number Stripe would not charge. Both the country→currency map and the
-// formatters live in lib/currency.ts; this module only carries the currency a
-// set of amounts is expressed in.
+// for it in `currency_options`. An unconfigured currency must never be shown,
+// or the page would advertise a number Stripe would not charge.
 //
-// All amounts are BEFORE applicable taxes. All three options grant EXACTLY the
-// same membership — billing frequency never changes entitlements.
+// All amounts are BEFORE applicable taxes. Both options grant EXACTLY the same
+// membership.
 
 import {
   BASE_CURRENCY,
@@ -38,8 +42,8 @@ import {
   type PresentmentCurrency,
 } from "./currency";
 
-/** The three billing options. Order here is display order. */
-export const PRO_BILLING_INTERVALS = ["weekly", "monthly", "yearly"] as const;
+/** The recurring billing options. Order here is display order. */
+export const PRO_BILLING_INTERVALS = ["monthly", "yearly"] as const;
 
 export type ProBillingInterval = (typeof PRO_BILLING_INTERVALS)[number];
 
@@ -47,30 +51,22 @@ export type ProBillingInterval = (typeof PRO_BILLING_INTERVALS)[number];
 export const PRO_BILLING_CURRENCY = BASE_CURRENCY;
 
 /**
- * Approved catalog amounts (cents), before tax, in the BASE currency (CAD).
+ * Approved FOUNDER RATE amounts (cents), before tax, in the BASE currency (CAD).
  *
- *   weekly  CA$3.49 every week
- *   monthly CA$9.99 every month  (the pre-existing monthly price — preserved)
- *   yearly  CA$59.99 every year
+ *   monthly CA$4.99 every month  (public price will be CA$9.99)
+ *   yearly  CA$29.99 every year  (≈ CA$2.50/month)
  */
 export const PRO_PRICE_CENTS: Record<ProBillingInterval, number> = {
-  weekly: 349,
-  monthly: 999,
-  yearly: 5999,
+  monthly: 499,
+  yearly: 2999,
 };
 
-/** The Stripe recurring interval each option maps to. */
-export const PRO_STRIPE_INTERVAL: Record<
-  ProBillingInterval,
-  "week" | "month" | "year"
-> = {
-  weekly: "week",
+/** The Stripe recurring interval each subscription option maps to. */
+export const PRO_STRIPE_INTERVAL: Record<ProBillingInterval, "month" | "year"> = {
   monthly: "month",
   yearly: "year",
 };
 
-/** Weeks per year used to annualise the weekly option. */
-export const WEEKS_PER_YEAR = 52;
 /** Months per year used to annualise the monthly option. */
 export const MONTHS_PER_YEAR = 12;
 
@@ -81,18 +77,13 @@ export function isProBillingInterval(value: unknown): value is ProBillingInterva
   );
 }
 
-/** The approved amount for an interval, or the monthly amount as a last resort. */
+/** The approved recurring amount, or the monthly amount as a last resort. */
 export function defaultPriceCentsFor(interval: ProBillingInterval): number {
   return PRO_PRICE_CENTS[interval] ?? PRO_PRICE_CENTS.monthly;
 }
 
 /**
- * `349` → `"3.49"`. Two decimal places, always.
- *
- * This is the bare NUMBER — currency-agnostic on purpose, so the same helper
- * formats a CAD saving, a EUR saving or a total. It is re-exported from
- * lib/currency so every surface formats identically (and so a component never
- * reaches for `Intl`, whose output differs between the server and the browser).
+ * `499` → `"4.99"`. Two decimal places, always; currency-agnostic on purpose.
  */
 export function formatAmountCents(cents: number): string {
   return formatAmount(cents);
@@ -104,18 +95,19 @@ function round2(value: number): number {
 }
 
 /**
- * What one year of an option costs, annualised from its own billing period:
- * weekly × 52, monthly × 12, yearly × 1. This is the ONLY basis for savings,
- * so every comparison is like-for-like and clearly labelled.
+ * What one year of a recurring option costs, annualised from its own billing
+ * period: monthly × 12, yearly × 1. This is the ONLY basis for savings, so
+ * every comparison is like-for-like and clearly labelled.
  */
-export function annualCostCents(interval: ProBillingInterval, amounts?: Partial<Record<ProBillingInterval, number>>): number {
+export function annualCostCents(
+  interval: ProBillingInterval,
+  amounts?: Partial<Record<ProBillingInterval, number>>,
+): number {
   const price = amounts?.[interval] ?? defaultPriceCentsFor(interval);
-  if (interval === "weekly") return price * WEEKS_PER_YEAR;
-  if (interval === "monthly") return price * MONTHS_PER_YEAR;
-  return price;
+  return interval === "monthly" ? price * MONTHS_PER_YEAR : price;
 }
 
-/** Average monthly cost of the yearly option, rounded to the cent ($5.00). */
+/** Average monthly cost of the yearly option, rounded to the cent ($2.50). */
 export function monthlyEquivalentCents(
   yearlyCents: number = PRO_PRICE_CENTS.yearly,
 ): number {
@@ -124,32 +116,24 @@ export function monthlyEquivalentCents(
 
 /** One "you save X% ($Y/yr)" comparison against a more expensive option. */
 export type ProBillingSaving = {
-  /** The option this one is compared against. */
   versus: ProBillingInterval;
-  /** Money saved per year, in cents. */
   amountCents: number;
-  /** Percentage saved per year, rounded to two decimals. */
   percent: number;
 };
 
 /**
- * The savings to advertise for an option, computed from annualised costs.
- *
- * WEEKLY DELIBERATELY HAS NONE: it is the most flexible (and most expensive)
- * option, so claiming it "saves" anything would be dishonest. Monthly is only
- * ever compared against weekly, and yearly against both.
+ * The savings to advertise for a recurring option, computed from annualised
+ * costs. Monthly is the most flexible (and most expensive) option, so it
+ * "saves" nothing; yearly is only ever compared against monthly.
  */
 export function savingsFor(
   interval: ProBillingInterval,
   amounts?: Partial<Record<ProBillingInterval, number>>,
 ): ProBillingSaving[] {
-  if (interval === "weekly") return [];
+  if (interval === "monthly") return [];
 
   const ownAnnual = annualCostCents(interval, amounts);
-  const versus: ProBillingInterval[] =
-    interval === "monthly" ? ["weekly"] : ["monthly", "weekly"];
-
-  return versus
+  return (["monthly"] as ProBillingInterval[])
     .map((other) => {
       const otherAnnual = annualCostCents(other, amounts);
       const amountCents = Math.max(0, otherAnnual - ownAnnual);
@@ -160,41 +144,32 @@ export function savingsFor(
     .filter((saving) => saving.amountCents > 0);
 }
 
-/** One fully-resolved billing option, ready to render. */
+/** One fully-resolved recurring billing option, ready to render. */
 export type ProBillingOption = {
   interval: ProBillingInterval;
-  /** Catalog key of the membership all three options grant. */
+  /** Catalog key of the membership every option grants. */
   planKey: string;
   /** Amount Stripe will charge per period, in cents, in `currency`. */
   priceCents: number;
-  /** The currency the amounts below are expressed in (base unless localized). */
   currency: PresentmentCurrency;
-  /** That currency's symbol, e.g. `"CA$"` / `"€"`. */
   currencySymbol: string;
-  /** Pre-formatted amount, e.g. "3.49" (digits only). */
   priceFormatted: string;
-  /** Symbol + amount, e.g. "CA$3.49" — what the card is charged, as written. */
+  /** Symbol + amount, e.g. "CA$4.99" — what the card is charged, as written. */
   priceDisplay: string;
   /** `"BEST VALUE"` on the yearly option, otherwise null. */
   badge: string | null;
   /** Average monthly cost, only meaningful for the yearly option. */
   monthlyEquivalentCents: number | null;
-  /** Derived savings comparisons (empty for the weekly option). */
   savings: ProBillingSaving[];
 };
 
-/** The single membership key all three billing options sell. */
+/** The single membership key every option sells. */
 export const PRO_MEMBERSHIP_KEY = "grynd-pro";
 
 /**
- * Build the three display options from a set of amounts, all expressed in ONE
- * currency. Callers pass the server-resolved (Stripe-bound) amounts when they
- * have them; anything missing falls back to the approved catalog amount (which
- * is a BASE-currency amount, so callers only pass a non-base currency when
- * every amount they pass came from that currency — see
- * resolveProBillingAmountsForCurrency in lib/stripe/subscriptions.ts).
- * Everything derived — the formatted prices, the yearly monthly-equivalent and
- * every savings figure — is computed here from those amounts.
+ * Build the recurring display options from a set of amounts, all expressed in
+ * ONE currency. Callers pass the server-resolved (Stripe-bound) amounts when
+ * they have them; anything missing falls back to the approved catalog amount.
  */
 export function buildProBillingOptions(
   amounts?: Partial<Record<ProBillingInterval, number>>,
@@ -215,8 +190,6 @@ export function buildProBillingOptions(
     priceFormatted: formatAmount(priceFor(interval)),
     priceDisplay: `${symbol}${formatAmount(priceFor(interval))}`,
     badge: interval === "yearly" ? "BEST VALUE" : null,
-    // Only the yearly option advertises a monthly equivalent (it is the only
-    // one billed less often than monthly).
     monthlyEquivalentCents:
       interval === "yearly" ? monthlyEquivalentCents(yearlyCents) : null,
     savings: savingsFor(interval, amounts),

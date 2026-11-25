@@ -52,11 +52,11 @@ export default function RouteTransition({ children }) {
   const navigating = !firstMount.current;
 
   return (
-    <div className="relative min-h-screen bg-[#030817]">
+    <div className="relative min-h-screen bg-page">
       <div key={pathname} className={navigating ? "route-fade-in min-h-screen" : "min-h-screen"}>
         <div
           aria-hidden="true"
-          className={`route-wipe pointer-events-none fixed inset-0 z-[60] bg-[#030817]${
+          className={`route-wipe pointer-events-none fixed inset-0 z-[60] bg-page${
             navigating ? " route-wipe-flash" : ""
           }`}
         />

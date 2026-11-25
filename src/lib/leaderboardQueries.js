@@ -1,6 +1,9 @@
 import { getNeonSql } from "../db/neon";
 import { getFrameDecorations } from "./cosmetics";
+import { getProClerkIds } from "./proStatus";
+import { toPlayerLevelShape } from "./playerLevel";
 import { OVERALL_MIN_GAMES, PROVISIONAL_GAMES } from "./elo";
+import { normalizeCompetitiveStreakGameKey } from "./competitiveStreakModel";
 
 // Reusable SQL for the Overall Elo badge shown next to a player's name on
 // every board. It is the SAME aggregate the Overall leaderboard ranks by —
@@ -29,6 +32,24 @@ function decorateOverallElo(item) {
   const elo = Number(overall_elo);
   if (!Number.isFinite(elo) || elo <= 0) return rest;
   return { ...rest, overallElo: elo, overallGames: Number(overall_games) || 0 };
+}
+
+/**
+ * Attach the permanent player level/rank to a board row. The level comes from
+ * `users.peak_total_trophies` — the server-maintained high-water mark — so a
+ * bad run never strips a badge off a leaderboard row. A schema without the
+ * column (pre-migration) reads 0, which is the documented Rookie / level 1
+ * state rather than an error.
+ */
+function decoratePlayerLevel(item) {
+  if (!item) return item;
+  const { peak_total_trophies, ...rest } = item;
+  const peak = Number(peak_total_trophies) || 0;
+  return {
+    ...rest,
+    peakTotalTrophies: peak,
+    playerLevel: toPlayerLevelShape(peak),
+  };
 }
 
 let _sql = null;
@@ -436,6 +457,25 @@ async function attachProfileFrames(items) {
   });
 }
 
+/**
+ * Attach the GRYND PRO mark to a page of board rows.
+ *
+ * The membership is decoration, so this is one batched query per page (never
+ * one per row) reading the same subscription source every other perk uses
+ * (src/lib/proStatus.ts). A row for an account with no subscription simply has
+ * `isPro: false`; nothing else about the row changes and no rank moves.
+ */
+async function attachProBadges(items) {
+  const list = Array.isArray(items) ? items : [];
+  if (list.length === 0) return list;
+  const members = await getProClerkIds(list.map((item) => item?.clerk_id));
+  return list.map((item) =>
+    item
+      ? { ...item, isPro: Boolean(item.clerk_id && members.has(String(item.clerk_id))) }
+      : item,
+  );
+}
+
 async function fetchRankedRows({
   fields,
   orderBy,
@@ -449,6 +489,8 @@ async function fetchRankedRows({
   const nameField = userIdentityField(columns, "name", "'Unknown'");
   const iconKeyField = userIdentityField(columns, "selected_icon", "NULL");
   const equippedField = userIdentityField(columns, "equipped_cosmetics", "NULL");
+  // Permanent progression. Reads 0 on a schema that predates migration 0247.
+  const peakTotalField = userIdentityField(columns, "peak_total_trophies", "0");
   const params = clerkId ? [limit, offset, clerkId] : [limit, offset];
   // Drop hand-seeded, impossible records from every board (see the helper).
   const conditions = [whereClause, recordSanityClause(columns)].filter(Boolean);
@@ -467,6 +509,7 @@ async function fetchRankedRows({
           ${nameField} AS name,
           ${iconKeyField} AS icon_key,
           ${equippedField} AS equipped_cosmetics,
+          ${peakTotalField} AS peak_total_trophies,
           o.overall_elo AS overall_elo,
           COALESCE(o.overall_games, 0) AS overall_games,
           json_build_object(
@@ -495,13 +538,13 @@ async function fetchRankedRows({
 
   const row = result?.[0];
 
-  const decorate = (item) => decorateOverallElo(item);
+  const decorate = (item) => decoratePlayerLevel(decorateOverallElo(item));
   const items = Array.isArray(row?.items) ? row.items.map(decorate) : [];
   const me = row?.me ? decorate(row.me) : null;
 
   return {
-    items: await attachProfileFrames(items),
-    me: me ? (await attachProfileFrames([me]))[0] : null,
+    items: await attachProBadges(await attachProfileFrames(items)),
+    me: me ? (await attachProBadges(await attachProfileFrames([me])))[0] : null,
   };
 }
 
@@ -596,6 +639,90 @@ export async function fetchDailyStreakLeaderboard({ type, limit, offset, clerkId
  *   - 'weekly-current': ranks by current week's daily streak (weekly_streak_current); resets every Monday
  *   - 'weekly-best': ranks by all-time best weekly streak (weekly_streak_best); never decreases
  */
+/**
+ * Best ranked win streak for ONE game.
+ *
+ * `user_competitive_streaks` is the authoritative per-game source written by
+ * the settlement transaction. The two formats are never combined: the query
+ * filters exactly one `game_key`, and the caller is normalized to one of the
+ * two supported ladders. A player with no positive best streak does not rank
+ * (a draw/loss-only row has best_streak = 0), so a zero never masquerades as a
+ * competitive achievement.
+ *
+ * Ranking is `best_streak DESC, user_id ASC`: the best streak is the only
+ * ranking metric, and the stable user id supplies the deterministic tie-break.
+ * The shared (game_key, best_streak DESC, user_id) index in migration 0267
+ * serves both the filter and the ordering.
+ */
+export async function fetchCompetitiveStreakLeaderboard({
+  gameKey,
+  limit,
+  offset,
+  clerkId = null,
+}) {
+  const game = normalizeCompetitiveStreakGameKey(gameKey);
+  const columns = await getLeaderboardColumns();
+  const clerkIdField = userIdentityField(columns, "clerk_id", "NULL");
+  const nameField = userIdentityField(columns, "name", "'Unknown'");
+  const iconKeyField = userIdentityField(columns, "selected_icon", "NULL");
+  const equippedField = userIdentityField(columns, "equipped_cosmetics", "NULL");
+  const peakTotalField = userIdentityField(columns, "peak_total_trophies", "0");
+  const params = clerkId
+    ? [game, limit, offset, clerkId]
+    : [game, limit, offset];
+  const meClause =
+    clerkId && hasColumn(columns, "users", "clerk_id")
+      ? "(SELECT row_to_json(ranked) FROM ranked WHERE clerk_id = $4 LIMIT 1) AS me"
+      : "NULL AS me";
+
+  const result = await getSql().query(
+    `
+      WITH ranked AS (
+        SELECT
+          ROW_NUMBER() OVER (ORDER BY s.best_streak DESC, s.user_id ASC)::int AS rank,
+          ${clerkIdField} AS clerk_id,
+          s.user_id,
+          ${nameField} AS name,
+          ${iconKeyField} AS icon_key,
+          ${equippedField} AS equipped_cosmetics,
+          ${peakTotalField} AS peak_total_trophies,
+          s.current_streak::int AS current_streak,
+          s.best_streak::int AS best_streak,
+          COALESCE(r.wins, 0)::int AS wins,
+          COALESCE(r.losses, 0)::int AS losses,
+          COALESCE(r.draws, 0)::int AS draws,
+          json_build_object(
+            'name', ${nameField},
+            'icon_key', ${iconKeyField}
+          ) AS "user"
+        FROM user_competitive_streaks s
+        INNER JOIN users u ON u.id = s.user_id
+        LEFT JOIN player_ratings r
+          ON r.user_id = s.user_id AND r.game_key = s.game_key
+        WHERE s.game_key = $1 AND s.best_streak > 0
+      ),
+      paged AS (
+        SELECT * FROM ranked ORDER BY rank ASC LIMIT $2 OFFSET $3
+      )
+      SELECT
+        COALESCE(json_agg(paged ORDER BY rank ASC), '[]'::json) AS items,
+        ${meClause}
+      FROM paged
+    `,
+    params,
+  );
+
+  const row = result?.[0];
+  const decorate = (item) => decoratePlayerLevel(item);
+  const items = Array.isArray(row?.items) ? row.items.map(decorate) : [];
+  const me = row?.me ? decorate(row.me) : null;
+
+  return {
+    items: await attachProBadges(await attachProfileFrames(items)),
+    me: me ? (await attachProBadges(await attachProfileFrames([me])))[0] : null,
+  };
+}
+
 export async function fetchWeeklyStreakLeaderboard({ type, limit, offset, clerkId }) {
   const columns = await getLeaderboardColumns();
 
@@ -621,4 +748,83 @@ export async function fetchWeeklyStreakLeaderboard({ type, limit, offset, clerkI
     offset,
     clerkId,
   });
+}
+
+// ── Daily Deal best time ────────────────────────────────────────────────────
+// The fastest COMPLETED Daily Deal per player, from the official result rows
+// (`solitaire_daily_results`). Only a verified completion has a row, and
+// `elapsed_ms = 0` means "no time recorded", so it never ranks as an instant
+// win. Lower is better, so the board sorts ascending.
+export async function fetchDailyDealBestTimeLeaderboard({
+  limit,
+  offset,
+  clerkId = null,
+}) {
+  const columns = await getLeaderboardColumns();
+  const clerkIdField = userIdentityField(columns, "clerk_id", "NULL");
+  const nameField = userIdentityField(columns, "name", "'Unknown'");
+  const iconKeyField = userIdentityField(columns, "selected_icon", "NULL");
+  const equippedField = userIdentityField(columns, "equipped_cosmetics", "NULL");
+  const peakTotalField = userIdentityField(columns, "peak_total_trophies", "0");
+  const params = clerkId ? [limit, offset, clerkId] : [limit, offset];
+  const meClause =
+    clerkId && hasColumn(columns, "users", "clerk_id")
+      ? "(SELECT row_to_json(ranked) FROM ranked WHERE clerk_id = $3 LIMIT 1) AS me"
+      : "NULL AS me";
+
+  const result = await getSql().query(
+    `
+      WITH best AS (
+        SELECT d.user_id,
+               MIN(d.elapsed_ms)::int AS best_ms,
+               COUNT(*)::int AS runs
+          FROM solitaire_daily_results d
+         WHERE d.completed = true AND d.elapsed_ms > 0
+         GROUP BY d.user_id
+      ),
+      ranked AS (
+        SELECT
+          ROW_NUMBER() OVER (ORDER BY b.best_ms ASC, u.id ASC)::int AS rank,
+          ${clerkIdField} AS clerk_id,
+          u.id AS user_id,
+          ${nameField} AS name,
+          ${iconKeyField} AS icon_key,
+          ${equippedField} AS equipped_cosmetics,
+          ${peakTotalField} AS peak_total_trophies,
+          b.best_ms, b.runs,
+          json_build_object(
+            'name', ${nameField},
+            'icon_key', ${iconKeyField}
+          ) AS "user"
+        FROM best b
+        INNER JOIN users u ON u.clerk_id = b.user_id
+      ),
+      paged AS (
+        SELECT * FROM ranked ORDER BY rank ASC LIMIT $1 OFFSET $2
+      )
+      SELECT
+        COALESCE(json_agg(paged ORDER BY rank ASC), '[]'::json) AS items,
+        ${meClause}
+      FROM paged
+    `,
+    params,
+  );
+
+  const row = result?.[0];
+  const decorate = (item) => decoratePlayerLevel(item);
+  const items = Array.isArray(row?.items) ? row.items.map(decorate) : [];
+  const me = row?.me ? decorate(row.me) : null;
+
+  return {
+    items: await attachProBadges(await attachProfileFrames(items)),
+    me: me ? (await attachProBadges(await attachProfileFrames([me])))[0] : null,
+  };
+}
+
+/** `m:ss` for a millisecond duration — the Daily Deal board's display unit. */
+export function formatDailyDealTime(ms) {
+  const total = Math.max(0, Math.round(Number(ms) / 1000));
+  const minutes = Math.floor(total / 60);
+  const seconds = total % 60;
+  return `${minutes}:${String(seconds).padStart(2, "0")}`;
 }

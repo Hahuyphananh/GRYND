@@ -1,9 +1,6 @@
 import Link from "next/link";
 import NavigationBar from "../../components/navigation-bar";
 import Footer from "../../components/Footer";
-import InteractiveCasinoBg from "../../components/InteractiveCasinoBg";
-import GameCard from "../../components/games/GameCard";
-import { GAME_CARD_ART } from "../../components/games/gameCardArt";
 import { FaqSidebarList, FaqSidebarRail } from "../../components/faq/FaqSidebar";
 
 /**
@@ -25,7 +22,7 @@ import { FaqSidebarList, FaqSidebarRail } from "../../components/faq/FaqSidebar"
  *
  * The previous copy described a staked token economy — "PvP matches stake
  * tokens", "the winner takes 1.8× their stake", "a 5% platform fee". None of
- * that is true any more: STAKES ARE RETIRED (src/lib/games/stakes.js), a match
+ * that is true any more: STAKES ARE RETIRED, a match
  * costs nothing to enter and moves no tokens, and a ranked result instead moves
  * that game's own Elo rating and trophy ladder. A help page that contradicts
  * the product is worse than no help page, so every answer here is written
@@ -61,9 +58,9 @@ const faqSections = [
         q: "What is GRYND?",
         a: (
           <>
-            GRYND is a collection of competitive, one-versus-one skill games played in the browser.
-            Every match is a real duel against another player, results feed a per-game rating and a
-            trophy ladder, and every game has its own page that explains the rules, the scoring and
+            GRYND is a competitive, one-versus-one Solitaire site played in the browser.
+            Every match is a real duel against another player on the same deal, results feed a
+            Solitaire rating and a trophy ladder, and every mode has its own page that explains
             the strategy before you commit to a match.{" "}
             <Link href="/games" className="text-[#00e5ff] underline hover:text-[#f5ff3b]">
               Browse the full catalogue
@@ -304,8 +301,8 @@ const SIDEBAR_ITEMS = [
 // crawlers, and it works with JavaScript disabled.
 function FaqItem({ q, a }) {
   return (
-    <details className="group rounded-lg border border-[#00e5ff]/15 bg-[#040d24]/60 backdrop-blur-sm transition-all hover:border-[#00e5ff]/30 open:border-[#00e5ff]/40">
-      <summary className="flex cursor-pointer list-none items-center justify-between gap-4 px-6 py-4 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff]">
+    <details className="group rounded-lg border border-[#00e5ff]/15 bg-surface/80 backdrop-blur-xs transition-all hover:border-[#00e5ff]/30 open:border-[#00e5ff]/40">
+      <summary className="flex cursor-pointer list-none items-center justify-between gap-4 px-6 py-4 text-left focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#00e5ff]">
         <h3 className="text-base font-semibold text-[#c9f7ff]">{q}</h3>
         <span
           className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-[#00e5ff]/40 text-[#00e5ff] transition-transform duration-300 group-open:rotate-45"
@@ -321,14 +318,13 @@ function FaqItem({ q, a }) {
 
 export default function FaqPage({ gameCards = [] }) {
   return (
-    <div className="relative min-h-screen overflow-x-clip">
-      <InteractiveCasinoBg variant="subtle" />
+    <div className="relative min-h-screen overflow-x-clip bg-page text-white">
 
       <NavigationBar currentPath="/faq" />
 
       <div className="mx-auto max-w-6xl px-4 py-10 sm:py-14">
         <header className="mb-6">
-          <h1 className="mb-4 text-3xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-[#00e5ff] to-[#f5ff3b] sm:text-4xl">
+          <h1 className="mb-4 text-3xl font-extrabold text-transparent bg-clip-text bg-linear-to-r from-[#00e5ff] to-[#f5ff3b] sm:text-4xl">
             Frequently Asked Questions
           </h1>
           <p className="text-base text-[#9dd8ff] sm:text-lg">
@@ -416,16 +412,20 @@ export default function FaqPage({ gameCards = [] }) {
             <ul className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2 sm:gap-6 lg:grid-cols-4">
               {gameCards.map((card) => (
                 <li key={card.slug} className="h-full">
-                  <GameCard
-                    game={{
-                      href: card.href,
-                      title: card.name,
-                      description: card.shortDescription,
-                      image: GAME_CARD_ART[card.slug],
-                      imageClassName: "group-hover:scale-[1.03]",
-                      leaderboardKey: card.leaderboardKey,
-                    }}
-                  />
+                  <Link
+                    href={card.href}
+                    className="group flex h-full flex-col justify-between rounded-lg border border-white/10 bg-[var(--tint-bg--00172b)] p-5 transition-colors hover:border-[#00e5ff]/50"
+                  >
+                    <div>
+                      <p className="text-base font-bold text-[#f5ff3b]">{card.name}</p>
+                      <p className="mt-2 text-sm leading-relaxed text-[#c9f7ff]/80">
+                        {card.shortDescription}
+                      </p>
+                    </div>
+                    <span className="mt-4 text-xs font-bold uppercase tracking-wider text-[#00e5ff]">
+                      How it works →
+                    </span>
+                  </Link>
                 </li>
               ))}
             </ul>

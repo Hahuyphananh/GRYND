@@ -42,7 +42,7 @@ function NavSkeleton() {
   return (
     <div
       aria-hidden
-      className="flex h-24 items-center justify-between border-b border-[#00e5ff]/40 bg-[#050b1e]/75 px-4 sm:px-6"
+      className="flex h-24 items-center justify-between border-b border-[#00e5ff]/40 bg-page/90 px-4 sm:px-6"
     >
       {/* Render the REAL navbar logo here — the splash covers the page on
           entry (up to ~2.2s), so without it the logo slot was a tiny gray
@@ -84,7 +84,7 @@ function FooterSkeleton() {
 
 function PageShell({ children, maxWidth = "max-w-7xl" }: { children: ReactNode; maxWidth?: string }) {
   return (
-    <div aria-hidden className="min-h-screen pb-12">
+    <div aria-hidden className="min-h-screen bg-page pb-12">
       <NavSkeleton />
       <div className={`mx-auto ${maxWidth} px-3 py-8 sm:px-4 sm:py-10`}>{children}</div>
       <FooterSkeleton />

@@ -43,13 +43,17 @@ import {
   proBenefitIds,
 } from "../src/lib/proBenefits.ts";
 import { PRO_PLAN_FALLBACK_PERKS } from "../src/lib/membershipDisplay.ts";
+import { readProfileSource } from "./helpers/profile-source.mjs";
 
 const read = (path) => fs.readFileSync(path, "utf8");
 
 /** The approved benefits that are enforced today, and WHERE they are enforced. */
 const ENFORCEMENT = {
+  analysis_unlimited: "src/lib/solitaire-duel/analysisAllowance.ts",
+  analytics: "src/app/api/stats/performance/route.ts",
+  daily_archive: "src/app/api/solitaire/daily/archive/route.ts",
+  social_status: "src/lib/proStatus.ts",
   ad_free: "src/lib/adEntitlement.ts",
-  matchmaking: "src/lib/quickQueueWorker.ts",
 };
 
 /** Claims that must never come back to a customer-facing surface. */
@@ -77,10 +81,7 @@ test("only enforced benefits are advertised", () => {
 });
 
 test("the approved-but-unbuilt benefits are catalogued, translated and NOT advertised", () => {
-  assert.deepEqual(
-    [...PLANNED_PRO_BENEFIT_IDS],
-    ["analytics", "leaderboards", "private_rooms"],
-  );
+  assert.deepEqual([...PLANNED_PRO_BENEFIT_IDS], ["leaderboards"]);
 
   for (const id of PLANNED_PRO_BENEFIT_IDS) {
     assert.ok(!ADVERTISED_PRO_BENEFIT_IDS.includes(id), `${id} must not be advertised yet`);
@@ -106,6 +107,27 @@ test("the approved-but-unbuilt benefits are catalogued, translated and NOT adver
       "each set must stay in the catalog's display order",
     );
   }
+});
+
+test("priority matchmaking is not sold while the queues are small", () => {
+  // The queue worker still has its bounded member preference, but selling it
+  // on a growing site signals thin queues. It must not appear in the offer.
+  assert.ok(!PRO_BENEFIT_IDS.includes("matchmaking"));
+  assert.ok(!PRO_BENEFITS.some((benefit) => benefit.id === "matchmaking"));
+  assert.ok(!ADVERTISED_PRO_PERKS.some((perk) => /matchmaking/i.test(perk)));
+
+  const sql = read("src/db/migrations/0261_pro_offer_refresh.sql")
+    .split("\n")
+    .filter((line) => !line.trim().startsWith("--"))
+    .join("\n");
+  assert.ok(!/matchmaking/i.test(sql), "the served perk row must omit it too");
+});
+
+test("the strongest paid benefit leads the offer", () => {
+  // The order is the sales order. Unlimited analysis is the reason to upgrade;
+  // ad removal is table stakes and must not be the first thing a buyer reads.
+  assert.equal(PRO_BENEFIT_IDS[0], "analysis_unlimited");
+  assert.equal(ADVERTISED_PRO_BENEFIT_IDS[0], "analysis_unlimited");
 });
 
 test("proBenefitIds() defaults to the advertised set", () => {
@@ -145,13 +167,16 @@ test("the offered perk row and the served plan row cannot drift", () => {
   // the migration's ARRAY must equal the catalog's advertised perks, item for
   // item and in order. Comments are stripped first: the migration deliberately
   // names the claims it removes.
-  const sql = read("src/db/migrations/0215_pro_benefit_copy.sql")
+  // ALWAYS the LATEST perks migration, not the first one: each change that adds
+  // an advertised benefit ships with its own migration, and the most recent one
+  // is what the plan row holds.
+  const sql = read("src/db/migrations/0261_pro_offer_refresh.sql")
     .split("\n")
     .filter((line) => !line.trim().startsWith("--"))
     .join("\n");
 
   const array = sql.match(/"perks"\s*=\s*ARRAY\[([\s\S]*?)\]/);
-  assert.ok(array, "migration 0215 must set the grynd-pro perks array");
+  assert.ok(array, "the perks migration must set the grynd-pro perks array");
 
   const rowPerks = [...array[1].matchAll(/'([^']*)'/g)].map((match) => match[1]);
   assert.deepEqual(rowPerks, [...ADVERTISED_PRO_PERKS]);
@@ -181,7 +206,7 @@ test("profile customization is free for everyone in every supported language", a
   // No surface may still call customization a membership perk. Comments are
   // stripped first — the code documents WHY the perk wording was removed, and
   // that documentation is the audit trail, not customer copy.
-  const stripped = read("src/app/profil/PageClient.jsx")
+  const stripped = readProfileSource()
     .replace(/\/\*[\s\S]*?\*\//g, "")
     .replace(/^\s*\/\/.*$/gm, "");
 
@@ -232,8 +257,6 @@ test("no read path hides the custom colour from a non-member", () => {
   assert.match(chat, /chatColor: glowColor \|\| \(msg\.chatColor \|\| null\)/);
 
   for (const path of [
-    "src/app/api/dice-flush/state/route.js",
-    "src/app/api/precision/get-match/route.ts",
     "src/app/api/get-user-tokens/route.ts",
   ]) {
     const source = read(path);
@@ -246,7 +269,5 @@ test("no read path hides the custom colour from a non-member", () => {
   }
 
   // The colour is still overridable by an equipped glow, everywhere.
-  assert.match(read("src/app/api/dice-flush/state/route.js"), /row\.glowColor \|\| row\.chatColor/);
-  assert.match(read("src/app/api/precision/get-match/route.ts"), /row\.glowColor \|\| row\.chatColor/);
   assert.match(read("src/app/api/get-user-tokens/route.ts"), /nameColor: user\.glowColor \|\| user\.chatColor/);
 });

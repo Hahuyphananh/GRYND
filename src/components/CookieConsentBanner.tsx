@@ -106,21 +106,21 @@ export default function CookieConsentBanner({
         <div className="flex flex-col items-center gap-2 sm:flex-row sm:gap-3">
           <Link
             href="/privacy-policy"
-            className="rounded-lg px-4 py-2 text-sm font-semibold text-[#00e5ff] underline underline-offset-2 hover:text-[#d8fbff] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff]"
+            className="rounded-lg px-4 py-2 text-sm font-semibold text-[#00e5ff] underline underline-offset-2 hover:text-[#d8fbff] focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#00e5ff]"
           >
             {t("cookieBanner.privacyLink")}
           </Link>
           <button
             type="button"
             onClick={() => choose("declined")}
-            className="rounded-lg border border-[#00e5ff]/40 bg-transparent px-4 py-2 text-sm font-semibold text-[#d8fbff] transition-all hover:border-[#00e5ff]/70 hover:bg-[#00e5ff]/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff]"
+            className="rounded-lg border border-[#00e5ff]/40 bg-transparent px-4 py-2 text-sm font-semibold text-[#d8fbff] transition-all hover:border-[#00e5ff]/70 hover:bg-[#00e5ff]/10 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#00e5ff]"
           >
             {t("cookieBanner.decline")}
           </button>
           <button
             type="button"
             onClick={() => choose("accepted")}
-            className="rounded-lg border border-[#f5ff3b]/50 bg-gradient-to-r from-[#ffd700] via-[#f5ff3b] to-[#ffb800] px-5 py-2 text-sm font-bold text-[#1f1700] shadow-[0_0_18px_rgba(245,255,59,0.4)] transition-all hover:shadow-[0_0_26px_rgba(245,255,59,0.65)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#f5ff3b]"
+            className="rounded-lg border border-[#f5ff3b]/50 bg-linear-to-r from-[#ffd700] via-[#f5ff3b] to-[#ffb800] px-5 py-2 text-sm font-bold text-[#1f1700] shadow-[0_0_18px_rgba(245,255,59,0.4)] transition-all hover:shadow-[0_0_26px_rgba(245,255,59,0.65)] focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#f5ff3b]"
           >
             {t("cookieBanner.accept")}
           </button>

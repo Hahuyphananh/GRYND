@@ -71,7 +71,7 @@ export default function ReportEntryButton({
         onClick={handleOpen}
         title={`Report this ${contextLabel.toLowerCase()}`}
         aria-label={`Report ${reportedPlayerName} from ${contextLabel}`}
-        className={`inline-flex items-center gap-1 rounded-md border border-white/10 bg-white/5 px-2 py-1 text-[11px] font-semibold text-slate-300 transition-colors hover:border-red-500/40 hover:bg-red-500/10 hover:text-red-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400/60 ${className}`}
+        className={`inline-flex items-center gap-1 rounded-md border border-white/10 bg-white/5 px-2 py-1 text-[11px] font-semibold text-slate-300 transition-colors hover:border-red-500/40 hover:bg-red-500/10 hover:text-red-300 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-red-400/60 ${className}`}
       >
         <IconFlag size={13} aria-hidden />
         {showLabel && <span>Report</span>}

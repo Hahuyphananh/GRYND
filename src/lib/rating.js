@@ -52,15 +52,17 @@ import crypto from "node:crypto";
 import { sql } from "drizzle-orm";
 import { db } from "../db";
 import { isGuestPvpMatch } from "./pvp/guestMatch";
-import { recordSettledMatch } from "./quests/settle";
+import { toPlayerLevelShape } from "./playerLevel";
 import {
   STARTING_RATING,
   OVERALL_MIN_GAMES,
   PROVISIONAL_GAMES,
+  clampRating,
   computeMatchRatings,
   isValidOutcome,
   overallEloFromRatings,
   provisionalProgress,
+  ratingDelta,
 } from "./elo";
 
 // ── Game registry (the full rated-game space) ──────────────────────────────
@@ -91,184 +93,20 @@ import {
 //                           replayed — see src/app/api/hex-duel/multiplayer/action).
 //   * every solo/AI mode  — not competitive, and no seat is an account.
 export const RATED_GAMES = Object.freeze([
-  "chess",
-  "four-in-a-row",
-  "dots-and-boxes",
-  "pool",
-  "memory-grid",
-  "precision",
-  "mines-pvp",
-  "keno-pvp",
-  "lane-rush-duel",
-  "dice-flush",
-  "rps-pvp",
-  "odds-pvp",
-  "uno",
-  "tower-arena",
-  "hex-duel",
-  // Mini Golf is fully server-authoritative (the winner is derived from the
-  // deterministic shot simulation in src/lib/mini-golf/rules.ts), so unlike
-  // hex-duel it is ratable from day one.
-  "mini-golf",
-  // Speed Typing is a 1v1 race over one shared passage: both players type the
-  // exact same server-selected text and the first to complete it correctly
-  // wins. No randomness during play, no wager, so the outcome is fully
-  // server-derivable — the same property that makes mini-golf ratable.
-  // Registering the key HERE is what makes the game ratable and trophied:
-  // src/lib/trophies.js reuses this list as TROPHY_GAMES, so there is no
-  // second registry to keep in sync.
-  "speed-typing",
-  // Tic-Tac-Toe Duel is fully server-authoritative: the board is a pure
-  // function of the accepted move order (src/lib/tic-tac-toe/rules.ts), there
-  // is no randomness at all, and neither player can influence the outcome
-  // except by choosing a cell — so the result is server-derivable and the game
-  // is ratable.
-  //
-  // NOTE: it is a solved game, so draws are common rather than an edge case.
-  // A draw still settles through `applyRatingResult` with result "draw".
-  // Registering the key HERE is what makes the game ratable and trophied:
-  // src/lib/trophies.js reuses this list as TROPHY_GAMES, and
-  // `normalizeRatingGameKey` silently falls back to RATED_GAMES[0] for an
-  // unknown key — so omitting this entry would rate Tic-Tac-Toe matches under
-  // chess rather than erroring.
-  "tic-tac-toe",
-  // Solitaire Duel is fully server-authoritative too: ONE deterministic
-  // Klondike deal per match, one board per seat, and an outcome derived from
-  // the server's own boards — the first seat to solve the whole puzzle wins
-  // immediately, and the greater progress at the deadline wins otherwise (an
-  // exact tie is a draw). Nothing is drawn during play and there is no wager,
-  // so the result is server-derivable and the game is ratable. Registering the
-  // key HERE is what makes the store's `applyRatingResult("solitaire-duel")`
-  // and `applyTrophyResult("solitaire-duel")` calls take effect — before this
-  // entry the shared writers refused the key as unrated rather than mis-rating
-  // the match under another game's ladder.
+  // Solitaire Duel: a deterministic Klondike deal per match, one board per
+  // seat, and an outcome derived from the server's own boards.
   "solitaire-duel",
-  // Sudoku Duel is fully server-authoritative on the same terms: ONE
-  // deterministic 9x9 puzzle per match, one board per seat, and an outcome the
-  // store derives from its OWN boards — a seat that fills its board correctly
-  // wins the moment `judgeAction` writes the final cell (compared by ADJUSTED
-  // completion instant, i.e. completion + the per-mistake second), and at the
-  // deadline the greater verified cell count wins, then fewest mistakes, then
-  // the earliest achievement of that progress, with an exact tie a draw.
-  // Nothing is drawn during play and there is no wager, so the result is
-  // server-derivable and the game is ratable. Registering the key HERE is what
-  // makes the store's `applyRatingResult("sudoku-duel")` and
-  // `applyTrophyResult("sudoku-duel")` calls take effect — before this entry
-  // the shared writers refused the key as unrated rather than mis-rating the
-  // match under another game's ladder (trophies reuse this list as
-  // TROPHY_GAMES, so there is no second registry to keep in sync).
-  "sudoku-duel",
-  // Barricade is a 9x9 Quoridor-style race played strictly turn by turn: both
-  // pawns, every barricade and both reserves are PUBLIC, nothing is drawn
-  // during play, and the winner is derived by the shared rules engine
-  // (src/lib/barricade/rules.ts) from the server’s own frozen position — the
-  // only player-authored input is an action ADDRESS plus an expectedVersion.
-  // So the result is fully server-derivable and the game is ratable on exactly
-  // the same terms as Tic-Tac-Toe.
-  //
-  // The key is the lobby’s own canonical id (`leaderboardKey: "barricade"`, the
-  // same id src/lib/gameTags.js and the presence map use), so the rating board,
-  // the lobby shortcut and the trophy board all name the game identically —
-  // unlike the older games whose rating key predates their lobby id. It is also
-  // the key src/lib/barricade/serverStore.ts settles with; registering it HERE
-  // is what makes that settlement take effect (trophies reuse this list as
-  // TROPHY_GAMES, so there is no second registry to keep in sync).
-  //
-  // Only completed online 1v1 matches reach the writer: the store settles
-  // inside the row-locked transaction that claimed the match, its `settleMatch`
-  // bails out when there is no second seat, and free practice is a client-side
-  // game with no server match row at all — so AI games can never move Elo or
-  // trophies.
-  "barricade",
-  // Dominoes is server-authoritative end to end: the deal, both hands, the pile,
-  // the chain and every accepted action live in the server's own row
-  // (src/lib/dominoes), the shared rules engine derives the result from that
-  // position (`applyAction` / `applyTimeout`), and the ONLY player-authored
-  // input is an action ADDRESS plus an expectedVersion. So the result is fully
-  // server-derivable and the game is ratable on the same terms as Barricade and
-  // Tic-Tac-Toe — including a blocked round on equal pips, which is a real
-  // DRAW (`result: "draw"`) exactly as in Tic-Tac-Toe.
-  //
-  // The key is the game's ONE id: its lobby `leaderboardKey`, its public page
-  // slug, its presence label, its Quick Queue key and the key
-  // src/lib/dominoes/serverStore.ts settles with are all `dominoes`, so the
-  // ladder, the trophy board and the lobby all name it identically. Registering
-  // it HERE is what makes that settlement take effect (trophies reuse this list
-  // as TROPHY_GAMES, so there is no second registry to keep in sync).
-  //
-  // Only completed online human-vs-human matches reach the writer: the store
-  // settles inside the row-locked transaction that claimed the match, its
-  // `settleMatch` bails out when there is no second seat, a cancelled lobby
-  // never calls it at all, and Dominoes has no practice/bot mode — so an
-  // abandoned, cancelled or non-existent match can never move Elo or trophies.
-  "dominoes",
-  // Hillstrike is server-authoritative end to end: the battlefield seed, the
-  // generated layout, the projectile, every collision and every life live in the
-  // server's own row (src/lib/hillstrike), the shared engine resolves a shot
-  // (`applyShot`) from nothing but `{ angleDeg, power }`, and the result is the
-  // engine's own `winner` — the client never simulates an outcome it is believed
-  // on. So the result is fully server-derivable and the game is ratable on the
-  // same terms as Barricade and Tic-Tac-Toe.
-  //
-  // The key is the game's ONE id: the lobby, the API routes, the realtime room
-  // and the key src/lib/hillstrike/serverStore.ts settles with are all
-  // `hillstrike`. Registering it HERE is what makes that settlement take effect
-  // (trophies reuse this list as TROPHY_GAMES, so there is no second registry to
-  // keep in sync).
-  //
-  // Only completed online human-vs-human matches reach the writer: the store
-  // settles inside the row-locked transaction that claimed the match, its
-  // `settleMatch` bails out when there is no second seat, a cancelled lobby never
-  // calls it, and free practice against the bot (src/lib/hillstrike/ai.ts) is a
-  // browser-only game with no match row — so AI games can never move Elo or
-  // trophies.
-  "hillstrike",
-  // Battleship is server-authoritative end to end: both fleets are validated
-  // from the stored placements, the attack log is the server's own rows, and the
-  // round outcome, the winner and the draw are derived by the shared engine
-  // (`resolveRound`) inside a row-locked transaction — the only player-authored
-  // value is a coordinate. So the result is fully server-derivable and the game
-  // is ratable on the same terms as Dominoes and Hillstrike.
-  //
-  // The key is the game's ONE id: the lobby `leaderboardKey`, the public page
-  // slug, the presence id, the Quick Queue key and the key
-  // src/lib/battleship/serverStore.ts settles with are all `battleship`.
-  // Registering it HERE is what makes that settlement take effect (trophies
-  // reuse this list as TROPHY_GAMES, so there is no second registry).
-  //
-  // Only completed online human-vs-human matches reach the writer: settlement
-  // runs inside the transaction that finalises the match, and the helper bails
-  // out for `is_ai` rows, a lobby with no second seat, and a cancelled match —
-  // so practice against the bot can never move Elo or trophies.
-  "battleship",
+  // Puzzle Ranked: a SECOND Solitaire mode with its own competitive record.
+  // It races a frozen five-puzzle manifest and settles from server-verified
+  // solved counts. The distinct key is what guarantees its Elo and trophy rows
+  // can never be read as (or move) Solitaire Duel's.
+  "solitaire-puzzle",
 ]);
 
 /** Display labels for the rating boards (mirrors the lobby names). */
 export const RATING_GAME_LABELS = Object.freeze({
-  chess: "Chess",
-  "four-in-a-row": "Four In A Row",
-  "dots-and-boxes": "Dots & Boxes",
-  pool: "Pool Masters",
-  "memory-grid": "Memory Grid",
-  precision: "Precision",
-  "mines-pvp": "Mines Duel",
-  "keno-pvp": "Keno Duel",
-  "lane-rush-duel": "Lane Rush Duel",
-  "dice-flush": "Dice Flush",
-  "rps-pvp": "Rock Paper Scissors",
-  "odds-pvp": "Odds",
-  uno: "Neon Flush",
-  "tower-arena": "Tower Arena",
-  "hex-duel": "Hex Duel",
-  "mini-golf": "Mini Golf",
-  "speed-typing": "Speed Typing",
-  "tic-tac-toe": "Ultimate Tic-Tac-Toe",
   "solitaire-duel": "Solitaire Duel",
-  "sudoku-duel": "Sudoku Duel",
-  "barricade": "Barrier Blitz",
-  dominoes: "Dominoes",
-  hillstrike: "Hillstrike",
-  battleship: "Battleship",
+  "solitaire-puzzle": "Puzzle Ranked",
 });
 
 /** True when a game key is eligible for Elo. */
@@ -506,6 +344,9 @@ export async function fetchRatingLeaderboard({
         r.draws,
         r.last_delta AS last_delta,
         r.last_rated_at AS last_rated_at,
+        -- Permanent progression high-water mark, so a rating board row always
+        -- carries the player's earned level/rank badge.
+        u.peak_total_trophies AS peak_total_trophies,
         -- Non-token W/L line for the board row (the leaderboard UI renders
         -- the same record line as every other board).
         CASE
@@ -550,11 +391,13 @@ export async function fetchRatingLeaderboard({
   // raw Overall badge columns are normalized to camelCase and dropped when
   // absent, so a client never sees the internal SQL aliases.
   const shape = (item) => {
-    const { overall_elo, overall_games, ...rest } = item;
+    const { overall_elo, overall_games, peak_total_trophies, ...rest } = item;
     const elo = Number(overall_elo);
     return {
       ...rest,
       ...toRatingShape(gameKey, item),
+      peakTotalTrophies: Number(peak_total_trophies) || 0,
+      playerLevel: toPlayerLevelShape(peak_total_trophies),
       ...(Number.isFinite(elo) && elo > 0
         ? { overallElo: elo, overallGames: Number(overall_games) || 0 }
         : {}),
@@ -1012,48 +855,6 @@ export async function applyRatingResult({
       ON CONFLICT (user_id, game_key, match_id) DO NOTHING
     `);
 
-    // ── 7c. Quest progress ───────────────────────────────────────────
-    // This writer is the single settlement doorway for every two-seat game, and
-    // it only runs when BOTH competitors resolved to real `users` rows, so a
-    // quest seat built here always has a human opponent. It records the match
-    // for each side (win/loss, or draw for both) inside the SAME transaction
-    // that rated it: the quest journal's per-participant unique key makes a
-    // replay a no-op, and a rollback of this transaction rolls the progress
-    // back with it. Quest state is progression only — it never pays coins,
-    // moves Elo, trophies, wagers or leaderboard counters.
-    await recordSettledMatch({
-      tx: txc,
-      gameKey: key,
-      matchId: eventId,
-      seats: [
-        {
-          userId: Number(winnerRow.id),
-          opponentUserId: Number(loserRow.id),
-          outcome: isDraw ? "draw" : "win",
-        },
-        {
-          userId: Number(loserRow.id),
-          opponentUserId: Number(winnerRow.id),
-          outcome: isDraw ? "draw" : "loss",
-        },
-      ],
-    });
-
-    // ── 7b. Mark the winner's daily-reward gate ──────────────────────
-    // The daily login reward requires a WIN today, so it reads this marker
-    // instead of the game-start marker (which a player could satisfy by
-    // opening a practice match and resigning). Only a rated online match
-    // reaches this writer, and the outcome is derived server-side, so this is
-    // the authoritative "won today" signal. A draw is not a win and leaves the
-    // marker untouched.
-    if (!isDraw) {
-      await txc.execute(sql`
-        UPDATE users
-           SET last_won_game_date = ${new Date().toISOString().slice(0, 10)}
-         WHERE id = ${winnerRow.id}
-      `);
-    }
-
     // Post-match provisional status for the result screens, derived from the
     // same per-game counter the next settlement will read.
     const winnerAfter = provisionalProgress(
@@ -1087,6 +888,196 @@ export async function applyRatingResult({
         k: computed.loser.k,
         expected: computed.loser.expected,
         ...loserAfter,
+      },
+    };
+  };
+
+  return tx ? run(tx) : db.transaction(run);
+}
+
+/**
+ * Apply ONE authoritative ranked result to ONE player's game-specific Elo.
+ *
+ * This is the asynchronous "ghost" duel writer, and it exists because the
+ * opponent in such a match is a RECORDING: another real player's run, replayed
+ * on the same deal. That person is not in the match and must never gain or lose
+ * a rating from it — so the two-seat writer above (which updates BOTH rows) is
+ * deliberately not used, and nothing here can move a second player.
+ *
+ * It reuses the platform's own maths and journals exactly as the two-seat writer
+ * does: `ratingDelta` from src/lib/elo.js, the same (user, game, match) idempotency
+ * journal, the same identity ledger, and the same daily-win marker. The
+ * opponent's strength comes from the recording's own ladder snapshot, supplied
+ * by the caller from the match row — never from the client.
+ *
+ * `result` is from the HUMAN's point of view: "win" | "loss" | "draw".
+ * The journal's `opponent_id` is NULL, because there is no app user on the other
+ * side of this match.
+ *
+ * @param {object} params
+ * @param {string} params.gameKey
+ * @param {string} params.matchId
+ * @param {string} params.clerkId          the human whose ladder moves
+ * @param {number} params.opponentRating   the recording's recorded rating
+ * @param {"win"|"loss"|"draw"} [params.result] "win" (default)
+ * @param {any} [params.tx]
+ * @param {number} [params.k]              K override (tests / tuning only)
+ */
+export async function applyGhostRatingResult({
+  tx,
+  gameKey,
+  matchId,
+  clerkId,
+  opponentRating,
+  result = "win",
+  k,
+}) {
+  const key = String(gameKey ?? "");
+  const eventId = String(matchId ?? "");
+  const outcome =
+    result === "draw" ? "draw" : result === "loss" ? "loss" : "win";
+
+  if (!isRatedGame(key)) return { applied: false, reason: "game-not-rated" };
+  if (!GAME_KEY_RE.test(key)) return { applied: false, reason: "invalid-game-key" };
+  if (!eventId || eventId.length > MAX_MATCH_ID_LENGTH) {
+    return { applied: false, reason: "invalid-match-id" };
+  }
+  if (!clerkId) return { applied: false, reason: "missing-player" };
+  if (!isValidOutcome(outcome)) return { applied: false, reason: "invalid-outcome" };
+
+  // A Guest seat is unrated for BOTH participants, so it is unrated here too.
+  if (isGuestPvpMatch([clerkId])) {
+    return { applied: false, reason: "guest-unrated" };
+  }
+
+  const rivalRating = Number.isFinite(Number(opponentRating))
+    ? Number(opponentRating)
+    : STARTING_RATING;
+
+  const run = async (txc) => {
+    const userRows = await txc.execute(sql`
+      SELECT id, clerk_id AS "clerkId", email
+        FROM users
+       WHERE clerk_id = ${String(clerkId)}
+       LIMIT 1
+    `);
+    const user = (userRows.rows ?? userRows)[0];
+    if (!user) return { applied: false, reason: "user-not-found" };
+    const identityHash = identityHashForEmail(user.email);
+
+    // Same lock-or-create shape as the two-seat writer: on creation the values
+    // are seeded from the identity ledger when this email has rated this game
+    // before, so a re-registered account carries its rating over.
+    const locked = await txc.execute(sql`
+      INSERT INTO player_ratings
+        (user_id, game_key, rating, peak_rating, games_rated,
+         wins, losses, draws, last_delta, last_rated_at)
+      SELECT
+        ${user.id}, ${key},
+        COALESCE(i.rating, ${STARTING_RATING}),
+        COALESCE(i.peak_rating, ${STARTING_RATING}),
+        COALESCE(i.games_rated, 0),
+        COALESCE(i.wins, 0),
+        COALESCE(i.losses, 0),
+        COALESCE(i.draws, 0),
+        COALESCE(i.last_delta, 0),
+        i.last_rated_at
+        FROM (SELECT 1) AS anchor
+        LEFT JOIN rating_identities i
+          ON i.identity_hash = ${identityHash}
+         AND i.game_key = ${key}
+      ON CONFLICT (user_id, game_key)
+      DO UPDATE SET updated_at = player_ratings.updated_at
+      RETURNING user_id, rating, games_rated, wins, losses, draws
+    `);
+    const row = (locked.rows ?? locked)[0];
+    if (!row) return { applied: false, reason: "rating-lock-failed" };
+
+    const dupe = await txc.execute(sql`
+      SELECT 1 AS hit
+        FROM rating_events
+       WHERE game_key = ${key}
+         AND match_id = ${eventId}
+         AND user_id = ${user.id}
+       LIMIT 1
+    `);
+    if ((dupe.rows ?? dupe).length > 0) {
+      return { applied: false, reason: "duplicate" };
+    }
+
+    const before = clampRating(Number(row.rating));
+    const computed = ratingDelta({
+      rating: before,
+      opponentRating: rivalRating,
+      outcome,
+      gamesRated: Number(row.games_rated ?? 0),
+      k,
+    });
+    const after = clampRating(before + computed.delta);
+    const isDraw = outcome === "draw";
+
+    await txc.execute(sql`
+      UPDATE player_ratings
+         SET rating = ${after},
+             peak_rating = GREATEST(peak_rating, ${after}),
+             games_rated = games_rated + 1,
+             wins = wins + ${outcome === "win" ? 1 : 0},
+             losses = losses + ${outcome === "loss" ? 1 : 0},
+             draws = draws + ${isDraw ? 1 : 0},
+             last_delta = ${computed.delta},
+             last_rated_at = NOW(),
+             updated_at = NOW()
+       WHERE user_id = ${user.id} AND game_key = ${key}
+    `);
+
+    if (identityHash) {
+      await txc.execute(sql`
+        INSERT INTO rating_identities
+          (identity_hash, game_key, rating, peak_rating, games_rated,
+           wins, losses, draws, last_delta, last_rated_at, updated_at)
+        SELECT
+          ${identityHash}, r.game_key, r.rating, r.peak_rating, r.games_rated,
+          r.wins, r.losses, r.draws, r.last_delta, r.last_rated_at, NOW()
+          FROM player_ratings r
+         WHERE r.user_id = ${user.id}
+           AND r.game_key = ${key}
+        ON CONFLICT (identity_hash, game_key) DO UPDATE SET
+          rating = EXCLUDED.rating,
+          peak_rating = GREATEST(rating_identities.peak_rating, EXCLUDED.peak_rating),
+          games_rated = EXCLUDED.games_rated,
+          wins = EXCLUDED.wins,
+          losses = EXCLUDED.losses,
+          draws = EXCLUDED.draws,
+          last_delta = EXCLUDED.last_delta,
+          last_rated_at = EXCLUDED.last_rated_at,
+          updated_at = NOW()
+      `);
+    }
+
+    // `opponent_id` is NULL: the recording has no app user in this match.
+    await txc.execute(sql`
+      INSERT INTO rating_events
+        (user_id, game_key, match_id, opponent_id, outcome,
+         rating_before, rating_after, delta, k_factor)
+      VALUES
+        (${user.id}, ${key}, ${eventId}, NULL, ${outcome},
+         ${before}, ${after}, ${computed.delta}, ${computed.k})
+      ON CONFLICT (user_id, game_key, match_id) DO NOTHING
+    `);
+
+    return {
+      applied: true,
+      result: outcome,
+      gameKey: key,
+      matchId: eventId,
+      player: {
+        userId: user.id,
+        ratingBefore: before,
+        ratingAfter: after,
+        delta: computed.delta,
+        k: computed.k,
+        expected: computed.expected,
+        ...provisionalProgress(Number(row.games_rated ?? 0) + 1, after),
       },
     };
   };

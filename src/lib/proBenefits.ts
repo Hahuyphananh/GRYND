@@ -23,10 +23,9 @@
 //                   module is here to prevent. `advertisedProBenefits()` is the
 //                   only list a marketing surface may render.
 //
-// The three `planned` entries (statistics/analytics graphs, extended
-// leaderboards with progression graphs, private custom rooms) are scheduled to
-// be implemented in follow-up work; when each lands, move it to `available` in
-// the same change that adds its server-authoritative check and its tests.
+// The remaining `planned` entry (extended leaderboards with progression graphs)
+// is scheduled for follow-up work; when it lands, move it to `available` in the
+// same change that adds its server-authoritative check and its tests.
 //
 // ── RETRACTED CLAIMS ──────────────────────────────────────────────────────
 //
@@ -40,11 +39,12 @@
 
 /** The approved benefit ids, in DISPLAY order (the order the offer shows them). */
 export const PRO_BENEFIT_IDS = [
-  "ad_free",
+  "analysis_unlimited",
   "analytics",
+  "daily_archive",
+  "social_status",
+  "ad_free",
   "leaderboards",
-  "private_rooms",
-  "matchmaking",
 ] as const;
 
 export type ProBenefitId = (typeof PRO_BENEFIT_IDS)[number];
@@ -64,19 +64,49 @@ export type ProBenefit = {
  *                  verified active member (src/lib/adEntitlement.ts), enforced
  *                  in the server-rendered response, not by hiding a div.
  *
- * `matchmaking`  — the queue worker prefers an active member ONLY as a
- *                  tie-break between already skill-compatible candidates; it
- *                  never widens the skill window and never changes a result
- *                  (src/lib/quickQueueWorker.ts + getActiveMemberIds).
+ * `social_status` — the membership is VISIBLE. An active member wears a PRO
+ *                  badge (FOUNDER inside the founding window) on every
+ *                  leaderboard row and in chat, resolved server-side from the
+ *                  subscription row (src/lib/proStatus.ts), and may equip the
+ *                  PRO-only profile frames and table themes (the catalog's
+ *                  `pro_only` entries, refused for a non-member in
+ *                  src/lib/cosmetics.ts / the board-theme route). It grants no
+ *                  competitive advantage and no other cosmetic is gated.
  *
- * The remaining three are approved but NOT enforced yet — see the module note.
+ * `analysis_unlimited` — a free account gets FREE_ANALYSES_PER_DAY (3) fresh
+ *                  Game Review analyses per UTC day, per identity; an active
+ *                  member is never counted (src/lib/solitaire-duel/
+ *                  analysisAllowance.ts, consumed by both review routes).
+ *
+ * `analytics`    — the performance dashboard (win rates, Elo and trophy
+ *                  progression, rank history) is served only to an active
+ *                  member: /api/stats/performance answers a non-member with
+ *                  `{ pro: false, locked: true }` and no figures.
+ *
+ * `daily_archive` — the list of past Daily deals is served only to an active
+ *                  member: /api/solitaire/daily/archive resolves the tier from
+ *                  the subscription row and answers a free caller with
+ *                  `{ locked: true, days: [] }` and no deal dates. Today's
+ *                  challenge stays free.
+ *
+ * Private custom rooms remain enforced (POST /api/rooms is still PRO-only) but
+ * are not part of the current value box, so they are not advertised here.
+ *
+ * Priority matchmaking is deliberately NOT sold. The queue worker still runs
+ * its bounded member preference (src/lib/quickQueueWorker.ts), but advertising
+ * it on a growing site tells a player the queues are thin enough that a
+ * tie-break is worth paying for. It stays out of the offer until there are
+ * enough concurrent players that the preference is invisible.
  */
 export const PRO_BENEFITS: readonly ProBenefit[] = [
+  // Strongest paid benefit first: unlimited analysis is the reason a player
+  // upgrades, not the ad removal every site already offers.
+  { id: "analysis_unlimited", availability: "available" },
+  { id: "analytics", availability: "available" },
+  { id: "daily_archive", availability: "available" },
+  { id: "social_status", availability: "available" },
   { id: "ad_free", availability: "available" },
-  { id: "analytics", availability: "planned" },
   { id: "leaderboards", availability: "planned" },
-  { id: "private_rooms", availability: "planned" },
-  { id: "matchmaking", availability: "available" },
 ];
 
 /**
@@ -107,13 +137,18 @@ export const PLANNED_PRO_BENEFIT_IDS: readonly ProBenefitId[] = PRO_BENEFITS.fil
  * rendering a raw string (the Stripe product copy, the DB plan row) uses these.
  */
 export const PRO_BENEFIT_LABELS: Record<ProBenefitId, string> = {
-  ad_free: "Ad-free browsing and gaming",
-  analytics: "Advanced statistics and performance analytics, including graphs",
+  analysis_unlimited:
+    "Unlimited Match Replays & Analysis — Scrub through every move, spot time-loss spikes, and review optimal lines after every game.",
+  analytics:
+    "Deep Performance Graphs — Track Elo trends, win rates by game mode, and speed benchmarks over time.",
+  daily_archive:
+    "Daily Challenge Archive — Replay any past Daily Deal or seed you missed and compare against the global board.",
+  social_status:
+    "PRO Leaderboard Badge & Founder Flair — Stand out in lobbies and rankings with an exclusive PRO badge and board theme.",
+  ad_free:
+    "100% Ad-Free Experience — Zero banners or interruptions while you play.",
   leaderboards:
     "Extended leaderboard access, with graphs of your ranking over time",
-  private_rooms: "Create private custom rooms",
-  matchmaking:
-    "Priority matchmaking — a fair queue tie-break, never a skill advantage",
 };
 
 /**

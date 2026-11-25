@@ -7,19 +7,16 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { isPortalPlayPath } from "../lib/portal/framing";
 import ThemeToggle from "./ThemeToggle";
+import SoundToggle from "./SoundToggle";
 import { useTranslation } from "../hooks/useTranslation";
 import { fadeUp, hoverScale, withReducedMotion, stagger } from "../lib/animations";
 import { UIPro01NavShell, UIPro02NavItem } from "./uipro";
 import useInstallPWA from "../hooks/useInstallPWA";
 import AdminBadge from "./AdminBadge";
-import QuestNavBadge from "./QuestNavBadge";
-import { IconCoins, IconDeviceMobile, IconFlame, IconGift, IconMenu, IconSettings, IconStar, IconTrophy, IconX } from "@tabler/icons-react";
+import { IconDeviceMobile, IconFlame, IconMenu, IconTrophy, IconX } from "@tabler/icons-react";
 import FrameAvatar from "./FrameAvatar";
 import { cosmeticEffectClass } from "../lib/profileCosmetics";
-import useDailyLoss from "../lib/useDailyLoss";
-import { DAILY_LOSS_CHIP_THRESHOLD } from "../lib/games/economy";
 import { triggerHaptic } from "../lib/native/haptics";
-import { COIN_BALANCE_EVENT } from "../hooks/useCoinBalance";
 import { fetchDeduped } from "../lib/dedupeFetch";
 
 // M1: sessionStorage TTL for the nav's equipped-title meta. Titles are
@@ -32,37 +29,57 @@ const NAV_META_TTL_MS = 5 * 60 * 1000;
 
 
 
+// Solitaire-first navigation: the game, its rankings, and the account.
 const NAV_TRANSLATION_KEYS = {
   "/": "nav.home",
-  "/games": "nav.casino",
+  "/games/solitaire-duel": "nav.casino",
   "/classement": "nav.leaderboard",
   "/contact": "nav.contact",
-  "/faq": "nav.faq",
-  "/rewards": "nav.rewards",
 };
+const NAV_ICONS = {};
 
-// The one primary nav link that carries a glyph, keyed by its path. Rewards is
-// drawn with a gift icon from the project's existing Tabler set so it reads as
-// the rewards surface; every other primary link stays text-only, exactly as
-// before. The map is empty for those paths, so nothing about them changes.
-const NAV_ICONS = { "/rewards": <IconGift size={15} className="shrink-0" /> };
+// The public navigation is the product: play, the ladder, the rules and the
+// membership. Account destinations live in the account menu below.
+const ACCOUNT_ITEMS = [
+  { href: "/profil", label: "Profile" },
+  { href: "/stats", label: "Statistics" },
+  { href: "/profil", label: "Match history" },
+  { href: "/settings", label: "Settings" },
+  { href: "/upgrade-pro", label: "GRYND PRO" },
+];
+
+// Labels for the primary row. The existing translated keys keep their copy;
+// the Solitaire-specific entries name their destination explicitly.
+function navLabel(path, t) {
+  if (path === "/play") return "Play";
+  if (path === "/games/solitaire-duel/play") return "Play";
+  if (path === "/games/solitaire-duel") return "Rules";
+  if (path === "/upgrade-pro") return "GRYND PRO";
+
+
+  if (path === "/learn") return t("nav.learn");
+  return t(NAV_TRANSLATION_KEYS[path]);
+}
+
+/** Play stays active on every mode lobby; other links match exactly. */
+function isPathActive(path, currentPath) {
+  if (!path) return false;
+  if (path === "/play") {
+    return currentPath === "/play" || currentPath.startsWith("/play/");
+  }
+  return currentPath === path;
+}
 
 function NavigationBarInner({ currentPath = "" }) {
   const { isLoaded, isSignedIn, user } = useUser();
   const { t } = useTranslation();
   const shouldReduceMotion = useReducedMotion();
-  // Today's net (responsible-play) chip — rendered on the home page (mobile
-  // menu) only, so it never duplicates the fixed lobby chip (DailyLossGuard).
-  const { loss: dailyLoss, loaded: dailyLossLoaded } = useDailyLoss();
   const [profile, setProfile] = useState(() => {
     // Seed the chip's two numbers from the last known values so a fresh mount
     // (the navbar remounts on every navigation) does NOT replay the change
     // animation when nothing actually moved. Only a real change animates, and
     // a returning player sees their own numbers immediately instead of a dash.
     let totalTrophies = 0;
-    // `null` = "balance not known yet", which is deliberately NOT 0: a coin
-    // total of 0 and "we haven't read the wallet" are different claims.
-    let balance = null;
     try {
       const raw = sessionStorage.getItem("nav-trophies");
       if (raw) {
@@ -70,8 +87,6 @@ function NavigationBarInner({ currentPath = "" }) {
         const trophies = Number(cached?.totalTrophies);
         // Every player starts at 0 trophies, so 0 is a real displayable value.
         totalTrophies = Number.isFinite(trophies) && trophies >= 0 ? trophies : 0;
-        const coins = Number(cached?.balance);
-        balance = Number.isFinite(coins) && coins >= 0 ? coins : null;
       }
     } catch {
       // sessionStorage unavailable (SSR / private mode) — start at 0 / unknown.
@@ -94,12 +109,6 @@ function NavigationBarInner({ currentPath = "" }) {
       // headline competitive number in the navbar (it replaced Overall Elo
       // there). Everyone starts at 0, so 0 is shown rather than a placeholder.
       totalTrophies,
-      // COIN BALANCE — the player's spendable coins, rendered UNDER the trophy
-      // total. It is the same wallet every other surface reads (the lobby
-      // wager pickers via useCoinBalance, /rewards, the energy grant), never a
-      // second currency: /api/get-user-tokens is the one source, and null means
-      // "not read yet" rather than 0.
-      balance,
     };
   });
   // Whether the chip has finished its first paint. The first render must not
@@ -182,21 +191,12 @@ function NavigationBarInner({ currentPath = "" }) {
   useEffect(() => {
     const handler = () => fetchBalance({ includeMeta: false });
     const titleHandler = () => refreshTitleMeta();
-    // A credit the client already knows about — the daily reward claim, for
-    // one — announces itself through this event, so the coin number under the
-    // trophies re-reads instead of showing the pre-claim amount until the next
-    // navigation. Shares the metadata-free read above: the wallet answer is
-    // what changed, and re-fetching the title meta would be waste.
-    const balanceHandler = () => fetchBalance({ includeMeta: false });
-
     window.addEventListener("profileUpdated", handler);
     window.addEventListener("titleUpdated", titleHandler);
-    window.addEventListener(COIN_BALANCE_EVENT, balanceHandler);
     return () => {
       window.removeEventListener("profileUpdated", handler);
       window.removeEventListener("titleUpdated", titleHandler);
-      window.removeEventListener(COIN_BALANCE_EVENT, balanceHandler);
-    };
+      };
   }, []);
 
   // Official Grynd icon only. The avatar comes from the selected icon key in
@@ -259,13 +259,6 @@ function NavigationBarInner({ currentPath = "" }) {
               const n = Number(data.data.totalTrophies);
               return Number.isFinite(n) && n >= 0 ? n : 0;
             })(),
-            // COIN BALANCE, from the same payload (the wallet is what this
-            // endpoint exists to report). An unreadable value stays null — the
-            // chip shows a dash rather than claiming the player has 0 coins.
-            balance: (() => {
-              const n = Number(data.data.balance);
-              return Number.isFinite(n) && n >= 0 ? n : null;
-            })(),
           }));
         // Remember the last known numbers so the next mount starts from them
         // and the chip only animates on a real change (see the state
@@ -276,10 +269,6 @@ function NavigationBarInner({ currentPath = "" }) {
             "nav-trophies",
             JSON.stringify({
               totalTrophies: Number(data.data.totalTrophies) || 0,
-              balance: (() => {
-                const n = Number(data.data.balance);
-                return Number.isFinite(n) && n >= 0 ? n : null;
-              })(),
             }),
           );
         } catch {}
@@ -410,9 +399,6 @@ function NavigationBarInner({ currentPath = "" }) {
     return () => clearInterval(interval);
   }, []);
 
-  const isCasinoPath =
-    currentPath.startsWith("/casino") || currentPath.startsWith("/games");
-
   // The equipped name glow: the same treatment the profile card gives the
   // display name — the catalog hex as the text colour plus its halo.
   // `undefined` (no glow equipped) leaves the stylesheet colour in place.
@@ -440,14 +426,14 @@ function NavigationBarInner({ currentPath = "" }) {
         // content (logo, balance, menu button) would sit under the status bar.
         // The padding moves the content down; the bar's own translucent
         // background still paints behind the system bar. It is 0 on the web.
-        className="safe-top fixed top-0 left-0 right-0 z-40 border-b border-[#00e5ff]/40 bg-[#050b1e]/75 shadow-[0_0_22px_rgba(0,229,255,0.25)]"
+        className="safe-top fixed top-0 left-0 right-0 z-40 border-b border-[color:var(--border-hairline)] bg-[color:var(--bg-surface)] shadow-[var(--shadow-raise)]"
       >
         {/* max-w-[1440px] gives the fully-loaded navbar (logo + 7 links +
             install + avatar + tokens + sign-out ≈1390px) room to breathe on
             wide screens; the old max-w-7xl (1280px) capped it and forced
             the logo/right side to be squeezed. */}
-        <UIPro01NavShell className="mx-auto max-w-[1440px] px-3 sm:px-4">
-          <div className="flex h-16 items-center justify-between gap-2 sm:h-20 md:h-24">
+        <UIPro01NavShell className="mx-auto max-w-[var(--shell-max)] px-3 sm:px-4">
+          <div className="flex h-[var(--nav-height)] items-center justify-between gap-2">
             {/* shrink-0: the navbar flex row must never squeeze the logo —
                 at laptop widths (≈768–1100px) it collapsed to 0px wide and
                 the logo vanished entirely. */}
@@ -471,7 +457,7 @@ function NavigationBarInner({ currentPath = "" }) {
                 alt="GRYND Logo"
                 width={92}
                 height={95}
-                className="h-[52px] w-auto object-contain drop-shadow-[0_0_14px_rgba(245,255,59,0.5)] sm:h-[68px] md:h-[82px]"
+                className="h-9 w-auto object-contain sm:h-11"
               />
             </Link>
 
@@ -486,7 +472,7 @@ function NavigationBarInner({ currentPath = "" }) {
               animate="animate"
               className="hidden items-center space-x-1 md:flex lg:space-x-4"
             >
-              {["/", "/games", "/classement", "/rewards", "/faq"].map((path) => (
+              {["/", "/play", "/learn", "/classement", "/contact", "/games/solitaire-duel", "/upgrade-pro"].map((path) => (
                 <motion.div
                   key={path}
                   initial={itemVariant.initial}
@@ -496,64 +482,16 @@ function NavigationBarInner({ currentPath = "" }) {
                 >
                   <Link
                     href={path}
-                    className={`px-1 py-2 text-sm font-medium rounded lg:px-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#050b1e] ${currentPath === path || (path === "/games" && isCasinoPath) ? "text-[#f5ff3b] drop-shadow-[0_0_8px_rgba(245,255,59,0.6)]" : "text-[#9dd8ff] hover:text-[#00e5ff]"}`}
+                    className={`rounded-md px-2 py-2 text-sm font-medium lg:px-3 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[color:var(--focus-ring)] ${isPathActive(path, currentPath) ? "text-[color:var(--text-primary)] underline decoration-[color:var(--accent)] decoration-2 underline-offset-8" : "text-[color:var(--text-secondary)] hover:text-[color:var(--text-primary)]"}`}
                   >
                     {/* Only Rewards carries a glyph. Links without one render
                         their label exactly as before (a bare text node) — the
                         conditional wrapper means adding the icon did not shift
                         any existing link by even a space. */}
-                    {NAV_ICONS[path] ? (
-                      <span className="inline-flex items-center gap-1.5">
-                        {NAV_ICONS[path]} {t(NAV_TRANSLATION_KEYS[path])}
-                      </span>
-                    ) : path === "/games" ? (
-                      // The hub link is where a player picks what to play next,
-                      // so it is the one nav entry that flags claimable quests.
-                      <span className="inline-flex items-center gap-1.5">
-                        {t(NAV_TRANSLATION_KEYS[path])} <QuestNavBadge />
-                      </span>
-                    ) : (
-                      t(NAV_TRANSLATION_KEYS[path])
-                    )}
+                    {navLabel(path, t)}
                   </Link>
                 </motion.div>
               ))}
-              <motion.div
-                key="/settings"
-                initial={itemVariant.initial}
-                animate={itemVariant.animate}
-                transition={itemVariant.transition}
-                whileHover={shouldReduceMotion ? undefined : hoverScale.whileHover}
-              >
-                <Link
-                  href="/settings"
-                  className={`px-1 py-2 text-sm font-medium rounded lg:px-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#050b1e] ${currentPath === "/settings" ? "text-[#f5ff3b] drop-shadow-[0_0_8px_rgba(245,255,59,0.6)]" : "text-[#9dd8ff] hover:text-[#00e5ff]"}`}
-                >
-                  <span className="inline-flex items-center gap-1.5">
-                    <IconSettings size={15} className="shrink-0" /> {t("nav.settings")}
-                  </span>
-                </Link>
-              </motion.div>
-              {/* GRYND PRO — replaced the old token Shop link. This is a link
-                  (not the UpgradeProButton) so the navbar stays a pure
-                  navigation surface; the upgrade CTA lives on the pages. */}
-              <motion.div
-                key="/upgrade-pro"
-                className="hidden 2xl:flex"
-                initial={itemVariant.initial}
-                animate={itemVariant.animate}
-                transition={itemVariant.transition}
-                whileHover={shouldReduceMotion ? undefined : hoverScale.whileHover}
-              >
-                <Link
-                  href="/upgrade-pro"
-                  className={`px-3 py-2 text-sm font-medium rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#050b1e] ${currentPath === "/upgrade-pro" ? "text-[#f5ff3b] drop-shadow-[0_0_8px_rgba(245,255,59,0.6)]" : "text-[#9dd8ff] hover:text-[#00e5ff]"}`}
-                >
-                  <span className="inline-flex items-center gap-1.5">
-                    <IconStar size={15} className="shrink-0" /> GRYND PRO
-                  </span>
-                </Link>
-              </motion.div>
             </motion.div>
 
             {/* shrink-0: the right-side cluster must never be squeezed off
@@ -563,32 +501,26 @@ function NavigationBarInner({ currentPath = "" }) {
               {/* Light/dark switch — one control, in both the signed-in and
                   signed-out clusters, so the theme is always reachable. */}
               <ThemeToggle />
+              <SoundToggle />
               {canInstall && (
                 <button
                   onClick={install}
-                  className="hidden 2xl:inline-flex items-center rounded-lg border border-[#f5ff3b]/40 bg-[#f5ff3b]/10 px-3 py-1 text-xs font-medium text-[#f5ff3b] hover:bg-[#f5ff3b]/20"
+                  className="hidden items-center rounded-lg border border-[color:var(--border-hairline)] bg-[color:var(--bg-panel)] px-3 py-1 text-xs font-medium text-[color:var(--text-secondary)] hover:text-[color:var(--text-primary)] 2xl:inline-flex"
                 >
                   <IconDeviceMobile size={16} className="mr-1" /> Install App
                 </button>
               )}
               {isLoaded && isSignedIn ? (
                 <>
-                  {/* Total trophies over the coin balance — this chip is where
-                      the token balance has always lived (the trophies took the
-                      headline spot), so the two numbers a player checks most
-                      share one card: the competitive total on top, the wallet
-                      that every wager reads directly beneath it. The trophies
-                      are server-computed (sum of per-game counts) and everyone
-                      starts at 0; the coins come from the same
-                      /api/get-user-tokens payload and show a dash until the
-                      wallet has actually been read. */}
+                  {/* Total trophies — the server-computed sum of the player's
+                      per-game counts. Everyone starts at 0. */}
                   <Link
                     href="/profil"
                     data-testid="nav-trophies"
-                    className="hidden items-center gap-2 rounded-lg border border-[#f5ff3b]/40 bg-[#f5ff3b]/10 px-3 py-1.5 transition-colors hover:bg-[#f5ff3b]/20 lg:flex"
-                    title="Your total trophies, with your coin balance underneath"
+                    className="hidden items-center gap-2 rounded-lg border border-[color:var(--border-hairline)] bg-[color:var(--bg-panel)] px-3 py-1.5 transition-colors hover:border-[color:var(--border-strong)] lg:flex"
+                    title="Your total trophies"
                   >
-                    <IconTrophy size={15} className="shrink-0 text-[#f5ff3b]" />
+                    <IconTrophy size={15} className="shrink-0 text-[color:var(--state-gold)]" />
                     <span className="flex flex-col leading-tight">
                       <span className="flex items-baseline gap-1">
                         {/* keyed on the total so a change remounts the span and
@@ -603,24 +535,12 @@ function NavigationBarInner({ currentPath = "" }) {
                           }
                           animate={{ opacity: 1, y: 0, scale: 1 }}
                           transition={{ duration: 0.3, ease: "easeOut" }}
-                          className="text-sm font-semibold text-[#f5ff3b]"
+                          className="text-sm font-semibold text-[color:var(--state-gold)]"
                         >
                           {Number(profile.totalTrophies || 0).toLocaleString()}
                         </motion.span>
-                        <span className="text-[10px] uppercase tracking-wider text-[#f5ff3b]/70">
+                        <span className="text-[10px] uppercase tracking-wider text-[color:var(--text-muted)]">
                           Trophies
-                        </span>
-                      </span>
-                      <span
-                        data-testid="nav-coins"
-                        className="flex items-center gap-1 text-[11px] font-semibold text-[#ffd700]"
-                      >
-                        <IconCoins size={12} className="shrink-0" aria-hidden="true" />
-                        {profile.balance === null
-                          ? "—"
-                          : Number(profile.balance).toLocaleString()}
-                        <span className="text-[9px] uppercase tracking-wider text-[#ffd700]/70">
-                          Coins
                         </span>
                       </span>
                     </span>
@@ -632,12 +552,12 @@ function NavigationBarInner({ currentPath = "" }) {
                         iconKey={profile?.selectedIcon}
                         name={profile?.name || user?.firstName}
                         size="h-8 w-8"
-                        className="border border-[#00e5ff]/50 transition group-hover:scale-105"
+                        className="border border-[color:var(--border-strong)] transition group-hover:scale-105"
                       />
                       <div className="flex flex-col leading-tight">
                         <span
                           data-testid="nav-user-name"
-                          className={`text-xs text-[#c9f7ff] flex items-center gap-1.5 ${cosmeticEffectClass(profile?.usernameEffect?.visual) || ""}`}
+                          className={`flex items-center gap-1.5 text-xs text-[color:var(--text-primary)] ${cosmeticEffectClass(profile?.usernameEffect?.visual) || ""}`}
                           style={nameGlowStyle}
                         >
                           {profile?.name ||
@@ -646,16 +566,43 @@ function NavigationBarInner({ currentPath = "" }) {
                             t("nav.user_fallback")}
                           {isAdmin && <AdminBadge />}
                         </span>
-                        <span className="text-[10px] text-[#f5ff3b]">
+                        <span className="text-[10px] text-[color:var(--state-gold)]">
                           {profile?.selectedTitle || "No title equipped"}
                         </span>
                         {profile?.streakTitle && (
-                          <span className="text-[10px] text-amber-400">
+                          <span className="text-[10px] text-[color:var(--state-gold)]">
                             <IconFlame size={12} className="mb-0.5 mr-0.5 inline" /> {profile.streakTitle}
                           </span>
                         )}
                       </div>
                     </Link>
+                    <details className="relative">
+                      <summary
+                        aria-label="Account menu"
+                        className="list-none cursor-pointer rounded-lg border border-[color:var(--border-hairline)] bg-[color:var(--bg-panel)] px-2.5 py-1.5 text-[11px] font-black uppercase tracking-[0.12em] text-[color:var(--text-secondary)] transition hover:text-[color:var(--text-primary)]"
+                      >
+                        Account
+                      </summary>
+                      <div className="absolute right-0 z-50 mt-2 w-52 overflow-hidden rounded-[var(--radius-surface)] border border-[color:var(--border-hairline)] bg-[color:var(--bg-surface)] p-1.5 shadow-[var(--shadow-raise)]">
+                        {ACCOUNT_ITEMS.map((item) => (
+                          <Link
+                            key={item.href + item.label}
+                            href={item.href}
+                            className="block rounded-lg px-3 py-2 text-sm text-[color:var(--text-secondary)] transition hover:bg-[color:var(--bg-panel)] hover:text-[color:var(--text-primary)]"
+                          >
+                            {item.label}
+                          </Link>
+                        ))}
+                        {isAdmin && (
+                          <Link
+                            href="/admin"
+                            className="block rounded-lg px-3 py-2 text-sm font-semibold text-[color:var(--state-gold)] transition hover:bg-[color:var(--bg-panel)]"
+                          >
+                            Admin
+                          </Link>
+                        )}
+                      </div>
+                    </details>
                   </div>
                   <button
                     onClick={() => {
@@ -664,7 +611,7 @@ function NavigationBarInner({ currentPath = "" }) {
                       triggerHaptic("selection");
                       setMobileMenuOpen((v) => !v);
                     }}
-                    className="inline-flex h-10 w-10 items-center justify-center rounded-lg border border-[#00e5ff]/40 bg-[#00e5ff]/10 text-[#d8fbff] 2xl:hidden"
+                    className="inline-flex h-10 w-10 items-center justify-center rounded-lg border border-[color:var(--border-hairline)] bg-[color:var(--bg-panel)] text-[color:var(--text-secondary)] 2xl:hidden"
                     aria-label="Toggle menu"
                     aria-expanded={mobileMenuOpen}
                     aria-controls="mobile-nav-menu"
@@ -674,13 +621,13 @@ function NavigationBarInner({ currentPath = "" }) {
                   {isAdmin && (
                     <Link
                       href="/admin"
-                      className="rounded-lg border border-[#f5ff3b]/60 bg-[#f5ff3b]/10 px-3 py-2 text-sm font-semibold text-[#f5ff3b] transition-colors hover:bg-[#f5ff3b]/20"
+                      className="rounded-lg border border-[color:var(--state-gold)] px-3 py-2 text-sm font-semibold text-[color:var(--state-gold)] transition-colors hover:bg-[color:var(--bg-panel)]"
                     >
                       Admin
                     </Link>
                   )}
                   <SignOutButton>
-                    <UIPro02NavItem className="rounded-lg border border-[#00e5ff]/40 bg-[#00e5ff]/20 px-4 py-2 text-sm font-medium text-[#d8fbff] hover:bg-[#00e5ff]/35">
+                    <UIPro02NavItem className="rounded-lg border border-[color:var(--border-strong)] px-4 py-2 text-sm font-medium text-[color:var(--text-secondary)] hover:text-[color:var(--text-primary)]">
                       {t("nav.sign_out")}
                     </UIPro02NavItem>
                   </SignOutButton>
@@ -694,20 +641,20 @@ function NavigationBarInner({ currentPath = "" }) {
                       triggerHaptic("selection");
                       setMobileMenuOpen((v) => !v);
                     }}
-                    className="inline-flex h-10 w-10 items-center justify-center rounded-lg border border-[#00e5ff]/40 bg-[#00e5ff]/10 text-[#d8fbff] md:hidden"
+                    className="inline-flex h-10 w-10 items-center justify-center rounded-lg border border-[color:var(--border-hairline)] bg-[color:var(--bg-panel)] text-[color:var(--text-secondary)] md:hidden"
                     aria-label="Toggle menu"
                   >
                     <IconMenu size={20} />
                   </button>
                   <UIPro02NavItem
                     href="/sign-up"
-                    className="hidden rounded-lg border border-[#FFFF33]/40 bg-[#FFFF33]/20 px-4 py-2 text-sm font-medium text-[#d8fbff] hover:bg-[#FFFF33]/35 md:inline-flex"
+                    className="hidden rounded-lg bg-[color:var(--accent)] px-4 py-2 text-sm font-semibold text-[color:var(--on-accent)] hover:bg-[color:var(--accent-strong)] md:inline-flex"
                   >
                     {t("nav.create_account")}
                   </UIPro02NavItem>
                   <UIPro02NavItem
                     href="/sign-in"
-                    className="hidden rounded-lg border border-[#00e5ff]/40 bg-[#00e5ff]/20 px-4 py-2 text-sm font-medium text-[#d8fbff] hover:bg-[#00e5ff]/35 md:inline-flex"
+                    className="hidden rounded-lg border border-[color:var(--border-strong)] px-4 py-2 text-sm font-medium text-[color:var(--text-secondary)] hover:text-[color:var(--text-primary)] md:inline-flex"
                   >
                     {t("nav.sign_in")}
                   </UIPro02NavItem>
@@ -717,11 +664,11 @@ function NavigationBarInner({ currentPath = "" }) {
           </div>
         </UIPro01NavShell>
         {mobileMenuOpen && (
-          <div id="mobile-nav-menu" className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm">
+          <div id="mobile-nav-menu" className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs">
             {/* SIDEBAR */}
-            <div className="absolute left-0 top-0 h-full w-72 bg-[#08142f] border-r border-[#00e5ff]/30 p-4 space-y-4">
+            <div className="absolute left-0 top-0 h-full w-72 space-y-4 border-r border-[color:var(--border-hairline)] bg-[color:var(--bg-surface)] p-4">
               {/* CLOSE */}
-              <button onClick={() => setMobileMenuOpen(false)} className="text-[#f5ff3b] text-sm">
+              <button onClick={() => setMobileMenuOpen(false)} className="text-sm text-[color:var(--state-gold)]">
                 <IconX size={16} className="mb-0.5 mr-1 inline" /> Close
               </button>
 
@@ -741,51 +688,27 @@ function NavigationBarInner({ currentPath = "" }) {
                   <div>
                     <div
                       data-testid="nav-user-name"
-                      className={`text-[#c9f7ff] text-sm flex items-center gap-1.5 ${cosmeticEffectClass(profile?.usernameEffect?.visual) || ""}`}
+                      className={`flex items-center gap-1.5 text-sm text-[color:var(--text-primary)] ${cosmeticEffectClass(profile?.usernameEffect?.visual) || ""}`}
                       style={nameGlowStyle}
                     >
                       {profile?.name || "User"}
                       {isAdmin && <AdminBadge />}
                     </div>
-                    <div className="text-xs text-[#f5ff3b]">
+                    <div className="text-xs text-[color:var(--state-gold)]">
                       {profile?.selectedTitle}
                     </div>
                     {profile?.streakTitle && (
-                      <div className="text-xs text-amber-400">
+                      <div className="text-xs text-[color:var(--state-gold)]">
                         <IconFlame size={12} className="mb-0.5 mr-0.5 inline" /> {profile.streakTitle}
                       </div>
                     )}
-                    <div className="text-xs text-[#f5ff3b]" data-testid="nav-trophies-mobile">
+                    <div className="text-xs text-[color:var(--state-gold)]" data-testid="nav-trophies-mobile">
                       <IconTrophy size={12} className="mb-0.5 mr-0.5 inline" />{" "}
                       {`${Number(profile.totalTrophies || 0).toLocaleString()} Trophies`}
-                    </div>
-                    {/* The coin balance, directly under the trophies — the same
-                        pair the desktop chip shows. A dash means the wallet has
-                        not been read yet, never a fabricated 0. */}
-                    <div className="text-xs text-[#ffd700]" data-testid="nav-coins-mobile">
-                      <IconCoins size={12} className="mb-0.5 mr-0.5 inline" aria-hidden="true" />{" "}
-                      {`${
-                        profile.balance === null
-                          ? "—"
-                          : Number(profile.balance).toLocaleString()
-                      } Coins`}
                     </div>
                   </div>
                 </Link>
               )}
-
-              {/* Responsible-play daily net chip (home only) */}
-              {isSignedIn &&
-                currentPath === "/" &&
-                dailyLossLoaded &&
-                dailyLoss > DAILY_LOSS_CHIP_THRESHOLD && (
-                  <div
-                    className="rounded-lg border border-amber-400/40 bg-black/60 px-3 py-2 text-sm font-bold text-amber-300"
-                    title="Your net loss today — take it easy"
-                  >
-                    ▼ {dailyLoss.toLocaleString()} today
-                  </div>
-                )}
 
               {/* NAV LINKS */}
               <div className="space-y-2">
@@ -793,54 +716,48 @@ function NavigationBarInner({ currentPath = "" }) {
                   <Link
                     href="/admin"
                     onClick={() => setMobileMenuOpen(false)}
-                    className="block rounded-lg border border-[#f5ff3b]/60 bg-[#f5ff3b]/10 px-3 py-2 font-semibold text-[#f5ff3b]"
+                    className="block rounded-lg border border-[color:var(--state-gold)] px-3 py-2 font-semibold text-[color:var(--state-gold)]"
                   >
                     Admin dashboard
                   </Link>
                 )}
-                {["/", "/games", "/classement", "/rewards", "/faq"].map((path) => (
+                {["/", "/play", "/learn", "/classement", "/contact", "/games/solitaire-duel", "/upgrade-pro"].map((path) => (
                   <Link
                     key={path}
                     href={path}
                     onClick={() => setMobileMenuOpen(false)}
-                    className="block rounded-lg bg-[#091737] px-3 py-2 text-[#9dd8ff]"
+                    aria-current={isPathActive(path, currentPath) ? "page" : undefined}
+                    className={`block rounded-lg px-3 py-2 ${
+                      isPathActive(path, currentPath)
+                        ? "bg-[color:var(--accent-fill)] text-[color:var(--text-primary)]"
+                        : "bg-[color:var(--bg-panel)] text-[color:var(--text-secondary)]"
+                    }`}
                   >
-                    {NAV_ICONS[path] ? (
-                      <span className="inline-flex items-center gap-1.5">
-                        {NAV_ICONS[path]} {t(NAV_TRANSLATION_KEYS[path])}
-                      </span>
-                    ) : path === "/games" ? (
-                      <span className="inline-flex items-center gap-1.5">
-                        {t(NAV_TRANSLATION_KEYS[path])} <QuestNavBadge />
-                      </span>
-                    ) : (
-                      t(NAV_TRANSLATION_KEYS[path])
-                    )}
+                    {navLabel(path, t)}
                   </Link>
                 ))}
+                <p className="px-1 pt-2 text-[10px] font-black uppercase tracking-[0.2em] text-[color:var(--text-muted)]">
+                  Account
+                </p>
+                {ACCOUNT_ITEMS.map((item) => (
                   <Link
-                    href="/settings"
+                    key={item.href + item.label}
+                    href={item.href}
                     onClick={() => setMobileMenuOpen(false)}
-                    className="block rounded-lg bg-[#091737] px-3 py-2 text-[#9dd8ff]"
+                    className="block rounded-lg bg-[color:var(--bg-panel)] px-3 py-2 text-[color:var(--text-secondary)]"
                   >
-                    <span className="inline-flex items-center gap-1.5">
-                      <IconSettings size={15} className="shrink-0" /> {t("nav.settings")}
-                    </span>
+                    {item.label}
                   </Link>
-                  <Link
-                    href="/upgrade-pro"
-                    onClick={() => setMobileMenuOpen(false)}
-                    className="block rounded-lg bg-[#091737] px-3 py-2 text-[#9dd8ff]"
-                  >
-                    <span className="inline-flex items-center gap-1.5">
-                      <IconStar size={15} className="shrink-0" /> GRYND PRO
-                    </span>
-                  </Link>
+                ))}
                 {/* The same switch, as a labelled row — an icon-only button
                     would be the only unlabelled control in this menu. */}
                 <ThemeToggle
                   showLabel
-                  className="flex w-full items-center rounded-lg bg-[#091737] px-3 py-2 text-[#9dd8ff] transition-colors hover:text-[#00e5ff] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff]"
+                  className="flex w-full items-center rounded-lg bg-[color:var(--bg-panel)] px-3 py-2 text-[color:var(--text-secondary)] transition-colors hover:text-[color:var(--text-primary)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[color:var(--focus-ring)]"
+                />
+                <SoundToggle
+                  showLabel
+                  className="flex w-full items-center justify-start rounded-lg bg-[color:var(--bg-panel)] px-3 py-2 text-[color:var(--text-secondary)] transition-colors hover:text-[color:var(--text-primary)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[color:var(--focus-ring)]"
                 />
             </div>
               {!isSignedIn && (
@@ -848,7 +765,7 @@ function NavigationBarInner({ currentPath = "" }) {
                   <Link
                     href="/sign-up"
                     onClick={() => setMobileMenuOpen(false)}
-                    className="rounded-lg border border-[#FFFF33]/40 bg-[#FFFF33]/20 px-3 py-2 text-center text-sm font-medium text-[#d8fbff]"
+                    className="rounded-lg bg-[color:var(--accent)] px-3 py-2 text-center text-sm font-semibold text-[color:var(--on-accent)]"
                   >
                     {t("nav.create_account")}
                   </Link>
@@ -856,7 +773,7 @@ function NavigationBarInner({ currentPath = "" }) {
                   <Link
                     href="/sign-in"
                     onClick={() => setMobileMenuOpen(false)}
-                    className="rounded-lg border border-[#00e5ff]/40 bg-[#00e5ff]/20 px-3 py-2 text-center text-sm font-medium text-[#d8fbff]"
+                    className="rounded-lg border border-[color:var(--border-strong)] px-3 py-2 text-center text-sm font-medium text-[color:var(--text-secondary)]"
                   >
                     {t("nav.sign_in")}
                   </Link>
@@ -867,7 +784,7 @@ function NavigationBarInner({ currentPath = "" }) {
               {(canInstall || isIOS) && (
                 <button
                   onClick={install}
-                  className="w-full rounded-lg bg-[#f5ff3b]/10 px-3 py-2 text-[#f5ff3b]"
+                  className="w-full rounded-lg border border-[color:var(--state-gold)] px-3 py-2 text-[color:var(--state-gold)]"
                 >
                   <IconDeviceMobile size={16} className="mr-1" /> Install App
                 </button>

@@ -1,4 +1,6 @@
 import "./globals.css";
+import JsonLd from "../components/seo/JsonLd";
+import "./solitaire-cosmetics.css";
 import { headers } from "next/headers";
 import { Providers } from "./providers";
 import ConsentModeDefault from "../components/ConsentModeDefault";
@@ -18,6 +20,7 @@ import NativeSystemBars from "../components/native/NativeSystemBars";
 import NativeKeyboard from "../components/native/NativeKeyboard";
 import { ToastProvider } from "../components/toast/ToastProvider";
 import { ogImageUrl, SITE_URL } from "../lib/ogImages";
+import { adsensePublisherId, normalizePublisherId } from "../lib/ads";
 
 export const dynamic = "force-dynamic";
 
@@ -35,9 +38,9 @@ export const viewport = {
 
 export const metadata = {
   metadataBase: new URL(SITE_URL),
-  title: "GRYND — Competitive PvP Skill Gaming",
+  title: "GRYND — Competitive 1v1 Solitaire",
   description:
-    "Challenge real players in competitive games, climb the leaderboard, and prove your skill.",
+    "Play free Klondike Solitaire duels against a real opponent on the same deal. Ranked ladder, daily challenge, puzzles, trophies and match history.",
   // Explicit icon metadata so the browser tab uses our smalllogo.
   // (Next.js also auto-generates a <link rel="icon"> from
   // src/app/icon.png, but listing it here keeps the intent obvious
@@ -69,9 +72,9 @@ export const metadata = {
   // Both fields are intentionally page-owned now. Every public page declares
   // its own canonical (via `alternates.canonical`) and its own `openGraph.url`.
   openGraph: {
-    title: "GRYND — Competitive PvP Skill Gaming",
+    title: "GRYND — Competitive 1v1 Solitaire",
     description:
-      "Challenge real players in competitive games, climb the leaderboard, and prove your skill.",
+      "Play free Klondike Solitaire duels against a real opponent on the same deal. Ranked ladder, daily challenge, puzzles, trophies and match history.",
     siteName: "GRYND",
     locale: "en_US",
     type: "website",
@@ -80,15 +83,15 @@ export const metadata = {
         url: ogImageUrl("/images/og-banner.png"),
         width: 1200,
         height: 630,
-        alt: "GRYND — Competitive PvP Skill Gaming",
+        alt: "GRYND — Competitive 1v1 Solitaire",
       },
     ],
   },
   twitter: {
     card: "summary_large_image",
-    title: "GRYND — Competitive PvP Skill Gaming",
+    title: "GRYND — Competitive 1v1 Solitaire",
     description:
-      "Challenge real players in competitive games, climb the leaderboard, and prove your skill.",
+      "Play free Klondike Solitaire duels against a real opponent on the same deal. Ranked ladder, daily challenge, puzzles, trophies and match history.",
     images: [ogImageUrl("/images/og-banner.png")],
   },
 };
@@ -139,6 +142,13 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   const requestHeaders = await headers();
   const requiresCmp = requiresGoogleCmp(countryFromHeaders(requestHeaders));
 
+  // The publisher id this property is authorised under (lib/ads.ts). Rendered
+  // as Google's own site-verification meta tag, which is the check AdSense
+  // reads to confirm the person submitting the site owns it, and which pairs
+  // with public/ads.txt (the same id, for the ads crawler). Only a well-formed
+  // `ca-pub-` id is emitted, so a typo can never claim someone else's account.
+  const adsenseAccount = normalizePublisherId(adsensePublisherId());
+
   return (
     <html lang="en" className="dark" suppressHydrationWarning>
       <head>
@@ -147,17 +157,11 @@ export default async function RootLayout({ children }: { children: React.ReactNo
             HTML, which is exactly what wait_for_update covers — see the
             component's note. */}
         <ConsentModeDefault />
+        {adsenseAccount && <meta name="google-adsense-account" content={adsenseAccount} />}
         <link rel="manifest" href="/manifest.json" />
-        <script
-          type="application/ld+json"
-          dangerouslySetInnerHTML={{ __html: JSON.stringify(organizationJsonLd) }}
-        />
-        {/* The site itself, so an answer engine knows the name, the canonical
-            URL and who publishes it. */}
-        <script
-          type="application/ld+json"
-          dangerouslySetInnerHTML={{ __html: JSON.stringify(buildWebsiteJsonLd()) }}
-        />
+        {/* Organization + WebSite nodes, emitted through the shared renderer
+            (it escapes "<" so no value can close the script tag). */}
+        <JsonLd data={[organizationJsonLd, buildWebsiteJsonLd()]} />
         <link rel="icon" type="image/png" href="/icon.png" />
         <link rel="icon" type="image/png" href="/images/smalllogo.png" />
         <link rel="apple-touch-icon" type="image/png" href="/icon-192.png" />
@@ -168,7 +172,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
         <meta name="color-scheme" content="dark light" />
       </head>
 
-      <body className="antialiased transition-colors duration-300 bg-[#030817] text-[#d8fbff]">
+      <body className="antialiased transition-colors duration-300 bg-page text-[#d8fbff]">
         {/* Theme bootstrap — see THEME_BOOTSTRAP above.
 
             IT LIVES AT THE TOP OF <body>, NOT IN <head>, AND THAT IS

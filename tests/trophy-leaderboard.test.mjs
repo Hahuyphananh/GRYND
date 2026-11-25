@@ -23,13 +23,14 @@ import {
 import {
   fetchTrophyLeaderboard,
   fetchOverallTrophyLeaderboard,
+  fetchTrophyGainLeaderboard,
   toOverallTrophyShape,
   listTrophyGames,
 } from "../src/lib/trophyStore.js";
 
 import { CacheKeys, CacheTTL } from "../src/lib/redis/keys.ts";
 import { invalidateTrophyBoards } from "../src/lib/redis/invalidation.ts";
-import { RATED_GAMES } from "../src/lib/rating.js";
+import { RATED_GAMES, getRatingGameLabel } from "../src/lib/rating.js";
 
 // ════════════════════════════════════════════════════════════════════════
 // 1. The Overall Trophies aggregate
@@ -106,7 +107,10 @@ test("listTrophyGames: mirrors the Elo registry exactly", () => {
     listTrophyGames().map((g) => g.key),
     [...RATED_GAMES],
   );
-  assert.equal(listTrophyGames()[0].label, "Chess");
+  assert.equal(
+    listTrophyGames()[0].label,
+    getRatingGameLabel(RATED_GAMES[0]),
+  );
 });
 
 // ════════════════════════════════════════════════════════════════════════
@@ -119,6 +123,12 @@ test("CACHE: the trophy namespace has its own keys and TTL", () => {
   assert.equal(CacheKeys.trophy.gameAll("chess"), "grynd:trophy:chess:*");
   assert.equal(CacheKeys.trophy.overall(50, 0), "grynd:trophy:overall:50:0");
   assert.equal(CacheKeys.trophy.overallAll, "grynd:trophy:overall:*");
+  assert.equal(CacheKeys.trophy.peak(50, 0), "grynd:trophy:peak:50:0");
+  assert.equal(CacheKeys.trophy.peakAll, "grynd:trophy:peak:*");
+  assert.equal(
+    CacheKeys.trophy.gains("week", 50, 0),
+    "grynd:trophy:gains:week:50:0",
+  );
   assert.equal(CacheKeys.trophy.all, "grynd:trophy:*");
   assert.equal(CacheTTL.trophy, 60);
   // Trophy keys must NOT sit under the leaderboard namespace, or the
@@ -171,6 +181,39 @@ test("ROUTE: neither trophy board ranks by a token/winnings metric", () => {
     const src = fs.readFileSync(file, "utf8");
     assert.doesNotMatch(src, /total_wagered|total_won|biggest_win|token/i);
   }
+});
+
+test("PEAK: the overall board carries a monotonic all-time peak per player", () => {
+  const shape = toOverallTrophyShape({
+    name: "P",
+    overall_trophies: 900,
+    overall_peak_trophies: 2400,
+    games_played: 4,
+  });
+  assert.equal(shape.overallTrophies, 900);
+  assert.equal(shape.peakTrophies, 2400);
+  const src = fs.readFileSync("src/lib/trophyStore.js", "utf8");
+  // The aggregate is SUM(peak_trophies), never a fabricated value, and the
+  // peak route is a pure read that ranks the same rows.
+  assert.match(src, /SUM\(t\.peak_trophies\)/);
+  assert.equal(typeof fetchOverallTrophyLeaderboard, "function");
+  const route = fs.readFileSync("src/app/api/leaderboard/trophy-peak/route.js", "utf8");
+  assert.match(route, /metric: "peak"/);
+  assert.doesNotMatch(route, /applyTrophyResult|await request\.json/);
+});
+
+test("GAINS: week/month/year sums only positive journal deltas", () => {
+  assert.equal(typeof fetchTrophyGainLeaderboard, "function");
+  const src = fs.readFileSync("src/lib/trophyStore.js", "utf8");
+  assert.match(src, /SUM\(GREATEST\(e\.delta, 0\)\)/);
+  assert.match(src, /trophyGainPeriodStart\(chosenPeriod\)/);
+  const route = fs.readFileSync(
+    "src/app/api/leaderboard/trophy-gains/route.js",
+    "utf8",
+  );
+  assert.match(route, /isTrophyGainPeriod/);
+  assert.match(route, /CacheKeys\.trophy\.gains/);
+  assert.doesNotMatch(route, /applyTrophyResult|await request\.json/);
 });
 
 test("WRITER: the readers exist and are read-only (no writes in the leaderboard section)", () => {

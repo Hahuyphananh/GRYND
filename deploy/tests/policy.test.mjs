@@ -102,10 +102,29 @@ test("workflow: there is an approval-gated deploy job, and the build section is 
 
 test("workflow: stale and out-of-order deployment is guarded twice", () => {
   assert.match(workflowSource, /deploy\/deployment-guard\.mjs/, "the guard decision script must be used");
-  assert.match(workflowSource, /compare\/\$TARGET\.\.\.main/, "preflight must compare against main");
-  assert.match(workflowSource, /compare\/\$COMMIT\.\.\.main/, "the deploy job must re-check main");
+  assert.match(
+    workflowSource,
+    /compare\/\$TARGET\.\.\.\$SOURCE_BRANCH/,
+    "preflight must compare against the selected branch head",
+  );
+  assert.match(
+    workflowSource,
+    /compare\/\$COMMIT\.\.\.\$SOURCE_BRANCH/,
+    "the deploy job must re-check the selected branch head",
+  );
   assert.match(workflowSource, /compare\/\$COMMIT\.\.\.\$ACTIVE_COMMIT/, "the deploy job must compare against the active release");
   assert.match(workflowSource, /allow_out_of_order/, "manual recovery must be an explicit input");
+  assert.ok(!/--target-to-main=/.test(workflowSource), "the guard must not compare against main unconditionally");
+});
+
+test("workflow: the source branch is the selected ref and is recorded at every step", () => {
+  // The build records the branch it was built from, and the deploy job reads
+  // that output rather than whatever ref the runner happens to see.
+  assert.match(workflowSource, /source_branch: \$\{\{ github\.ref_name \}\}/);
+  assert.match(workflowSource, /SOURCE_BRANCH: \$\{\{ needs\.build\.outputs\.source_branch \}\}/);
+  assert.match(workflowSource, /--branch "\$SOURCE_BRANCH"/, "the manifest must carry the source branch");
+  assert.match(workflowSource, /--source-branch="\$SOURCE_BRANCH"/, "the audit record must carry the source branch");
+  assert.match(workflowSource, /sourceBranch:\$sourceBranch/, "the deploy request must carry the source branch");
 });
 
 test("workflow: the deploy job pins SSH host keys and keeps secrets out of build", () => {

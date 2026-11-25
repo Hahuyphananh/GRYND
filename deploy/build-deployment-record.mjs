@@ -56,6 +56,7 @@ try {
     event: flags.event ?? "workflow_dispatch",
     target: flags.target ?? "production",
     commit: flags.commit,
+    sourceBranch: flags["source-branch"] ?? null,
     releaseId: flags["release-id"],
     buildId: flags["build-id"],
     builtAt: flags["built-at"] ?? null,

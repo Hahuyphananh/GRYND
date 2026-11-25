@@ -37,6 +37,7 @@ import {
   clampLeaderboardLimit,
   normalizeLeaderboardOffset,
 } from "../../../../lib/leaderboardQueries";
+import { isGameArchived, isGameAvailable } from "../../../../lib/gameAvailability";
 import { cacheOrFetch } from "../../../../lib/redis/cache";
 import { CacheKeys, CacheTTL } from "../../../../lib/redis/keys";
 
@@ -44,7 +45,14 @@ export const dynamic = "force-dynamic";
 
 export async function GET(request) {
   const { searchParams } = new URL(request.url);
-  const game = normalizeRatingGameKey(searchParams.get("game"));
+  const requestedGame = searchParams.get("game");
+  // An archived game's public board is not part of the ranking surface. Its
+  // historical rating rows remain untouched (and are still readable by
+  // administrative tooling); a direct ?game= link simply falls back to the
+  // default active board instead of advertising the archived one.
+  const game = isGameArchived(requestedGame)
+    ? RATED_GAMES.find((key) => isGameAvailable(key)) ?? RATED_GAMES[0]
+    : normalizeRatingGameKey(requestedGame);
   const limit = clampLeaderboardLimit(searchParams.get("limit"));
   const offset = normalizeLeaderboardOffset(searchParams.get("offset"));
 
@@ -86,7 +94,10 @@ export async function GET(request) {
         label: getRatingGameLabel(game),
         // The full set of rated games, so the UI never hardcodes a list that
         // could drift from RATED_GAMES.
-        games: RATED_GAMES.map((key) => ({ key, label: getRatingGameLabel(key) })),
+        games: RATED_GAMES.map((key) => ({
+          key,
+          label: getRatingGameLabel(key),
+        })).filter((entry) => isGameAvailable(entry.key)),
         limit,
         offset,
       },

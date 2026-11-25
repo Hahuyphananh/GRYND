@@ -3,24 +3,17 @@
  *
  * The LIGHT ground palette, pinned at the source level.
  *
- * light-theme.css is generated from scripts/generate-light-theme.mjs, and the
- * page ground is ALSO baked into two runtime copies (the pre-paint bootstrap in
- * layout.tsx and the theme-color in ThemeContext.js) because neither can import
- * the build-time generator. Four copies of one colour is exactly the drift the
- * generator's header warns about, so this suite pins them together.
+ * Light mode is no longer a generated utility-remap sheet: the grounds are
+ * semantic tokens (`--bg-page/surface/panel`) aliased to `--gr-surface-*`, and
+ * `html[data-theme="light"]` re-points those three tokens. The page ground is
+ * ALSO baked into two runtime copies (the pre-paint bootstrap in layout.tsx and
+ * the theme-color in ThemeContext.js), so this suite pins all copies together.
  *
- * It also encodes the DESIGN requirement, not just the equality. Light mode is
- * NOT a white theme: it uses the dark theme's own blue (the 223° hue of
- * `bg-[#040d24]`) lifted to a deep, saturated blue, and keeps the dark theme's
- * light type on it. So the grounds must be
- *
- *   * blue-dominant and within 10° of the dark ground's hue (the same blue),
- *   * LIGHTER than the dark ground (lifted — it is a different theme),
- *   * still clearly DEEP (relative luminance under 0.20 — not white), and
- *   * readable by the light ink at AA.
- *
- * The previous palette shipped #c9d5f2/#dde4f5 at 0.66/0.78 luminance, which
- * read as white; the ceilings here keep that from coming back.
+ * It encodes the DESIGN requirement, not just equality: light mode is NOT a
+ * white theme. It uses the dark theme's own blue (223°) lifted to a deep,
+ * saturated blue, and keeps the dark theme's light type on it. The grounds must
+ * be blue-dominant and within 10° of the dark ground's hue, lighter than the
+ * dark ground, still deep (luminance under 0.20), and AA-legible under the ink.
  *
  * Run:  node --import tsx --test tests/light-theme-palette.test.mjs
  */
@@ -31,12 +24,11 @@ import fs from "node:fs";
 
 const read = (p) => fs.readFileSync(p, "utf8").replace(/\r\n/g, "\n");
 
-const GENERATOR = read("scripts/generate-light-theme.mjs");
-const THEME_CSS = read("src/app/light-theme.css");
+const GLOBALS = read("src/app/globals.css");
 const LAYOUT = read("src/app/layout.tsx");
 const CONTEXT = read("src/context/ThemeContext.js");
 
-// ── Colour maths (mirrors the generator's own helpers) ─────────────────────
+// ── Colour maths ───────────────────────────────────────────────────────────
 
 const toRgb = (hex) => {
   const s = hex.replace("#", "");
@@ -62,35 +54,30 @@ const contrast = (a, b) => {
   return (hi + 0.05) / (lo + 0.05);
 };
 
-// ── The ground the dark theme is built on ──────────────────────────────────
-
 const DARK_GROUND = "#040d24";
 
-// ── The four copies ────────────────────────────────────────────────────────
+/** The `html[data-theme="light"]` block in globals.css. */
+const LIGHT_BLOCK = GLOBALS.match(/html\[data-theme="light"\] \{([\s\S]*?)\n\}/)?.[1] ?? "";
+const token = (name) => LIGHT_BLOCK.match(new RegExp(`${name}: (#[0-9a-f]{6});`))?.[1];
+const PAGE = token("--gr-surface-page");
+const CARD = token("--gr-surface-raised");
+const PANEL = token("--gr-surface-panel");
 
-const genConst = (name) => GENERATOR.match(new RegExp(`const ${name} = "(#[0-9a-f]{6})"`))?.[1];
-const PAGE = genConst("PAGE");
-const CARD = genConst("CARD");
-const PANEL = genConst("PANEL");
-
-test("the generator still declares the three grounds as plain hexes", () => {
+test("light mode is a token override in globals.css, not a generated sheet", () => {
+  assert.ok(!GLOBALS.includes("light-theme.css"), "the generated remap sheet must be retired");
+  assert.ok(!fs.existsSync("src/app/light-theme.css"), "light-theme.css must not exist");
   for (const [name, v] of [["PAGE", PAGE], ["CARD", CARD], ["PANEL", PANEL]]) {
-    assert.match(v ?? "", /^#[0-9a-f]{6}$/, `${name} must be a hex constant`);
+    assert.match(v ?? "", /^#[0-9a-f]{6}$/, `${name} must be a hex token in the light block`);
   }
 });
 
 test("one page ground, four copies — they cannot drift", () => {
   const bootstrap = LAYOUT.match(/const THEME_LIGHT_GROUND = "(#[0-9a-f]{6})"/)?.[1];
   const meta = CONTEXT.match(/META_COLOR = \{ dark: "#[0-9a-f]{6}", light: "(#[0-9a-f]{6})" \}/)?.[1];
-  // The generated stylesheet's own `html[data-theme="light"]` rule.
-  const css = THEME_CSS.match(/html\[data-theme="light"\] \{\n\s+color-scheme: light;\n\s+background-color: (#[0-9a-f]{6});/)?.[1];
 
-  assert.equal(bootstrap, PAGE, "layout.tsx's bootstrap ground must equal the generator's PAGE");
-  assert.equal(meta, PAGE, "ThemeContext's light theme-color must equal the generator's PAGE");
-  assert.equal(css, PAGE, "the generated css ground must equal the generator's PAGE");
+  assert.equal(bootstrap, PAGE, "layout.tsx's bootstrap ground must equal the light page token");
+  assert.equal(meta, PAGE, "ThemeContext's light theme-color must equal the light page token");
 });
-
-// ── The design requirement ─────────────────────────────────────────────────
 
 test("the grounds are the DARK theme's blue, on the same hue", () => {
   for (const [name, v] of [["PAGE", PAGE], ["CARD", CARD], ["PANEL", PANEL]]) {
@@ -114,8 +101,6 @@ test("the grounds are LIFTED off the dark theme, not a copy of it", () => {
 });
 
 test("no light ground is white — they stay deep blue", () => {
-  // #c9d5f2 / #dde4f5 (the previous, rejected palette) measured 0.66 / 0.78 and
-  // read as white. The ceiling keeps a full-bleed card deep blue.
   const CEILING = 0.2;
   for (const [name, v] of [["PAGE", PAGE], ["CARD", CARD], ["PANEL", PANEL]]) {
     assert.ok(
@@ -131,7 +116,8 @@ test("the grounds are ordered panel < page < card (elevation still reads)", () =
 });
 
 test("the light ink still clears AA on every ground", () => {
-  const INK = GENERATOR.match(/const INK = "(#[0-9a-f]{6})"/)?.[1];
+  const INK = GLOBALS.match(/--gr-ink: (#[0-9a-f]{6})/)?.[1];
+  assert.ok(INK, "the ink token must be declared");
   assert.ok(luminance(INK) > 0.5, "light mode's ink must be LIGHT (the ground is dark)");
   for (const [name, v] of [["PAGE", PAGE], ["CARD", CARD], ["PANEL", PANEL]]) {
     assert.ok(
@@ -141,16 +127,13 @@ test("the light ink still clears AA on every ground", () => {
   }
 });
 
-test("light mode does not invert text or hairlines", () => {
-  // The generated stylesheet must contain NO rule that repaints `text-white`
-  // or `border-white/10` — those belong to the dark theme and still read on the
-  // lifted blue ground. A rule for them is the regression this guards.
+test("light mode does not repaint text or hairlines", () => {
   assert.ok(
-    !/html\[data-theme="light"\] \.text-white\b/.test(THEME_CSS),
+    !/\.text-white\b/.test(LIGHT_BLOCK),
     "text-white must not be remapped — light mode keeps the dark theme's light type",
   );
   assert.ok(
-    !/html\[data-theme="light"\] \.border-white\\\/10\b/.test(THEME_CSS),
+    !/\.border-white/.test(LIGHT_BLOCK),
     "border-white/10 must not be remapped",
   );
 });

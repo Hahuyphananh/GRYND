@@ -1,39 +1,36 @@
 # GRYND
-> GRYND is a skill-based gaming platform. Players compete in 1v1 skill games using virtual tokens. Tokens have no real-world monetary value and are not redeemable for cash. GRYND is 18+ only and promotes responsible play.
+> GRYND is a competitive, one-versus-one Klondike Solitaire site. Two real players get the same deal and race to finish it, and results feed a server-verified ranking. GRYND is 18+ only and promotes responsible play.
 
-GRYND covers dozens of arcade and table games, every one of them 1v1: playable against AI or against another player in real time. Outcomes are determined primarily by player skill and strategy. The platform uses virtual tokens for all gameplay.
+GRYND ships one game: Solitaire Duel. It is played in the browser against another person, on the same deterministic deal, with ranked, versus-AI, daily and puzzle modes. Outcomes are decided by the decisions a player makes with the cards they are dealt.
 
-## Skill Games
-- [Game Hub](https://www.grynd.dedyn.io/games): Browse all skill games
-- [Poker](https://www.grynd.dedyn.io/games/poker/multi): Texas Hold'em against AI or other players
-- [Slots](https://www.grynd.dedyn.io/games/slots): Themed slot machines with bonus rounds
-- [Mines](https://www.grynd.dedyn.io/games/mines-pvp): Risk-based tile reveal game, solo or PvP
-- [Barrier Blitz](https://www.grynd.dedyn.io/games/barrier-blitz): 1v1 strategy race — step your pawn or drop a barrier on a 9x9 board
-- [Coin Flip](https://www.grynd.dedyn.io/games/coin-flip): Fast coin-flip game, solo or PvP
-- [Keno](https://www.grynd.dedyn.io/games/keno): Number-draw payout game
-- [RPS](https://www.grynd.dedyn.io/games/rps): Rock-paper-scissors, solo or PvP
-- [Chess](https://www.grynd.dedyn.io/games/chess): Chess against AI or other players
-- [Four-In-A-Row](https://www.grynd.dedyn.io/games/four-in-a-row): Four-In-A-Row, solo or PvP
-- [Dots & Boxes](https://www.grynd.dedyn.io/games/dots-and-boxes): Classic dots-and-boxes, solo or PvP
-- [Pool Masters](https://www.grynd.dedyn.io/games/pool-masters): Physics-based pool, solo or PvP
-- [Precision](https://www.grynd.dedyn.io/games/precision): Aim-and-accuracy skill game, solo or PvP
-- [Neon Flush](https://www.grynd.dedyn.io/games/neon-flush): Neon-themed card game
-- [Hex Duel](https://www.grynd.dedyn.io/games/hex-duel): Turn-based board duel, solo or PvP
-- [Uno](https://www.grynd.dedyn.io/games/uno): Uno against AI or online players
-- [Farkle](https://www.grynd.dedyn.io/games/farkle): Classic dice-combination scoring game
-- [Lane Rush Duel](https://www.grynd.dedyn.io/games/lane-runner): PvP tower-climb duel on one shared tower — picks reveal together, so every safe pick by either player narrows the odds; first to BANK 1,000 points wins (banking locks your score and never ends your climb, so the race continues at reduced rates); 2 private peeks + 2 flags per match give each player a scarce hidden-information edge
-- [Odds](https://www.grynd.dedyn.io/games/odds): Odds-style betting games
+## Solitaire
+- [Solitaire Duel](https://www.grynd.dedyn.io/games/solitaire-duel): The competitive Klondike race, with the rules, scoring, strategy and FAQ
+- [Game Hub](https://www.grynd.dedyn.io/games): Every way to play Solitaire on GRYND
+- [Ranked](https://www.grynd.dedyn.io/play/ranked): Race a real player on the same deal for rating and trophies
+- [Play vs AI](https://www.grynd.dedyn.io/play/ai): Unrated practice against the built-in bot, at a difficulty you choose
+- [Daily Challenge](https://www.grynd.dedyn.io/daily): One full deal every UTC day, identical for every player
+- [Daily Puzzle](https://www.grynd.dedyn.io/play/daily-puzzle): A fresh Solitaire puzzle each day
+- [Unlimited Puzzles](https://www.grynd.dedyn.io/play/unlimited-puzzles): Practice puzzles with no daily limit
+- [Solo Solitaire](https://www.grynd.dedyn.io/solitaire): Play Klondike on your own, no opponent needed
+
+## Learn
+- [Guides](https://www.grynd.dedyn.io/guides): How to play and how to play better
+- [How to play Klondike Solitaire](https://www.grynd.dedyn.io/guides/how-to-play-klondike-solitaire): The rules, the deal and the goal
+- [Solitaire strategy for beginners](https://www.grynd.dedyn.io/guides/solitaire-strategy-for-beginners): The decisions that win more deals
+- [GRYND Academy](https://www.grynd.dedyn.io/learn): Lessons, videos and drills for Solitaire
 
 ## Platform
-- [Home](https://www.grynd.dedyn.io/): Site overview and featured games
+- [Home](https://www.grynd.dedyn.io/): The site overview and the ranked ladder
 - [Rankings](https://www.grynd.dedyn.io/classement): Leaderboards with weekly resets
-- [Profile](https://www.grynd.dedyn.io/profil): Player stats, streaks, and token balance
-- [Sync](https://www.grynd.dedyn.io/sync): Account sync and onboarding
-- [Contact](https://www.grynd.dedyn.io/contact): Contact form for support
+- [Reviews](https://www.grynd.dedyn.io/reviews): Player reviews
+- [FAQ](https://www.grynd.dedyn.io/faq): Ratings, trophies, match history, accounts and rules
+- [About](https://www.grynd.dedyn.io/about): Who runs GRYND and how it is funded
+- [Contact](https://www.grynd.dedyn.io/contact): Support and feedback
 
 ## Optional
-- [Terms & Conditions](https://www.grynd.dedyn.io/terms): Rules of use. Virtual tokens, 18+, no real-money value
-- [Privacy Policy](https://www.grynd.dedyn.io/privacy-policy): Data collection, usage, and protection
-- [Security Policy](https://www.grynd.dedyn.io/security-policy): TLS 1.3, encryption, and incident response
-- [Fair Play](https://www.grynd.dedyn.io/fair-play): Fairness, anti-cheat, and responsible gaming
-- [Accessibility](https://www.grynd.dedyn.io/accessibility): WCAG 2.1 Level AA commitments
+- [Terms & Conditions](https://www.grynd.dedyn.io/terms): Rules of use, 18+ only
+- [Privacy Policy](https://www.grynd.dedyn.io/privacy-policy): Data collection, usage and protection
+- [Security Policy](https://www.grynd.dedyn.io/security-policy): TLS, encryption and incident response
+- [Fair Play](https://www.grynd.dedyn.io/fair-play): Fairness, anti-cheat and responsible gaming
+- [Accessibility](https://www.grynd.dedyn.io/accessibility): Accessibility commitments and contact
+- [Cookie Policy](https://www.grynd.dedyn.io/cookie-policy): Cookies and consent choices

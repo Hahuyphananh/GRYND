@@ -40,15 +40,15 @@ the real match statistics only.
 ```
 
 Notes:
-- **The result is held back 3s.** After the match ends the popup waits
+- **The result is held back 1s.** After the match ends the popup waits
   `RESULT_REVEAL_DELAY_MS` (in the component) before it opens, so the finished
   board — the winning line, the last ball, the losing tile — is what the player
   reads first and the WIN / LOSS / DRAW panel lands on top of it. The hold
   lives in this one component, so every game that mounts it gets the identical
   beat; a game that already animates its own ending (Mines' reveal sweep, Four
-  in a Row's winning line) keeps that animation in front of the 3s, and can
+  in a Row's winning line) keeps that animation in front of the 1s, and can
   pass `revealDelayMs` to shorten the hold — never to remove it. The two games
-  that draw their own end panel hold their own beat: UNO holds the same 3s
+  that draw their own end panel hold their own beat: UNO holds the same 1s
   (`END_PANEL_DELAY_MS`), and Battleship shows a compact victory / defeat popup
   2s after the verdict (`BATTLE_RESULT_DELAY_MS`,
   `src/components/games/battleship/BattlePreview.tsx`) — deliberately a small
@@ -94,7 +94,7 @@ Notes:
 
 - Mines Duel — `src/app/casino/mines-pvp/[matchId]/PageClient.tsx` (`renderResult()`)
 - Keno Duel — `src/app/casino/keno-pvp/[matchId]/PageClient.jsx` (`ResultModal` adapter; the
-  screen opens the moment the finished snapshot lands and the shared 3s hold covers the
+  screen opens the moment the finished snapshot lands and the shared 1s hold covers the
   final board — the old 1.2s pre-delay was removed so the two don't stack — per-round
   breakdown moved into Match Details)
 - Lane Rush Duel — `src/app/casino/lane-runner/[matchId]/PageClient.jsx` (`resultScreenProps`

@@ -79,7 +79,7 @@ export default function EmoteWheel({
         role="dialog"
         aria-label="Emotes"
         data-emote-wheel=""
-        className={`rounded-2xl border border-[#00e5ff]/40 bg-[#040d24]/97 p-3 shadow-[0_0_28px_rgba(0,229,255,.28)] backdrop-blur-md ${
+        className={`rounded-2xl border border-[#00e5ff]/40 bg-surface/97 p-3 shadow-[0_0_28px_rgba(0,229,255,.28)] backdrop-blur-md ${
           compact ? "origin-bottom scale-95" : ""
         }`}
       >
@@ -91,7 +91,7 @@ export default function EmoteWheel({
             type="button"
             onClick={onClose}
             aria-label="Close emotes"
-            className="rounded-md px-1 text-xs font-bold text-white/50 transition hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff]"
+            className="rounded-md px-1 text-xs font-bold text-white/50 transition hover:text-white focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#00e5ff]"
           >
             ✕
           </button>
@@ -106,7 +106,7 @@ export default function EmoteWheel({
               onClick={() => onPick(emote)}
               disabled={!sendEnabled}
               aria-label={`Send ${emote.label}`}
-              className="flex h-14 items-center justify-center rounded-xl border border-white/10 bg-[#071531] transition hover:border-[#00e5ff]/70 disabled:cursor-not-allowed disabled:opacity-40"
+              className="flex h-14 items-center justify-center rounded-xl border border-white/10 bg-surface transition hover:border-[#00e5ff]/70 disabled:cursor-not-allowed disabled:opacity-40"
             >
               {emote.kind === "word" ? (
                 <span className="max-w-[4.5rem] text-center text-[9px] font-black leading-[1.05] tracking-tight text-[#f5ff3b]">

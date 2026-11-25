@@ -36,7 +36,7 @@
  * is why the fetch happens in the browser and not in a server route.
  */
 export const HILLTOPS_VAST_TAG =
-  "https://rude-movie.com/dQmLF.zNdWGBNlv/Z_GzUa/Detmq9Ju_ZjUElLkiPrTWcJ1PNejfUfz_O/DbUjtYNUzgU/2WNOTrMj4ZOMQu";
+  "https://rude-movie.com/d/m.FUzldXGIN/vdZ-GvUr/XedmP9mu/ZGUMlSk/PLT/cV1/NQj-UfzGOJD/UytXNJzEUL2qNxTJMM4/O/Qd";
 
 /**
  * The master feature flag. True only when neither the global ad switch nor the

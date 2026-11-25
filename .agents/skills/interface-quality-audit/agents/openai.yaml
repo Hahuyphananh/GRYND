@@ -1,0 +1,4 @@
+interface:
+  display_name: "Interface Quality Audit"
+  short_description: "Find UI debt and prioritize fixes"
+  default_prompt: "Use $interface-quality-audit to review this interface and return prioritized design fixes."

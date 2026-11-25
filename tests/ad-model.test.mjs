@@ -149,6 +149,7 @@ test("the entitlement helper is server-authoritative and memoized per request", 
 
 test("only non-game surfaces are registered placements", () => {
   assert.deepEqual(Object.keys(AD_PLACEMENT_ENV).sort(), [
+    "guides",
     "home",
     "hub",
     "leaderboard",
@@ -159,8 +160,8 @@ test("only non-game surfaces are registered placements", () => {
 test("every ad slot or loader sits on a non-game browsing page", () => {
   const pagesWithSlots = allPages().filter((p) => /<AdSlot\s/.test(read(p)));
   assert.deepEqual(pagesWithSlots, [
-    "src/app/casino/page.jsx",
     "src/app/classement/page.jsx",
+    "src/app/guides/page.tsx",
     "src/app/page.jsx",
     "src/app/profil/page.jsx",
   ]);
@@ -203,19 +204,24 @@ test("no ad capability exists inside gameplay", () => {
     return route.split("/").length > 2;
   });
   assert.ok(
-    deeperGamePages.length >= 15,
+    deeperGamePages.length > 0,
     `expected the gameplay route tree (found ${deeperGamePages.length}) — a route walk that finds nothing proves nothing`,
   );
+  // The one game's match and practice routes are both gameplay. They are
+  // discovered structurally, so a new practice route is covered on creation.
+  for (const required of [
+    "src/app/casino/solitaire-duel/[matchId]/page.tsx",
+    "src/app/casino/solitaire-duel/play-ai/page.tsx",
+  ]) {
+    assert.ok(deeperGamePages.includes(required), "expected " + required + " in the gameplay walk");
+  }
   for (const page of deeperGamePages) {
     assertAdFree(page, "is a gameplay route (below the lobby)");
   }
 
-  // 3. Games whose lobby and board share the lobby URL are one page, not two:
-  //    there is no ad-free place to put a tag, so they carry none at all.
-  for (const page of allPages()) {
-    if (!/dice-flush|odds|keno|neon-flush/.test(page)) continue;
-    assertAdFree(page, "plays on its lobby URL");
-  }
+  // 3. The public practice mirror lives outside /casino, so the walk above
+  //    cannot see it — it is the same gameplay surface and must stay ad-free.
+  assertAdFree("src/app/play/ai/page.tsx", "mirrors the practice board");
 });
 
 test("the slot is placed above the footer, never over controls", () => {
@@ -224,7 +230,6 @@ test("the slot is placed above the footer, never over controls", () => {
   // element, which is what keeps ads away from accidental clicks.
   for (const [page, client] of [
     ["src/app/page.jsx", "src/app/PageClient.jsx"],
-    ["src/app/casino/page.jsx", "src/app/casino/PageClient.jsx"],
     ["src/app/classement/page.jsx", "src/app/classement/PageClient.jsx"],
     ["src/app/profil/page.jsx", "src/app/profil/PageClient.jsx"],
   ]) {
@@ -232,7 +237,9 @@ test("the slot is placed above the footer, never over controls", () => {
     const source = read(client);
     assert.match(source, /adSlot = null/, `${client} must accept the slot prop`);
     const index = source.indexOf("{adSlot}");
-    const footer = source.indexOf("<Footer />");
+    // Some clients render a footer in an early-return state too; the slot
+    // belongs immediately above the MAIN render's footer, which is the last one.
+    const footer = source.lastIndexOf("<Footer />");
     assert.ok(index > -1, `${client} must render {adSlot}`);
     assert.ok(
       footer > -1 && Math.abs(footer - index) < 120,
@@ -345,7 +352,12 @@ test("every lobby enters a match through the ad-aware router", () => {
     )
     .filter(exists)
     .sort();
-  assert.ok(lobbyClients.length >= 20, `expected every casino lobby client (found ${lobbyClients.length})`);
+  assert.ok(lobbyClients.length >= 1, `expected every casino lobby client (found ${lobbyClients.length})`);
+
+  assert.ok(
+    lobbyClients.includes("src/app/casino/solitaire-duel/PageClient.tsx"),
+    "the Solitaire Duel lobby client must be in the walk",
+  );
 
   for (const file of lobbyClients) {
     const source = read(file);
@@ -363,25 +375,47 @@ test("every lobby enters a match through the ad-aware router", () => {
     }
   }
 
-  // The shared lobby chrome's Quick Queue can land a player straight in a
-  // match from the lobby it is mounted on.
-  const quickQueue = read("src/components/lobby/PlatformQuickQueue.jsx");
+  // The Solitaire lobby's matchmaking lives in the shared component the
+  // homepage also mounts, so that is the file whose navigation has to go
+  // through the ad-aware router.
+  const solitaireLobby = read("src/components/solitaire-duel/SolitaireLobby.tsx");
   assert.match(
-    quickQueue,
+    solitaireLobby,
     /import \{ useMatchRouter \} from "\.\.\/\.\.\/hooks\/useMatchRouter";/,
   );
-  assert.match(quickQueue, /const router = useMatchRouter\(\);/);
-  assert.match(quickQueue, /router\.push\(route\)/);
+  assert.match(solitaireLobby, /const router = useMatchRouter\(\);/);
+  assert.ok(
+    !/import {[^}]*\buseRouter\b[^}]*} from "next\/navigation"/.test(solitaireLobby),
+    "SolitaireLobby must use useMatchRouter, not next/navigation",
+  );
+
+  // The shared lobby chrome's Quick Queue can land a player straight in a
+  // match from the lobby it is mounted on.
+  // The shared lobby chrome's Quick Queue is inert while GRYND is
+  // Solitaire-only (`hasGames: false`) — Solitaire Duel matchmaking does not
+  // use it. It must not keep an ad-naive router, and if it ever navigates
+  // again it has to go through the ad-aware router.
+  const quickQueue = read("src/components/lobby/PlatformQuickQueue.jsx");
+  assert.ok(quickQueue.includes("hasGames: false"), "the quick queue must be explicitly inert");
+  assert.ok(!quickQueue.includes("next/navigation"), "no ad-naive router may linger");
+  if (quickQueue.includes("router.push(")) {
+    assert.ok(
+      quickQueue.includes('import { useMatchRouter } from "../../hooks/useMatchRouter";'),
+      "a navigable quick queue must use the ad-aware router",
+    );
+  }
 });
 
 test("the match router leaves the document only for a match", () => {
   const source = code(MATCH_ROUTER);
-  assert.match(source, /resolveMatchNavigation\(href, hasAdCodeLoaded\(\)\)/);
-  assert.match(source, /window\.location\.assign\(href\)/);
-  assert.match(source, /window\.location\.replace\(href\)/);
+  // The decision is made on the RESOLVED (portal-aware) href, so a portal
+  // mirror is classified exactly like the path it replaced.
+  assert.match(source, /resolveMatchNavigation\(target, hasAdCodeLoaded\(\)\)/);
+  assert.match(source, /window\.location\.assign\(target\)/);
+  assert.match(source, /window\.location\.replace\(target\)/);
   // …and everything else stays a client-side navigation.
-  assert.match(source, /router\.push\(href, options\)/);
-  assert.match(source, /router\.replace\(href, options\)/);
+  assert.match(source, /router\.push\(target, options\)/);
+  assert.match(source, /router\.replace\(target, options\)/);
   assert.ok(
     !/localStorage|sessionStorage|document\.cookie/.test(source),
     "the decision is about this document's ad code, not stored client state",
@@ -418,7 +452,12 @@ test("link-based match entries also leave an ad-carrying document", () => {
 // `CHANGELOG.md` is exempt on purpose: it is a historical record of what was
 // shipped, not an instruction or a live reference.
 
-const MONETAG_PATTERN = /monetag|quge5|295730|1203148[1-4]|sw1\.js/i;
+// A LIVE integration, not the bare word. The itch packaging scripts and the
+// portal build docs deliberately list "monetag" as a network to strip, and a
+// bare-word match would flag that prohibition. These patterns only catch a
+// reintroduced endpoint, zone, worker, loader or configuration value.
+const MONETAG_PATTERN =
+  /monetag\.(?:com|net|org)|quge5|295730|1203148[1-4]|sw1\.js|MonetagScript|NEXT_PUBLIC_MONETAG|monetagEnabled|monetagZoneId|MONETAG_TAG_SRC/i;
 
 const SKIP_DIRS = new Set([
   "node_modules",
@@ -457,7 +496,7 @@ test("no Monetag file is shipped any more", () => {
   }
 });
 
-test("nothing in the source tree, config, tests or docs references Monetag", () => {
+test("no live Monetag endpoint, zone, worker, loader or config is referenced", () => {
   const offenders = shippedTextFiles()
     // This file names the provider on purpose — it is the removal guard.
     .filter((file) => file !== "tests/ad-model.test.mjs")

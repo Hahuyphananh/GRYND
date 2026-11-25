@@ -51,7 +51,7 @@ export default function EmoteBar({
   return (
     <div
       data-emote-bar=""
-      className="relative inline-flex items-center gap-1.5 rounded-full border border-[#00e5ff]/35 bg-[#040d24]/90 px-1.5 py-1 shadow-[0_0_18px_rgba(0,229,255,.18)] backdrop-blur-md"
+      className="relative inline-flex items-center gap-1.5 rounded-full border border-[#00e5ff]/35 bg-surface/90 px-1.5 py-1 shadow-[0_0_18px_rgba(0,229,255,.18)] backdrop-blur-md"
     >
       {slots.map((emote) => (
         <button
@@ -61,7 +61,7 @@ export default function EmoteBar({
           onClick={() => onPick(emote)}
           disabled={disabled || cooling}
           aria-label={`Send ${emote.label}`}
-          className={`flex ${slotSize} items-center justify-center rounded-full border border-white/10 bg-[#071531] transition hover:scale-105 hover:border-[#00e5ff]/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff] disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:scale-100`}
+          className={`flex ${slotSize} items-center justify-center rounded-full border border-white/10 bg-surface transition hover:scale-105 hover:border-[#00e5ff]/70 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#00e5ff] disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:scale-100`}
         >
           {emote.kind === "word" ? (
             <span className="px-0.5 text-center text-[8px] font-black leading-[1.05] tracking-tight text-[#f5ff3b]">
@@ -78,7 +78,7 @@ export default function EmoteBar({
         onClick={onOpenWheel}
         aria-expanded={wheelOpen}
         aria-label="All emotes"
-        className={`flex ${slotSize} items-center justify-center rounded-full border border-[#00e5ff]/45 bg-[#071531] text-[#00e5ff] transition hover:scale-105 hover:border-[#00e5ff] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff]`}
+        className={`flex ${slotSize} items-center justify-center rounded-full border border-[#00e5ff]/45 bg-surface text-[#00e5ff] transition hover:scale-105 hover:border-[#00e5ff] focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#00e5ff]`}
       >
         <IconMoodSmile size={compact ? 16 : 18} aria-hidden="true" />
       </button>

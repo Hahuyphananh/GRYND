@@ -29,12 +29,12 @@ export default function StateShell({
 }) {
   const tones = {
     neutral: {
-      ring: "border-[#00e5ff]/35 bg-[#08142f]/90",
+      ring: "border-[#00e5ff]/35 bg-surface/90",
       medallion: "border-[#00e5ff]/40 bg-[#00e5ff]/10 text-[#00e5ff]",
       title: "text-[#c9f7ff]",
     },
     warning: {
-      ring: "border-[#f5ff3b]/35 bg-[#08142f]/90",
+      ring: "border-[#f5ff3b]/35 bg-surface/90",
       medallion: "border-[#f5ff3b]/45 bg-[#f5ff3b]/10 text-[#f5ff3b]",
       title: "text-[#f5ff3b]",
     },
@@ -72,7 +72,7 @@ export default function StateShell({
 
 /** Shared primary/secondary action styling for the three states. */
 export const statePrimaryAction =
-  "inline-flex items-center justify-center gap-2 rounded-lg border border-[#f5ff3b]/60 bg-[#f5ff3b] px-5 py-2.5 text-sm font-bold text-[#041125] transition-all hover:bg-[#f5ff3b]/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#f5ff3b] focus-visible:ring-offset-2 focus-visible:ring-offset-[#08142f] active:scale-95 disabled:opacity-60";
+  "inline-flex items-center justify-center gap-2 rounded-lg border border-[#f5ff3b]/60 bg-[#f5ff3b] px-5 py-2.5 text-sm font-bold text-[#041125] transition-all hover:bg-[#f5ff3b]/90 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#f5ff3b] focus-visible:ring-offset-2 focus-visible:ring-offset-[#08142f] active:scale-95 disabled:opacity-60";
 
 export const stateSecondaryAction =
-  "inline-flex items-center justify-center gap-2 rounded-lg border border-[#00e5ff]/50 bg-[#0a214d] px-5 py-2.5 text-sm font-semibold text-[#00e5ff] transition-all hover:bg-[#123b82] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#08142f] active:scale-95 disabled:opacity-60";
+  "inline-flex items-center justify-center gap-2 rounded-lg border border-[#00e5ff]/50 bg-panel px-5 py-2.5 text-sm font-semibold text-[#00e5ff] transition-all hover:bg-[#123b82] focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#08142f] active:scale-95 disabled:opacity-60";

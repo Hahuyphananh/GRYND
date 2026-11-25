@@ -83,8 +83,8 @@ const norm = (text) => text.replace(/\s+/g, " ").trim();
  */
 function makeFakeDb({ users = [], seededEvents = [], seededIdentities = [] } = {}) {
   const state = {
-    // Clone the caller's fixtures: the writer now stamps `lastWonGameDate` on
-    // the winner, and shared objects would leak that mutation into later tests.
+    // Clone the caller's fixtures: a settlement mutates user rows in place,
+    // and shared objects would leak that mutation into later tests.
     users: users.map((user) => ({ ...user })),
     ratings: new Map(), // `${userId}:${gameKey}` -> row
     // The anti-reset ledger, `${identityHash}:${gameKey}` -> row. Survives
@@ -237,14 +237,6 @@ function makeFakeDb({ users = [], seededEvents = [], seededIdentities = [] } = {
         return { rows: [], rowCount: 2 };
       }
 
-      // ── daily-reward win marker ─────────────────────────────────
-      if (/^UPDATE users SET last_won_game_date/i.test(sql)) {
-        const [day, userId] = params;
-        const user = state.users.find((u) => u.id === userId);
-        if (user) user.lastWonGameDate = day;
-        return { rows: [], rowCount: user ? 1 : 0 };
-      }
-
       // ── quest bridge: seat accounts ─────────────────────────────
       // The bridge first confirms the seat ids are real accounts. Every id a
       // rating settlement passes here came from `users`, so echo them back.
@@ -273,8 +265,7 @@ function makeFakeDb({ users = [], seededEvents = [], seededIdentities = [] } = {
       (s) =>
         /^UPDATE player_ratings/i.test(s.sql) ||
         /^INSERT INTO rating_identities/i.test(s.sql) ||
-        /^INSERT INTO rating_events/i.test(s.sql) ||
-        /^UPDATE users SET last_won_game_date/i.test(s.sql),
+        /^INSERT INTO rating_events/i.test(s.sql),
     );
 
   const eventsFor = (gameKey) =>
@@ -690,14 +681,6 @@ test("WRITER WIN: creates both rows at 1000, applies placement +32/−32, journa
   assert.equal(events[1].delta, -32);
   assert.equal(events[1].opponent_id, 11);
 
-  // The daily-reward gate is stamped for the winner only: a rated win today is
-  // the authoritative "won today" signal.
-  assert.equal(
-    db.state.users.find((u) => u.id === 11).lastWonGameDate,
-    new Date().toISOString().slice(0, 10),
-  );
-  assert.equal(db.state.users.find((u) => u.id === 22).lastWonGameDate, undefined);
-
   // The result carries the post-match provisional state, derived from the
   // per-game counter — match 1 of 10.
   assert.equal(result.winner.gamesRated, 1);
@@ -741,9 +724,6 @@ test("WRITER DRAW: both journal rows say draw and equal ratings do not move", as
   assert.equal(db.state.ratings.get("11:chess").losses, 0);
   assert.equal(db.state.ratings.get("11:chess").draws, 1);
   assert.equal(db.state.ratings.get("22:chess").draws, 1);
-  // A draw is not a win: neither seat unlocks the daily reward.
-  assert.equal(db.state.users.find((u) => u.id === 11).lastWonGameDate, undefined);
-  assert.equal(db.state.users.find((u) => u.id === 22).lastWonGameDate, undefined);
 });
 
 test("WRITER: a second match uses the stored rating, not 1000 again", async () => {
@@ -772,9 +752,8 @@ test("TEST DUPLICATE RESULT: the second settlement writes nothing at all", async
   const ratingAfterFirst = db.state.ratings.get("11:chess").rating;
   const eventsAfterFirst = db.eventsFor("chess").length;
   const writesAfterFirst = db.writes().length;
-  // 2 rating UPDATEs + 2 identity-ledger mirrors + 1 journal INSERT + 1
-  // daily-reward win marker.
-  assert.equal(writesAfterFirst, 6);
+  // 2 rating UPDATEs + 2 identity-ledger mirrors + 1 journal INSERT.
+  assert.equal(writesAfterFirst, 5);
 
   const second = await applyRatingResult({ tx: db.tx, ...WIN_ARGS });
 

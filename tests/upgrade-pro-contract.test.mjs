@@ -42,6 +42,12 @@ const PROXY = read("src/proxy.ts");
 const TRANSLATIONS = read("src/lib/appTextTranslations.js");
 const PRO_BILLING = read("src/lib/proBilling.ts");
 const PRO_BENEFITS = read("src/lib/proBenefits.ts");
+const PRO_TRIAL = read("src/lib/proTrial.ts");
+const TIMELINE = read("src/components/ProTrialTimeline.tsx");
+const FEATURED_REVIEW = read("src/lib/featuredReview.ts");
+const REMINDER_JOB = read("src/app/api/jobs/pro-trial-reminders/route.ts");
+const TRIAL_REMINDER_ROUTE = read("src/app/api/stripe/trial-reminder/route.ts");
+const REMINDER_SETTINGS = read("src/components/ProTrialReminderSettings.tsx");
 const MIGRATION_0215 = read("src/db/migrations/0215_pro_benefit_copy.sql");
 
 const UPGRADE_SURFACE = { BUTTON, MODAL, CONTENT, HOOK, PAGE, PAGE_CLIENT };
@@ -175,7 +181,6 @@ test("the price is resolved server-side and rendered from the plan, never hardco
   );
   // Every option's price is resolved server-side from a bound Stripe price.
   assert.match(PRO_BILLING, /PRO_BILLING_INTERVALS/);
-  assert.match(SUBSCRIPTIONS, /stripePriceIdWeekly|stripe_price_id_weekly/);
   assert.match(SUBSCRIPTIONS, /stripePriceIdYearly|stripe_price_id_yearly/);
   assert.ok(
     !/\$\s?9\.99|\b999\b/.test(BUTTON + MODAL + CONTENT + PAGE_CLIENT),
@@ -209,7 +214,7 @@ test("entitlement is server-authoritative — the client can never claim PRO", (
   // The client sends a plan key and WHICH approved interval to buy — never a
   // price. The server resolves the amount from the bound Stripe price, and the
   // interval is validated server-side against the allowed set.
-  assert.match(HOOK, /JSON\.stringify\(\{ planKey, interval \}\)/);
+  assert.match(HOOK, /JSON\.stringify\(\{ planKey, interval, reminderDays \}\)/);
   assert.ok(
     !/JSON\.stringify\(\{[^}]*price/.test(HOOK),
     "the client must never send a price",
@@ -237,15 +242,28 @@ test("the modal shows the GRYND PRO offer with the pack-mega artwork", () => {
   // shared `pro.*` keys, and each key it renders exists in the English bundle
   // that every locale falls back through.
   assert.match(CONTENT, /t\("pro\.lead"\)/);
-  assert.match(TRANSLATIONS, /lead: "Compete without distractions\."/);
+  // The offer states the promise (master your game) and the reasons to pay:
+  // post-match depth, a climb across every title, and visible standing.
+  assert.match(
+    TRANSLATIONS,
+    /lead: "Master Your Game\. Go deeper after every match, track your climb across every title, and stand out on the ladder\."/,
+  );
   assert.match(CONTENT, /t\("pro\.cta\.subscribe"/);
   assert.match(CONTENT, /t\("pro\.cta\.manage"\)/);
   // The CTA carries the fully formatted price (symbol included), so the copy has
   // no currency of its own — the same key is correct in CAD, USD, EUR…
-  assert.match(TRANSLATIONS, /subscribe: "Subscribe — \{price}\/\{unit}\"/);
+  assert.match(
+    TRANSLATIONS,
+    /subscribe: "Start \{days}-day free trial — then \{price}\/\{unit}\"/,
+  );
   assert.ok(
-    !/equivalent: "About \$\{amount}/.test(TRANSLATIONS) &&
-      !/save: "Save \$\{amount}/.test(TRANSLATIONS),
+    /save: "Save \{percent\}% vs\. \{versus\} \(\{amount\}\/mo\)"/.test(
+      TRANSLATIONS,
+    ),
+    "the saving is one crisp line: rounded percent, monthly price, no annual amount",
+  );
+  assert.ok(
+    !TRANSLATIONS.includes("${amount}") && !/save: "Save \$/.test(TRANSLATIONS),
     "no pro.* copy may hardcode a currency symbol",
   );
   assert.match(TRANSLATIONS, /manage: "Manage subscription"/);
@@ -275,24 +293,45 @@ test("the modal shows the GRYND PRO offer with the pack-mega artwork", () => {
     /\{ id: "ad_free", availability: "available" \}/,
     "ad-free is enforced today (lib/adEntitlement.ts) and stays advertised",
   );
+  // The refreshed box: analytics is shipped (the /stats dashboard, gated by
+  // /api/stats/performance); the daily archive is gated by its own route; and
+  // private rooms are still enforced by POST /api/rooms but are no longer part
+  // of the box. Extended leaderboards with ranking graphs are still unbuilt.
+  assert.match(
+    PRO_BENEFITS,
+    /\{ id: "analytics", availability: "available" \}/,
+    "the performance dashboard exists and is gated — the catalog must say so",
+  );
+  assert.match(
+    PRO_BENEFITS,
+    /\{ id: "daily_archive", availability: "available" \}/,
+    "the PRO daily archive route exists — advertise it",
+  );
   assert.ok(
-    !/id: "(analytics|leaderboards|private_rooms)", availability: "available"/.test(
-      PRO_BENEFITS,
-    ),
-    "statistics / ranking graphs / private rooms are not built yet — they must not be advertised",
+    !/id: "private_rooms"/.test(PRO_BENEFITS),
+    "private rooms are out of the current value box",
+  );
+  assert.ok(
+    !/id: "leaderboards", availability: "available"/.test(PRO_BENEFITS),
+    "leaderboard graphs are not built yet — they must not be advertised",
   );
 
   // The perk row the API serves (/api/membership/status sends `plan.perks`) is
   // the same catalog, and the retired claims are gone from it. The comments in
   // the migration deliberately NAME the claims it removes (that is the audit
   // trail), so the check reads the statement — comments stripped — not the file.
-  const sql = MIGRATION_0215.split("\n")
+  const sql = read("src/db/migrations/0261_pro_offer_refresh.sql")
+    .split("\n")
     .filter((line) => !line.trim().startsWith("--"))
     .join("\n");
-  assert.match(sql, /'Ad-free browsing and gaming'/);
-  assert.match(
-    sql,
-    /'Priority matchmaking — a fair queue tie-break, never a skill advantage'/,
+  assert.match(sql, /'100% Ad-Free Experience/);
+  assert.ok(
+    !/matchmaking/i.test(sql),
+    "priority matchmaking is not sold while the queues are small",
+  );
+  assert.ok(
+    !/Private custom rooms/i.test(sql),
+    "private rooms are out of the current value box",
   );
   assert.ok(
     !/Detailed match history|Custom chat color|Priority support|customization/i.test(
@@ -309,7 +348,7 @@ test("every dynamic PRO string resolves in all three languages", async () => {
   // grepped as literals, so they are enumerated here and resolved through the
   // real bundle. A locale that is missing one would otherwise render the raw
   // key — or silently fall back to English mid-sentence.
-  const intervals = ["weekly", "monthly", "yearly"];
+  const intervals = ["monthly", "yearly"];
   // Derived from the catalog, not a second hand-kept list: every approved
   // benefit must be translated in every locale — INCLUDING the ones not
   // advertised yet, so the surface that ships each feature only has to flip its
@@ -327,9 +366,10 @@ test("every dynamic PRO string resolves in all three languages", async () => {
     "pro.membership",
     "pro.interval_group",
     "pro.badge.best_value",
-    "pro.equivalent",
     "pro.save",
-    "pro.flexible_weekly",
+    "pro.flexible_monthly",
+    "pro.founder_anchor",
+    "pro.founder_scarcity",
     "pro.selected",
     "pro.same_membership",
     "pro.cancel_anytime",
@@ -337,6 +377,13 @@ test("every dynamic PRO string resolves in all three languages", async () => {
     "pro.active_renews",
     "pro.close",
     "pro.benefits_title",
+    "pro.preview.title",
+    "pro.preview.sample",
+    "pro.preview.alt",
+    "pro.preview.range",
+    "pro.preview.gain",
+    "pro.preview.caption",
+    "pro.trustpilot_label",
     "pro.no_advantage",
     "pro.error_generic",
     "pro.checkout_cancelled",
@@ -344,13 +391,52 @@ test("every dynamic PRO string resolves in all three languages", async () => {
     "pro.checkout_active",
     "pro.free_title",
     "pro.free_body",
-    "pro.free_note",
     "pro.billing_title",
     "pro.billing_current",
     "pro.billing_options_lead",
     "pro.billing_change",
     "pro.billing_profile_lead",
     "pro.billing_profile_link",
+    "pro.discount_line",
+    "pro.value_line",
+    "pro.testimonial_title",
+    "pro.testimonial_rating",
+    "pro.testimonial_verified",
+    "pro.testimonial_anonymous",
+    "pro.team_title",
+    "pro.team_body",
+    "pro.team_signature",
+    ...[
+      "title",
+      "subtitle",
+      "step_free",
+      "step_reminder",
+      "step_charge",
+      "free_title",
+      "free_body",
+      "reminder_title",
+      "reminder_body",
+      "charge_title",
+      "charge_body",
+      "charge_pending",
+      "charge_reminder",
+      "charge_no_reminder",
+      "back",
+      "next",
+      "step_of",
+    ].map((key) => `pro.trial.${key}`),
+    ...["3", "1", "0"].map((days) => `pro.trial.reminder_${days}`),
+    ...[
+      "used_note",
+      "manage_title",
+      "manage_body",
+      "manage_body_no_date",
+      "manage_cancel_hint",
+      "manage_saved",
+      "manage_error",
+    ].map((key) => `pro.trial.${key}`),
+    "pro.active_trial",
+    "pro.cta.plain_subscribe",
   ];
 
   for (const lang of ["en", "fr", "es"]) {
@@ -365,11 +451,9 @@ test("every dynamic PRO string resolves in all three languages", async () => {
 });
 
 test("the upgrade CTA sits on non-gameplay pages only", () => {
+  // Pages that still sell PRO inline keep their button.
   for (const path of [
-    "src/app/PageClient.jsx",
-    "src/app/casino/PageClient.jsx",
     "src/app/classement/PageClient.jsx",
-    "src/app/profil/PageClient.jsx",
     "src/app/settings/PageClient.jsx",
   ]) {
     assert.ok(
@@ -377,6 +461,24 @@ test("the upgrade CTA sits on non-gameplay pages only", () => {
       `${path} should render the upgrade CTA`,
     );
   }
+
+  // The home page and the casino hub no longer carry an inline CTA — the
+  // Solitaire-first redesign removed it. What replaced it is the GRYND PRO
+  // card, mounted ONCE in SiteChrome and therefore present on every browsing
+  // page including "/". That card is now the home page's upgrade entry point,
+  // so it must exist, stay route-gated, and point at the real purchase page.
+  const chrome = read("src/components/SiteChrome.tsx");
+  assert.match(
+    chrome,
+    /shouldShowProWidget\(pathname\) && <GryndProWidget \/>/,
+    "the site chrome must mount the gated GRYND PRO card",
+  );
+  const widget = read("src/components/GryndProWidget.tsx");
+  assert.match(widget, /linkToPage/, "the card's CTA must open the upgrade page");
+  assert.match(widget, /UPGRADE_PRO_PATH/);
+  const gate = read("src/lib/proWidget.ts");
+  assert.match(gate, /"\/upgrade-pro"/, "the upgrade page itself must be excluded");
+  assert.match(gate, /"\/solitaire"/, "gameplay must be excluded");
 
   // Nothing under a match/board route may render the CTA: those paths are the
   // active-gameplay surfaces (the games hub itself is fine).
@@ -399,11 +501,139 @@ test("the upgrade CTA sits on non-gameplay pages only", () => {
   assert.deepEqual(offenders, [], `upgrade CTA found inside gameplay: ${offenders}`);
 });
 
+test("the analytics benefit ships a sample visual preview", () => {
+  // The bullet promises "graphs"; the card shows what that means. It is a
+  // static sample (no dashboard fetch, no account data) and is labelled as one.
+  assert.match(CONTENT, /data-testid="pro-analytics-preview"/);
+  assert.match(CONTENT, /pro\.preview\.title/);
+  assert.match(CONTENT, /pro\.preview\.sample/);
+  assert.match(CONTENT, /pro\.preview\.alt/);
+  assert.match(CONTENT, /<svg/);
+  assert.match(CONTENT, /role="img"/);
+  assert.doesNotMatch(CONTENT, /useApiResource|fetch\(/);
+});
+
+test("the offer carries no third-party review widget", () => {
+  // Trustpilot's TrustBox was removed from the PRO offer: it loaded a
+  // third-party script beside the CTA, and the offer's social proof is the one
+  // approved review rendered below (pro-testimonial). No rating or review count
+  // may be typed into the component either.
+  assert.doesNotMatch(CONTENT, /trustpilot/i, "no Trustpilot surface on the offer");
+  assert.ok(
+    !/[45].d|d{2,}s*(reviews|avis|opiniones)/i.test(CONTENT),
+    "no rating or review count may be typed into the component",
+  );
+});
+
 test("the upgrade landing page is public and never prerendered for one user", () => {
   assert.ok(PROXY.includes('"/upgrade-pro"'), "proxy should treat it as public");
   assert.match(PAGE, /dynamic = "force-dynamic"/);
   assert.match(PAGE, /findActiveSubscription/);
   assert.match(PAGE, /getProPlanDisplay/);
+});
+
+test("the paywall sells a free trial it can actually honour", () => {
+  // A real Stripe trial: the checkout creates it, and entitlement already
+  // treats `trialing` as active, so the timeline describes what happens.
+  assert.match(SUBSCRIBE_ROUTE, /trial_period_days: trialDays/);
+  assert.match(SUBSCRIBE_ROUTE, /trialReminderDays: String\(reminderDays\)/);
+  assert.match(PRO_TRIAL, /export const PRO_TRIAL_DAYS = 7/);
+  assert.match(PRO_TRIAL, /PRO_TRIAL_REMINDER_DAYS = \[3, 1, 0\]/);
+
+  // Three slides on the offer: try it free, pick a reminder, see the charge.
+  assert.match(CONTENT, /<ProTrialTimeline/);
+  assert.match(CONTENT, /onReminderChange=\{setReminderDays\}/);
+  assert.match(TIMELINE, /const STEPS = \["free", "reminder", "charge"\]/);
+  assert.match(TIMELINE, /data-testid=\{`pro-trial-step-\$\{id\}`\}/);
+  assert.match(TIMELINE, /data-testid="pro-trial-panel-charge"/);
+  assert.match(TIMELINE, /PRO_TRIAL_REMINDER_DAYS\.map/);
+
+  // The reminder the member picks is actually sent, and "no reminder" is
+  // honoured rather than sent anyway.
+  assert.match(REMINDER_JOB, /sendProTrialReminder/);
+  assert.match(REMINDER_JOB, /metadata\?\.trialReminderDays/);
+  assert.match(REMINDER_JOB, /reminderDays === 0/);
+  const cron = JSON.parse(read("vercel.json"));
+  assert.ok(
+    cron.crons.some((entry) => entry.path === "/api/jobs/pro-trial-reminders"),
+    "the reminder sweep must be scheduled",
+  );
+});
+
+test("the discount, the testimonial and the team note are all real", () => {
+  // Front and centre: the saving is DERIVED from the resolved options, never
+  // typed into the component as marketing copy.
+  assert.match(CONTENT, /data-testid="pro-discount-percent"/);
+  assert.match(CONTENT, /yearlyOption\?\.savings\[0\]/);
+  assert.match(CONTENT, /pro\.discount_line/);
+
+  // The feature list answers "is it worth it?" with a derived weekly price.
+  assert.match(CONTENT, /data-testid="pro-value-line"/);
+  assert.match(CONTENT, /pro\.value_line/);
+  assert.match(CONTENT, /const weeklyCents =/);
+
+  // The testimonial is one approved review from the moderated wall, resolved
+  // on the server — never a quote or rating written into the component.
+  assert.match(CONTENT, /data-testid="pro-testimonial"/);
+  assert.match(PAGE, /getApprovedReviews/);
+  assert.match(PAGE, /pickFeaturedReview/);
+  assert.match(FEATURED_REVIEW, /export function pickFeaturedReview/);
+  assert.match(FEATURED_REVIEW, /MIN_QUOTE_LENGTH/);
+  assert.ok(
+    !/★★★★★|"5\.0"|4\.9 out of 5/.test(CONTENT),
+    "the paywall must not type a rating or a quote",
+  );
+
+  // The note from the team is copy, and it says why the subscription exists.
+  assert.match(CONTENT, /data-testid="pro-team-note"/);
+  assert.match(TRANSLATIONS, /team_body:/);
+});
+
+test("the free trial is granted once per customer, and the paywall says so", () => {
+  // The guard is a server read of the caller's own rows: a canceled
+  // subscription row still counts as "already had the trial".
+  assert.match(SUBSCRIPTIONS, /export async function hasPriorSubscription/);
+  assert.match(SUBSCRIBE_ROUTE, /hasPriorSubscription\(clerkId\)/);
+  assert.match(SUBSCRIBE_ROUTE, /const trialDays = /);
+  assert.match(
+    SUBSCRIBE_ROUTE,
+    /\.\.\.\(trialDays > 0 \? \{ trial_period_days: trialDays \} : \{\}\)/,
+    "checkout must omit the trial entirely for a returning customer",
+  );
+
+  // Eligibility travels from the server to every surface; a client flag cannot
+  // claim a trial the server would not grant.
+  assert.match(STATUS_ROUTE, /hasPriorSubscription\(userId\)/);
+  assert.match(STATUS_ROUTE, /trialEligible/);
+  assert.match(HOOK, /trialEligible: state\.trialEligible,/);
+  assert.match(CONTENT, /trialEligible === true/);
+  assert.match(CONTENT, /pro\.cta\.plain_subscribe/);
+  assert.match(CONTENT, /data-testid="pro-trial-used-note"/);
+  assert.match(PAGE, /hasPriorSubscription/);
+});
+
+test("a trialing member can change or cancel the reminder after checkout", () => {
+  // The panel writes only the caller's OWN trialing subscription's metadata —
+  // the same field the reminder sweep reads.
+  assert.match(TRIAL_REMINDER_ROUTE, /findTrialingSubscription\(/);
+  assert.match(TRIAL_REMINDER_ROUTE, /loadOwnTrial\(userId\)/);
+  assert.match(TRIAL_REMINDER_ROUTE, /subscriptions\.update\(/);
+  assert.match(TRIAL_REMINDER_ROUTE, /trialReminderDays: String\(reminderDays\)/);
+  assert.match(TRIAL_REMINDER_ROUTE, /isProTrialReminderDays/);
+
+  assert.match(REMINDER_SETTINGS, /data-testid="pro-trial-reminder-settings"/);
+  assert.match(REMINDER_SETTINGS, /PRO_TRIAL_REMINDER_DAYS\.map/);
+  assert.match(REMINDER_SETTINGS, /updateProTrialReminder/);
+  assert.match(HOOK, /export async function updateProTrialReminder/);
+
+  // It is mounted only for a live trial on the upgrade page.
+  assert.match(PAGE_CLIENT, /<ProTrialReminderSettings/);
+  assert.match(PAGE_CLIENT, /status\.status === "trialing"/);
+
+  // And there is a real browser click-through for the trial slides.
+  assert.ok(exists("qa/pro-paywall-check.mjs"), "the paywall click-through must exist");
+  const pkg = JSON.parse(read("package.json"));
+  assert.equal(pkg.scripts["verify:paywall"], "node qa/pro-paywall-check.mjs");
 });
 
 test("the retired High Roller title is renamed in the migration", () => {

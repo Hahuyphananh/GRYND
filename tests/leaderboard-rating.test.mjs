@@ -30,6 +30,7 @@ import {
   normalizeRatingGameKey,
   toRatingShape,
 } from "../src/lib/rating.js";
+import { readProfileSource } from "./helpers/profile-source.mjs";
 
 /** Source with comments removed, so prose about tokens can't trip assertions. */
 function codeOf(path) {
@@ -216,7 +217,7 @@ test("ROWS: carry the non-token record and the provisional state", () => {
 });
 
 test("GAME KEYS: rated games only, one independent board each", () => {
-  assert.equal(RATED_GAMES.length >= 10, true);
+  assert.ok(RATED_GAMES.length > 0, "at least one rated game");
   // Every rated game has a display label and its own board key.
   for (const key of RATED_GAMES) {
     assert.equal(typeof RATING_GAME_LABELS[key], "string", `${key} needs a label`);
@@ -227,15 +228,14 @@ test("GAME KEYS: rated games only, one independent board each", () => {
   for (const unrated of ["poker", "not-a-game"]) {
     assert.equal(normalizeRatingGameKey(unrated), RATED_GAMES[0]);
   }
-  assert.equal(getRatingGameLabel("pool"), "Pool Masters");
-  assert.equal(getRatingGameLabel("chess"), "Chess");
+  assert.equal(getRatingGameLabel("solitaire-duel"), "Solitaire Duel");
 });
 
 test("BOARD ROW SHAPE: independent per game, labelled, provisional-aware", () => {
   // Two rows belonging to the same player, in two different games. They share
   // no state: the Chess row is established, the Precision row is still being
   // placed. Exactly what each board renders.
-  const chess = toRatingShape("chess", {
+  const chess = toRatingShape(RATED_GAMES[0], {
     rating: 1420,
     peak_rating: 1500,
     games_rated: 42,
@@ -248,7 +248,7 @@ test("BOARD ROW SHAPE: independent per game, labelled, provisional-aware", () =>
     games: 40,
   });
   assert.equal(chess.rating, 1420);
-  assert.equal(chess.label, "Chess");
+  assert.equal(chess.label, "Solitaire Duel");
   assert.equal(chess.gamesRated, 42);
   assert.equal(chess.wins, 25);
   assert.equal(chess.draws, 2);
@@ -264,14 +264,14 @@ test("BOARD ROW SHAPE: independent per game, labelled, provisional-aware", () =>
   // The board row passes the SQL aliases straight through for the shared
   // RecordLine component, which reads snake_case `win_rate`/`games`.
   const boardRow = {
-    ...toRatingShape("chess", { wins: 25, losses: 15, games_rated: 42 }),
+    ...toRatingShape(RATED_GAMES[0], { wins: 25, losses: 15, games_rated: 42 }),
     win_rate: 62.5,
     games: 40,
   };
   assert.equal(boardRow.win_rate, 62.5);
   assert.equal(boardRow.games, 40);
 
-  const precision = toRatingShape("precision", {
+  const precision = toRatingShape(RATED_GAMES[0], {
     rating: 1610,
     peak_rating: 1610,
     games_rated: 4,
@@ -282,7 +282,7 @@ test("BOARD ROW SHAPE: independent per game, labelled, provisional-aware", () =>
     last_rated_at: null,
   });
   assert.equal(precision.rating, 1610);
-  assert.equal(precision.label, "Precision");
+  assert.equal(precision.label, RATING_GAME_LABELS[RATED_GAMES[0]]);
   assert.equal(precision.gamesRated, 4);
   assert.equal(precision.provisional, true);
   assert.equal(precision.provisionalStage, "provisional");
@@ -295,7 +295,9 @@ test("BOARD ROW SHAPE: independent per game, labelled, provisional-aware", () =>
   // other's numbers.
   assert.notEqual(chess.rating, precision.rating);
   assert.notEqual(chess.gamesRated, precision.gamesRated);
-  assert.notEqual(chess.gameKey, precision.gameKey);
+  // One rated game remains on this branch, so both rows carry its key; what
+  // must never mix is their numbers.
+  assert.equal(chess.gameKey, precision.gameKey);
 });
 
 // ════════════════════════════════════════════════════════════════════════
@@ -342,22 +344,45 @@ test("UI: the game tabs mirror RATED_GAMES exactly (no drift)", () => {
   for (const { key, label } of mirror) {
     assert.equal(label, RATING_GAME_LABELS[key], `label mismatch for ${key}`);
   }
-  // ...and the authoritative list still comes from the API on load.
-  assert.match(page, /board\.data\?\.games/);
+  // The page no longer renders a per-game tab, so there is no game list to
+  // reconcile with the API on load.
 });
 
-test("UI: the per-game board ranks and labels by Elo", () => {
+test("UI: the page offers the seven boards it can rank", () => {
   const code = codeOf(CLASSEMENT);
   assert.match(
     code,
-    /const displayCategory = isPerGameTab\(tab\)\s*\?\s*"rating"/,
+    /const TABS = \[\s*"trophies",\s*"all-time",\s*"duel-best",\s*"puzzle-best",\s*"daily-deal",\s*"daily-current",\s*"daily-best",\s*\]/,
   );
-  assert.match(code, /return formatNumber\(field\("rating"\)\);/);
-  assert.match(code, /ProvisionalChip/);
-  assert.match(code, /provisionalGamesCompleted/);
-  assert.match(code, /\/api\/leaderboard\/game\?game=\$\{game\}&limit=50/);
+  // The two competitive boards are independent and use the per-game table.
+  assert.ok(
+    code.includes(
+      "/api/leaderboard/competitive-streak?game=${COMPETITIVE_STREAK_TABS[tab]}&limit=50",
+    ),
+  );
+  assert.match(code, /"duel-best": "solitaire-duel"/);
+  assert.match(code, /"puzzle-best": "solitaire-puzzle"/);
+  // Trophies IS the all-time peak board, under a plain label.
+  assert.ok(code.includes("/api/leaderboard/trophy-peak?limit=50"));
+  // All-Time wins reads the settled-result counters (competitive only).
+  assert.ok(code.includes("/api/leaderboard/all-time?limit=50&category=wins"));
+  assert.ok(code.includes("/api/leaderboard/daily-deal-best-time?limit=50"));
+  // Both boards have a live route behind them.
+  assert.ok(fs.existsSync("src/app/api/leaderboard/daily-deal-best-time/route.js"));
+  // No sub-categories: one tab, one ranking.
+  assert.doesNotMatch(code, /CATEGORY_LABELS|ALL_TIME_CATEGORIES|WEEKLY_CATEGORIES/);
+  assert.doesNotMatch(code, /setCategory\(/);
+  // Win rate is a profile stat, never a board one.
+  assert.doesNotMatch(code, /gameWinRate|% win/);
+  // The Elo and weekly boards are gone with their plumbing.
+  assert.doesNotMatch(
+    code,
+    /isPerGameTab|isOverallTab|isGainTab|OverallEloBadge|ProvisionalChip/,
+  );
+  // Streaks stay.
+  assert.match(code, /"daily-current"/);
+  assert.match(code, /"daily-best"/);
 });
-
 test("UI: no token or winnings metric is rendered on the boards", () => {
   const code = codeOf(CLASSEMENT);
   // The two coin boards ARE rendered (Biggest Coin Win / Highest All-Time
@@ -376,46 +401,14 @@ test("UI: no token or winnings metric is rendered on the boards", () => {
   assert.doesNotMatch(tabs, /\btoken/i);
 });
 
-test("DEEP LINK: ?game= opens that game's Elo board; unknown ids are ignored", () => {
-  const page = fs.readFileSync(CLASSEMENT, "utf8");
-  assert.match(page, /URLSearchParams\(window\.location\.search\)\.get\("game"\)/);
-  assert.match(page, /setTab\("per-game"\)/);
-
-  // The lobby's canonical ids differ from the rating keys for some games, so
-  // every alias target must resolve to a REAL rated game key — otherwise a
-  // lobby shortcut would land on an empty invented board.
-  const block = page.slice(page.indexOf("const LOBBY_GAME_ALIASES"));
-  const body = block.slice(0, block.indexOf("};"));
-  const targets = [...body.matchAll(/:\s*"([a-z0-9-]+)"/g)].map((m) => m[1]);
-  assert.ok(targets.length >= 4, "the lobby alias map should be populated");
-  for (const target of targets) {
-    assert.ok(
-      RATED_GAMES.includes(target),
-      `alias target ${target} is not a rated game`,
-    );
-  }
-
-  // These rated games already share the lobby's id, so no alias is needed.
-  for (const direct of [
-    "chess",
-    "four-in-a-row",
-    "dots-and-boxes",
-    "memory-grid",
-    "precision",
-    "mines-pvp",
-  ]) {
-    assert.ok(RATED_GAMES.includes(direct), `${direct} must be rated`);
-    assert.equal(LOBBY_ALIAS_HAS(direct), false, `${direct} should not be aliased`);
-  }
+test("the page no longer deep-links to a per-game Elo board", () => {
+  const code = codeOf(CLASSEMENT);
+  // The per-game ladder tab was removed, so the old ?game= shortcut went
+  // with it rather than landing on a board the page no longer renders.
+  assert.doesNotMatch(code, /setTab\("per-game"\)/);
+  assert.doesNotMatch(code, /LOBBY_GAME_ALIASES/);
+  assert.doesNotMatch(code, /\/api\/leaderboard\/game\?game=/);
 });
-
-/** True when the deep-link alias map contains `key` as a key. */
-function LOBBY_ALIAS_HAS(key) {
-  const page = fs.readFileSync(CLASSEMENT, "utf8");
-  const block = page.slice(page.indexOf("const LOBBY_GAME_ALIASES"));
-  const body = block.slice(0, block.indexOf("};") + 2);
-  return new RegExp(`(^|\\s)["']?${key}["']?\\s*:`).test(body);
-}
 
 // ════════════════════════════════════════════════════════════════════════
 // 5. The profile's game-specific rating section
@@ -434,7 +427,7 @@ test("PROFILE: a Game Ratings tab lists one Elo per game", () => {
 });
 
 test("PROFILE: both profile pages pass the ratings map through", () => {
-  const own = fs.readFileSync("src/app/profil/PageClient.jsx", "utf8");
+  const own = readProfileSource();
   assert.match(own, /record=\{stats\?\.record\}/);
   assert.match(own, /ratings=\{stats\?\.ratings\}/);
   // Overall Elo is passed alongside the per-game ratings, never instead.

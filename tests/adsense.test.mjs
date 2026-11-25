@@ -4,14 +4,13 @@
 //
 // AdSense is the one third-party script we deliberately do NOT load everywhere.
 // It is scoped to the pages a player browses *between* games — the home page,
-// the game hub, the leaderboard, the profile and the game lobbies — and it
-// must stay off:
+// the leaderboard, the profile, the guides index and the single game lobby —
+// and it must stay off:
 //
-//   1. every match page (the `[matchId]` / `game/[gameId]` / `table/[tableId]`
-//      routes) — an ad next to a wager in progress is an intrusion; and
-//   2. the games whose lobby and board are ONE page (Dice Flush, Odds, Keno
-//      and the Neon Flush reskins today), where there is no lobby route to
-//      scope to that isn't the board.
+//   1. every match page (the `[matchId]` route) — an ad next to a wager in
+//      progress is an intrusion; and
+//   2. the Solitaire practice board, which is gameplay even though its route
+//      is not a match URL.
 //
 // The page list is asserted as an exact SET against what the app actually
 // renders, so a new page that picks the loader up — or a protected page that
@@ -62,44 +61,22 @@ const CLIENT = "ca-pub-4903728316211815";
 
 /**
  * Every page allowed to render the loader, as a repo-relative POSIX path: the
- * four "main" pages, plus one LOBBY per game that keeps its board on a
- * separate match route.
+ * three browsing pages, the guides index, and the one game lobby.
  */
 const ALLOWED = [
   // main pages
   "src/app/page.jsx",
-  "src/app/casino/page.jsx",
   "src/app/classement/page.jsx",
   "src/app/profil/page.jsx",
-  // game lobbies (lobby route only — the board lives elsewhere)
-  // Barrier Blitz's lobby is the page the rewrite from
-  // /games/barrier-blitz/play lands on, and its board lives at
-  // /casino/barrier-blitz/[matchId] (which stays ad-free
-  // like every other match page).
-  "src/app/casino/barrier-blitz/page.tsx",
-  "src/app/casino/chess/page.jsx",
-  // Dominoes' lobby is its own route and its board lives at
-  // /casino/dominoes/[matchId], which stays ad-free like every other match page.
-  "src/app/casino/dominoes/page.tsx",
-  // Hillstrike's lobby is its own route and its board lives at
-  // /casino/hillstrike/[matchId], which stays ad-free like every other match page.
-  "src/app/casino/hillstrike/page.tsx",
-  "src/app/casino/dots-and-boxes/page.tsx",
-  "src/app/casino/four-in-a-row/page.tsx",
-  "src/app/casino/hex-duel/page.tsx",
-  "src/app/casino/lane-runner/page.jsx",
-  "src/app/casino/memory-grid/page.tsx",
-  "src/app/casino/mines-pvp/page.tsx",
-  "src/app/casino/mini-golf/page.tsx",
-  "src/app/casino/pool-masters/page.tsx",
-  "src/app/casino/precision/page.tsx",
-  "src/app/casino/rps/page.tsx",
-  "src/app/casino/tower-arena/page.tsx",
-  "src/app/casino/uno/page.jsx",
-  "src/app/casino/speed-typing/page.tsx",
+  // the editorial surface — the guides index. Each guide ARTICLE renders the
+  // same loader from components/guides/GuideArticle.tsx (one component for
+  // every article), which is not a page file, so it is asserted separately in
+  // tests/adsense-readiness.test.mjs.
+  "src/app/guides/page.tsx",
+  // the one game lobby. Its board lives at /casino/solitaire-duel/[matchId],
+  // which stays ad-free like every other match page. /casino (the old
+  // multi-game hub) is now a redirect and renders no tag.
   "src/app/casino/solitaire-duel/page.tsx",
-  "src/app/casino/sudoku-duel/page.tsx",
-  "src/app/casino/tic-tac-toe/page.tsx",
 ];
 
 /** Every route file in src/app (page.*), as repo-relative POSIX paths. */
@@ -262,14 +239,17 @@ test("no match page ever carries the ad tag", () => {
   );
 });
 
-test("games whose lobby and board are one page stay ad-free", () => {
-  // Dice Flush and Odds are played start-to-finish on their lobby URL, so any
-  // tag there would sit on the board itself. Keno and the Neon Flush reskins
-  // are excluded the same way.
-  const combined = pagesRenderingTag().filter((p) =>
-    /dice-flush|odds|keno|neon-flush/.test(p),
+test("the Solitaire lobby carries the tag and its board does not", () => {
+  // The lobby is the ad surface; the race is not. They are separate routes, so
+  // the split is structural rather than a per-page exception.
+  assert.ok(
+    pagesRenderingTag().includes("src/app/casino/solitaire-duel/page.tsx"),
+    "the Solitaire lobby is an allowed browsing surface",
   );
-  assert.deepEqual(combined, [], "lobby-and-board-in-one games must stay ad-free");
+  assert.ok(
+    !/AdSenseScript/.test(read("src/app/casino/solitaire-duel/[matchId]/page.tsx")),
+    "the race page must stay ad-free",
+  );
 });
 
 test("the ad tag is never global", () => {
@@ -299,6 +279,13 @@ test("the CSP lets AdSense's ad frames through", () => {
     frameSrc[0],
     /fundingchoicesmessages\.google\.com/,
     "the consent message is served from fundingchoicesmessages.google.com",
+  );
+  // AdSense frames this on every impression to score traffic quality; without
+  // it the unit still paints but every page reports a CSP violation.
+  assert.match(
+    frameSrc[0],
+    /adtrafficquality\.google/,
+    "AdSense's traffic-quality frame is served from adtrafficquality.google",
   );
 });
 
@@ -332,13 +319,22 @@ test("EEA, UK and Swiss visitors get Google's CMP instead of our banner", () => 
     LAYOUT.includes("requiresGoogleCmp(countryFromHeaders(requestHeaders))"),
     "the layout must decide the region on the server from the request headers",
   );
+  // The layout decides the region once; the components themselves moved into
+  // <SiteChrome> so the portal surface can drop the whole chrome. Both the
+  // hand-off and the props are asserted, so neither half can drift silently.
   assert.match(
     LAYOUT,
+    /<SiteChrome requiresCmp=\{requiresCmp\}>/,
+    "the CMP decision must reach the chrome that renders the consent UI",
+  );
+  const CHROME = read("src/components/SiteChrome.tsx");
+  assert.match(
+    CHROME,
     /<CookieConsentBanner suppressForCmp=\{requiresCmp\} \/>/,
     "our banner must stand aside where Google's CMP applies",
   );
   assert.match(
-    LAYOUT,
+    CHROME,
     /<CmpConsentBridge enabled=\{requiresCmp\} \/>/,
     "the CMP decision must be mirrored back for the local consent record",
   );
@@ -380,17 +376,11 @@ test("a withdrawal route exists, and it reopens whichever prompt owns the visito
   );
 });
 
-test("the alias routes inherit the tag by rendering, not by importing it", () => {
-  // /uno and /games/neon-flush re-export the Uno pages, so they pick the loader
-  // up for free. They must keep doing that rather than importing the component
-  // directly — a second render site would be untracked by the allow-list.
-  for (const alias of [
-    "src/app/uno/page.tsx",
-    "src/app/casino/neon-flush/page.tsx",
-  ]) {
-    assert.ok(
-      !/AdSenseScript/.test(read(alias)),
-      `${alias} is an alias and must inherit the tag by rendering the Uno page`,
-    );
-  }
+test("the practice mirror inherits its surface by rendering, not by importing the tag", () => {
+  // /play/ai re-renders the casino practice PageClient, so it inherits that
+  // (ad-free) surface. It must never become a second render site for the
+  // loader: the allow-list above only names page files that carry it.
+  const alias = "src/app/play/ai/page.tsx";
+  assert.ok(!/AdSenseScript/.test(read(alias)), alias + " must not render the ad loader");
+  assert.ok(!/<AdSlots/.test(read(alias)), alias + " must not render an ad slot");
 });

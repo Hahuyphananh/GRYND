@@ -27,6 +27,10 @@ if (typeof window !== "undefined" && process.env.NEXT_PUBLIC_POSTHOG_KEY) {
         : "/ingest",
     person_profiles: "identified_only",
     capture_pageview: false,
+    // Pageviews are captured explicitly below. Autocapture would also send an
+    // event for every click and form interaction, which is avoidable traffic
+    // on a metered connection.
+    autocapture: false,
   });
   // Analytics stay off until the visitor accepts the cookie-consent banner
   // (Law 25 / GDPR best practice). Accepting later calls opt_in_capturing().

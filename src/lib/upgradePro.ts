@@ -26,7 +26,16 @@ import {
   isProBillingInterval,
   type ProBillingInterval,
 } from "./proBilling";
+import {
+  DEFAULT_PRO_TRIAL_REMINDER_DAYS,
+  isProTrialReminderDays,
+  type ProTrialReminderDays,
+} from "./proTrial";
 import type { ProPlanDisplay } from "./membershipDisplay";
+import {
+  NATIVE_PURCHASE_UNAVAILABLE_MESSAGE,
+  isNativeShellClient,
+} from "./native/shell";
 
 export type MembershipStatusResponse = {
   loaded: boolean;
@@ -38,6 +47,13 @@ export type MembershipStatusResponse = {
   /** Which billing option the member is on, when the server knows it. */
   billingInterval: ProBillingInterval | null;
   currentPeriodEnd: string | null;
+  /**
+   * Can this account still take the free trial? `null` while unknown (before
+   * the server answers). Only the server decides it: the free week is granted
+   * once per customer, so a returning canceled member gets `false` and the
+   * paywall shows the plain subscription CTA.
+   */
+  trialEligible: boolean | null;
   refresh: () => Promise<void>;
 };
 
@@ -50,6 +66,7 @@ type RawStatus = {
   status?: string;
   billingInterval?: string;
   currentPeriodEnd?: string | null;
+  trialEligible?: boolean;
 };
 
 function isProPlanDisplay(value: unknown): value is ProPlanDisplay {
@@ -112,6 +129,7 @@ type MembershipSnapshot = {
   status: string | null;
   billingInterval: ProBillingInterval | null;
   currentPeriodEnd: string | null;
+  trialEligible: boolean | null;
   fetchedAt: number;
 };
 
@@ -159,6 +177,10 @@ async function loadMembership(force: boolean): Promise<void> {
           ? data.billingInterval
           : null,
         currentPeriodEnd: data?.currentPeriodEnd ?? null,
+        trialEligible:
+          typeof data?.trialEligible === "boolean"
+            ? data.trialEligible
+            : membershipSnapshot?.trialEligible ?? null,
         fetchedAt: Date.now(),
       });
     } catch {
@@ -175,6 +197,7 @@ async function loadMembership(force: boolean): Promise<void> {
               status: null,
               billingInterval: null,
               currentPeriodEnd: null,
+              trialEligible: null,
               fetchedAt: Date.now(),
             },
       );
@@ -194,6 +217,7 @@ const EMPTY_MEMBERSHIP: MembershipSnapshot = {
   status: null,
   billingInterval: null,
   currentPeriodEnd: null,
+  trialEligible: null,
   fetchedAt: 0,
 };
 
@@ -240,6 +264,7 @@ export function useMembershipStatus(): MembershipStatusResponse {
     status: state.status,
     billingInterval: state.billingInterval,
     currentPeriodEnd: state.currentPeriodEnd,
+    trialEligible: state.trialEligible,
     refresh,
   };
 }
@@ -259,7 +284,18 @@ export type ProActionResult = {
 export async function startProCheckout(
   planKey: string,
   interval: ProBillingInterval = "monthly",
+  reminderDays: ProTrialReminderDays = DEFAULT_PRO_TRIAL_REMINDER_DAYS,
 ): Promise<ProActionResult> {
+  // NATIVE APP: no in-app Stripe checkout (Play requires Play Billing for
+  // digital goods). Checked here so the offer never even reaches the network —
+  // and checked again in the server route, which is the boundary that actually
+  // counts. Deliberately inside this async action rather than in a component's
+  // render: `isNativeShellClient()` is false during SSR, so a render-time check
+  // would be a hydration mismatch.
+  if (isNativeShellClient()) {
+    return { ok: false, error: NATIVE_PURCHASE_UNAVAILABLE_MESSAGE };
+  }
+
   try {
     const res = await fetch("/api/stripe/subscribe", {
       method: "POST",
@@ -268,7 +304,7 @@ export async function startProCheckout(
       // The client sends a plan key + a BILLING INTERVAL only. The server
       // resolves the approved Stripe Price — an amount or a price id from the
       // browser is never trusted.
-      body: JSON.stringify({ planKey, interval }),
+      body: JSON.stringify({ planKey, interval, reminderDays }),
     });
     const data = await res.json().catch(() => ({}));
     if (res.status === 401) {
@@ -319,6 +355,71 @@ export async function changeProBillingInterval(
     return { ok: true };
   } catch {
     return { ok: false, error: "Could not change your billing interval. Please try again." };
+  }
+}
+
+/** The caller's live trial reminder, read from their Stripe subscription. */
+export type ProTrialReminderStatus = {
+  trialing: boolean;
+  /** ISO instant of the first charge (Stripe's authoritative trial end). */
+  trialEndsAt: string | null;
+  reminderDays: ProTrialReminderDays | null;
+};
+
+const NO_TRIAL: ProTrialReminderStatus = {
+  trialing: false,
+  trialEndsAt: null,
+  reminderDays: null,
+};
+
+/** Read the current reminder a trialing member picked (GET, own subscription). */
+export async function fetchProTrialReminder(): Promise<ProTrialReminderStatus> {
+  try {
+    const res = await fetch("/api/stripe/trial-reminder", {
+      cache: "no-store",
+      credentials: "same-origin",
+    });
+    if (!res.ok) return NO_TRIAL;
+    const data = await res.json().catch(() => ({}));
+    return {
+      trialing: Boolean(data?.trialing),
+      trialEndsAt: typeof data?.trialEndsAt === "string" ? data.trialEndsAt : null,
+      reminderDays: isProTrialReminderDays(data?.reminderDays)
+        ? data.reminderDays
+        : null,
+    };
+  } catch {
+    return NO_TRIAL;
+  }
+}
+
+/**
+ * Change or cancel the trial reminder after checkout. The server only touches
+ * the caller's OWN trialing subscription; `0` means "no reminder".
+ */
+export async function updateProTrialReminder(
+  reminderDays: ProTrialReminderDays,
+): Promise<ProActionResult> {
+  try {
+    const res = await fetch("/api/stripe/trial-reminder", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      credentials: "same-origin",
+      body: JSON.stringify({ reminderDays }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (res.status === 401) {
+      return { ok: false, needsSignIn: true, error: "Sign in to change your reminder." };
+    }
+    if (!res.ok || !data?.success) {
+      return {
+        ok: false,
+        error: data?.error || "Could not update your reminder. Please try again.",
+      };
+    }
+    return { ok: true };
+  } catch {
+    return { ok: false, error: "Could not update your reminder. Please try again." };
   }
 }
 

@@ -106,7 +106,12 @@ const nextConfig = {
   // canonical, and the new page was never reached at all). Enumerating the
   // sub-path shapes explicitly puts the split under our control:
   //
-  //   * `/games` exact — the games hub, which is still the /casino index.
+  //   * `/games` exact — the games hub. It is a REAL App Router page
+  //                       (src/app/games/page.tsx) and is deliberately NOT in
+  //                       this table: it used to rewrite to /casino, which the
+  //                       redirect table below sends to /games/solitaire-duel,
+  //                       so the sitemap's second-most-important URL answered
+  //                       with a noindex soft redirect.
   //   * `/games/:slug/play` — the lobby. Declared before the sub-path rule
   //     below, which would otherwise rewrite "<slug>/play" to the non-existent
   //     /casino/<slug>/play (every game's lobby is /casino/<slug> itself).
@@ -118,10 +123,6 @@ const nextConfig = {
   // non-existent /casino path.
   async rewrites() {
     const gameRewrites = [
-      {
-        source: "/games",
-        destination: "/casino",
-      },
       {
         source: "/games/:slug/play",
         destination: "/casino/:slug",
@@ -151,6 +152,31 @@ const nextConfig = {
 
   async redirects() {
     return [
+      // ── Consolidated Solitaire URLs ───────────────────────────────────
+      // Each of these was a SECOND indexable page for an intent another URL
+      // already owns, so the crawl was split between them. They are declared
+      // first because the broad /casino rules below would otherwise catch the
+      // practice board on its way through the app namespace.
+      {
+        source: "/play/solo",
+        destination: "/solitaire",
+        permanent: true,
+      },
+      {
+        source: "/play/daily",
+        destination: "/daily",
+        permanent: true,
+      },
+      {
+        source: "/casino/solitaire-duel/play-ai",
+        destination: "/play/ai",
+        permanent: true,
+      },
+      {
+        source: "/games/solitaire-duel/play-ai",
+        destination: "/play/ai",
+        permanent: true,
+      },
       // The GRYND Shop is gone — there is no token currency and no catalogue.
       // The only paid product is the GRYND PRO membership, so the legacy Shop
       // URL permanently redirects to its new upgrade experience (old emails,
@@ -162,143 +188,12 @@ const nextConfig = {
         destination: "/upgrade-pro",
         permanent: true,
       },
-      // Barricade was renamed Barrier Blitz. The old public URLs keep working
-      // and land on the NEW ones (never on each other — no rule here is the
-      // source of another, so these cannot chain or loop). Ratings, trophies
-      // and the `barricade` game key are deliberately unchanged: only the name
-      // players read and the URLs they visit moved.
-      {
-        source: "/games/barricade",
-        destination: "/games/barrier-blitz",
-        permanent: true,
-      },
-      {
-        source: "/games/barricade/:path*",
-        destination: "/games/barrier-blitz/:path*",
-        permanent: true,
-      },
-      // The /casino prefix keeps its own shape (the generic /casino/:path*
-      // bounce below would otherwise send these through /games/barricade
-      // first, spending a second redirect on a URL nobody should keep).
-      {
-        source: "/casino/barricade",
-        destination: "/games/barrier-blitz",
-        permanent: true,
-      },
-      {
-        source: "/casino/barricade/:path*",
-        destination: "/games/barrier-blitz/:path*",
-        permanent: true,
-      },
-      // Hex Duel's matchmaking page was folded into the game's own lobby: one
-      // page now creates a table, starts a practice match and lists open
-      // games, and the board lives at /casino/hex-duel/game/<id>. The old
-      // /multiplayer URL was linked from the hub and from the retired page
-      // itself, so it redirects (config-level 308, not a page-level soft
-      // redirect a crawler would re-fetch forever).
-      {
-        source: "/casino/hex-duel/multiplayer",
-        destination: "/casino/hex-duel",
-        permanent: true,
-      },
-      // Legacy yahtzee URLs (both old and new prefix) land on Barrier Blitz —
-      // the game that replaced it in the catalogue.
-      {
-        source: "/casino/yahtzee",
-        destination: "/games/barrier-blitz",
-        permanent: true,
-      },
-      {
-        source: "/casino/yahtzee/:path*",
-        destination: "/games/barrier-blitz",
-        permanent: true,
-      },
-      {
-        source: "/games/yahtzee",
-        destination: "/games/barrier-blitz",
-        permanent: true,
-      },
-      {
-        source: "/games/yahtzee/:path*",
-        destination: "/games/barrier-blitz",
-        permanent: true,
-      },
-      // Dice Flush is retired from the catalogue: its public landing page and
-      // its authenticated play page both land on Barrier Blitz, each keeping its
-      // own prefix (the same shape the Dice Duel → Tower Arena cutover uses,
-      // and the :path* variants carry deep links such as
-      // /games/dice-flush/rules). No source listed here is also a destination
-      // of another rule, so these cannot loop. The Dice Flush API routes and
-      // database tables are deliberately left in place.
-      {
-        source: "/games/dice-flush",
-        destination: "/games/barrier-blitz",
-        permanent: true,
-      },
-      {
-        source: "/games/dice-flush/:path*",
-        destination: "/games/barrier-blitz",
-        permanent: true,
-      },
-      {
-        source: "/casino/dice-flush",
-        destination: "/casino/barrier-blitz",
-        permanent: true,
-      },
-      {
-        source: "/casino/dice-flush/:path*",
-        destination: "/casino/barrier-blitz",
-        permanent: true,
-      },
-      // Legacy Dice Duel URLs now land on Tower Arena (its successor).
-      {
-        source: "/casino/dice-duel",
-        destination: "/casino/tower-arena",
-        permanent: true,
-      },
-      {
-        source: "/casino/dice-duel/:path*",
-        destination: "/casino/tower-arena",
-        permanent: true,
-      },
-      {
-        source: "/games/dice-duel",
-        destination: "/games/tower-arena",
-        permanent: true,
-      },
-      {
-        source: "/games/dice-duel/:path*",
-        destination: "/games/tower-arena",
-        permanent: true,
-      },
-      // Legacy Connect Four URLs now land on Four-In-A-Row (its renamed successor).
-      {
-        source: "/casino/connect-four",
-        destination: "/casino/four-in-a-row",
-        permanent: true,
-      },
-      {
-        source: "/casino/connect-four/:path*",
-        destination: "/casino/four-in-a-row/:path*",
-        permanent: true,
-      },
-      {
-        source: "/games/connect-four",
-        destination: "/games/four-in-a-row",
-        permanent: true,
-      },
-      {
-        source: "/games/connect-four/:path*",
-        destination: "/games/four-in-a-row/:path*",
-        permanent: true,
-      },
       // Old /casino/* links keep working — bounce them to the new /games/* URLs.
-      // Same exact-rule-first pattern as the rewrite above: bare /casino must
-      // redirect to /games, not /games/ (which would 308-loop into the
-      // rewrite and 404 the tree-prefetch).
+      // The platform is Solitaire-only, so the bare hub goes straight to the one
+      // game's public landing page instead of the (now single-entry) hub.
       {
         source: "/casino",
-        destination: "/games",
+        destination: "/games/solitaire-duel",
         permanent: true,
       },
       {
@@ -306,6 +201,24 @@ const nextConfig = {
         destination: "/games/:path*",
         permanent: true,
       },
+      // The guides library was rewritten for the Solitaire-only product. Every
+      // retired slug was indexed and may still be linked from elsewhere, so it
+      // 308s to the closest surviving article instead of 404ing. The same map
+      // is applied in src/proxy.ts, whose unknown-slug guard would otherwise
+      // answer these before the router sees this table.
+      { source: "/guides/how-to-improve-typing-speed", destination: "/guides/how-to-play-klondike-solitaire", permanent: true },
+      { source: "/guides/how-to-get-better-at-sudoku", destination: "/guides/how-to-win-solitaire-more-often", permanent: true },
+      { source: "/guides/reaction-time-in-competitive-games", destination: "/guides/how-solitaire-duel-scoring-works", permanent: true },
+      { source: "/guides/memory-techniques-for-competitive-games", destination: "/guides/solitaire-memory-techniques", permanent: true },
+      { source: "/guides/speed-versus-accuracy", destination: "/guides/speed-versus-accuracy-in-solitaire", permanent: true },
+      { source: "/guides/how-to-improve-at-chess", destination: "/guides/solitaire-strategy-for-beginners", permanent: true },
+      { source: "/guides/building-competitive-habits", destination: "/guides/building-a-solitaire-practice-routine", permanent: true },
+      { source: "/guides/what-makes-a-game-skill-based", destination: "/guides/is-solitaire-a-skill-game", permanent: true },
+      { source: "/guides/improve-concentration", destination: "/guides/how-to-concentrate-on-solitaire", permanent: true },
+      { source: "/guides/how-to-practice-competitive-games", destination: "/guides/how-to-practice-solitaire", permanent: true },
+      { source: "/guides/reading-your-opponent", destination: "/guides/reading-your-opponent-in-solitaire", permanent: true },
+      { source: "/guides/recovering-from-a-losing-streak", destination: "/guides/recovering-from-a-solitaire-losing-streak", permanent: true },
+      { source: "/guides/dominoes-strategy", destination: "/guides/solitaire-mistakes-to-avoid", permanent: true },
     ];
   },
 
@@ -329,6 +242,17 @@ const nextConfig = {
     }
 
     return [
+      // The service worker is a self-unregistering kill switch (see
+      // public/sw.js). Browsers that still have the old precache installed
+      // must be able to fetch the replacement promptly, so it is never cached
+      // by an intermediary, and its scope stays the whole site.
+      {
+        source: "/sw.js",
+        headers: [
+          { key: "Cache-Control", value: "no-store, must-revalidate" },
+          { key: "Service-Worker-Allowed", value: "/" }
+        ]
+      },
       {
         source: "/:path*",
         headers: securityHeaders

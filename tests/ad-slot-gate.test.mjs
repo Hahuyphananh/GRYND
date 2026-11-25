@@ -48,10 +48,17 @@ test(
       slot: REAL_SLOT,
       perPlacement: false,
       asked: [],
+      nativeShell: false,
     };
 
     t.mock.module("../src/lib/adEntitlement.ts", {
       namedExports: { isAdFreeViewer: async () => world.adFree },
+    });
+    // The native-shell reader is mocked too. In the app BOTH ad surfaces must
+    // return nothing, and the real module reads `next/headers`, which is only
+    // available inside a request scope.
+    t.mock.module("../src/lib/native/shellServer.ts", {
+      namedExports: { isNativeShellDocument: async () => world.nativeShell },
     });
     t.mock.module("../src/lib/ads.ts", {
       namedExports: {
@@ -133,6 +140,24 @@ test(
     world.enabled = false;
     assert.equal(await AdSlot({ placement: "home" }), null);
     assert.equal(await AdSenseScript(), null);
+
+    // ── 4b. Inside the native app → nothing, whatever the config says ────
+    // AdSense is licensed for web pages, so the Android/iOS build must make no
+    // ad request at all. This gate outranks both the on/off switch and the
+    // unit configuration: an app request is never an ad request.
+    world.enabled = true;
+    world.nativeShell = true;
+    assert.equal(
+      await AdSlot({ placement: "home" }),
+      null,
+      "the native app must receive no ad slot, even when ads are configured",
+    );
+    assert.equal(
+      await AdSenseScript(),
+      null,
+      "the native app must receive no ad tag — AdSense does not serve in-app",
+    );
+    world.nativeShell = false;
 
     // ── 5. Placements are independent: each asks for its own unit id ──────
     world.enabled = true;

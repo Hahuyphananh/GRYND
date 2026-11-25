@@ -32,7 +32,11 @@ export const CHECKOUT_BRAND = {
   backgroundColor: "#071536",
   /** Brand yellow with dark text, matching the in-app upgrade CTA. */
   buttonColor: "#f5ff3b",
-  /** The app's corner language. */
+  /**
+   * The app's corner language. Stripe's enum is `pill | rectangular | rounded`
+   * only — anything else (e.g. a Tailwind class like `rounded-sm`) is rejected
+   * and costs the whole branded page, so this must stay one of the three.
+   */
   borderStyle: "rounded",
   /** Modern UI face; Orbitron isn't in Stripe's supported font families. */
   fontFamily: "inter",

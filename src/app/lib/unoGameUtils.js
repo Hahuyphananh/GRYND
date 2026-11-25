@@ -1,7 +1,6 @@
 import { db } from "../../db/client";
 import { users, unoGames } from "../../db/schema";
 import { eq } from "drizzle-orm";
-import { normalizeStake } from "../../lib/games/stakes";
 
 // Generates a new shuffled UNO deck
 function generateUnoDeck() {
@@ -36,10 +35,9 @@ function generateUnoDeck() {
 
 //  Create a new game
 export async function createUnoGame(userId, betAmount) {
-  // STAKES ARE RETIRED (src/lib/games/stakes.js): creating a game is free.
-  // The requested bet is normalized to 0, so nothing is escrowed and no
-  // balance is ever debited.
-  betAmount = normalizeStake(betAmount);
+  // STAKES ARE RETIRED: creating a game is free. Any requested bet is ignored,
+  // so nothing is escrowed and no balance is ever debited.
+  betAmount = 0;
 
   const deck = generateUnoDeck();
   const playerHand = deck.splice(0, 7);

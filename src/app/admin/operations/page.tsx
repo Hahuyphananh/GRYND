@@ -15,8 +15,8 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 
-import DeployLatestButton from "./DeployLatestButton";
-import { getDeployTarget } from "../../../lib/admin/deployLatest";
+import DeployBranchSelector from "./DeployBranchSelector";
+import { DEFAULT_DEPLOY_BRANCH, getDeployTargets } from "../../../lib/admin/deployLatest";
 import { buildMfaDiagnostics } from "../../../lib/admin/mfaDiagnostics";
 import {
   deploymentLog,
@@ -25,6 +25,12 @@ import {
   isFailedDeployment,
 } from "../../../lib/admin/operations";
 import { requireAdminPage } from "../../../lib/admin/requireAdminPage";
+import {
+  PAYMENT_GUARD_DAYS,
+  getAudienceTrend,
+  getUsersOverview,
+} from "../../../lib/admin/usersOverview";
+import { formatMoney } from "../../../lib/currency";
 
 export const dynamic = "force-dynamic";
 
@@ -34,7 +40,7 @@ export const metadata: Metadata = {
   description: "Read-only deployment, backup and audit status for GRYND.",
 };
 
-const CARD = "rounded-xl border border-[#1b2a4a] bg-[#0d1830] p-5";
+const CARD = "rounded-xl border border-[#1b2a4a] bg-panel p-5";
 const LABEL = "text-[11px] uppercase tracking-wider text-[#7f9bbd]";
 const VALUE = "mt-1 text-sm text-[#e6f7ff]";
 
@@ -66,6 +72,34 @@ function Outcome({ value }: { value: string | null }) {
   if (!value) return <span className="text-[#7f9bbd]">—</span>;
   return <span className={OUTCOME_STYLE[value] ?? "text-[#e6f7ff]"}>{value}</span>;
 }
+
+/** One audience figure: a big number, a label and its own definition. */
+function Metric({
+  label,
+  value,
+  detail,
+  alert = false,
+}: {
+  label: string;
+  value: string;
+  detail: string;
+  /** Render the number in red — used when the figure is an incident. */
+  alert?: boolean;
+}) {
+  return (
+    <div className="rounded-lg border border-[#16233d] bg-black/20 p-4">
+      <div className={LABEL}>{label}</div>
+      <div
+        className={`mt-1 font-mono text-2xl ${alert ? "text-red-300" : "text-white"}`}
+      >
+        {value}
+      </div>
+      <div className="mt-1 text-xs text-[#7f9bbd]">{detail}</div>
+    </div>
+  );
+}
+
+const count = (value: number): string => value.toLocaleString("en-US");
 
 // The gate page (/admin/mfa-required) can only offer the factors this host can
 // honour, so an operator who lands there needs to know WHICH variable to set.
@@ -107,7 +141,12 @@ async function probeRealtime(): Promise<{ state: "ok" | "unreachable" | "not_con
 export default async function OperationsPage() {
   await requireAdminPage();
 
-  const [snapshot, realtime] = await Promise.all([getOperationsSnapshot(), probeRealtime()]);
+  const [snapshot, realtime, audience, audienceTrend] = await Promise.all([
+    getOperationsSnapshot(),
+    probeRealtime(),
+    getUsersOverview(),
+    getAudienceTrend(),
+  ]);
   const mfa = buildMfaDiagnostics(process.env);
 
   const critical = snapshot.warnings.filter((warning) => warning.severity === "critical");
@@ -118,9 +157,10 @@ export default async function OperationsPage() {
   // deploy attempt. A history table of runs is not the question an operator asks
   // here ("what is live, and what did the deploy that did not land say").
   const live = snapshot.live;
-  // Which commit is newest on main, and whether it is already serving. A GitHub
-  // outage degrades to "could not check" rather than failing this page.
-  const deploy = await getDeployTarget(live?.commit ?? null);
+  // Which commit is newest on each allowlisted branch, and whether it is already
+  // serving. A GitHub outage degrades to "could not check" rather than failing
+  // this page.
+  const deployTargets = await getDeployTargets(live?.commit ?? null);
   const latestDeployment = snapshot.deployments[0] ?? null;
   const latestIsLive = Boolean(
     live?.commit && latestDeployment?.commit === live.commit,
@@ -129,7 +169,7 @@ export default async function OperationsPage() {
   const recentAudit = [...snapshot.audit].reverse().slice(0, 8);
 
   return (
-    <main className="min-h-screen bg-[#0a0f1e] px-4 py-8 text-[#c9f7ff] sm:px-6 lg:px-10">
+    <main className="min-h-screen bg-surface px-4 py-8 text-[#c9f7ff] sm:px-6 lg:px-10">
       <div className="mx-auto max-w-6xl">
         <div className="mb-6 flex flex-wrap items-end justify-between gap-3">
           <div>
@@ -137,7 +177,7 @@ export default async function OperationsPage() {
             <p className="mt-1 text-sm text-[#7f9bbd]">
               The live commit comes from this deployment&apos;s own build metadata (or the host&apos;s active release);
               the newest deploy attempt comes from the host state files written by the release tooling. The deploy
-              button requests the newest commit from GitHub and never touches the host directly.
+              control requests the newest commit of an allowlisted branch from GitHub and never touches the host directly.
             </p>
           </div>
           <nav className="flex gap-2 text-sm">
@@ -193,6 +233,206 @@ export default async function OperationsPage() {
           </div>
         )}
 
+        {/* Audience — read-only counts straight from the presence and
+            subscription tables. The windows are the ones the product already
+            runs on (10 min heartbeat, 3 min game board), so a closed tab ages
+            out on its own and this page cannot disagree with the lobby badge. */}
+        <section className="mb-4 rounded-xl border border-[#1b2a4a] bg-panel">
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[#1b2a4a] px-5 py-3">
+            <h2 className="text-sm font-semibold text-white">Audience</h2>
+            <span className="text-xs text-[#7f9bbd]">
+              {audience.available
+                ? `presence · games · subscriptions — as of ${fmtTime(audience.generatedAt)}`
+                : "not readable"}
+            </span>
+          </div>
+
+          {!audience.available ? (
+            <p className="px-5 py-6 text-sm text-[#7f9bbd]">
+              User metrics are unavailable. {audience.reason}
+            </p>
+          ) : (
+            <>
+              <div className="grid gap-4 p-5 sm:grid-cols-2 lg:grid-cols-4">
+                <Metric
+                  label="Online now"
+                  value={count(audience.online.total)}
+                  detail={`signed-in heartbeat in the last ${audience.online.windowMinutes} min · ${count(
+                    audience.online.inGame,
+                  )} marked in a game`}
+                />
+                <Metric
+                  label="Playing now"
+                  value={count(audience.playing.total)}
+                  detail={`distinct players on a live board · last ${Math.round(
+                    audience.playing.windowSeconds / 60,
+                  )} min`}
+                />
+                <Metric
+                  label="GRYND PRO"
+                  value={count(audience.pro.total)}
+                  detail={`${audience.pro.shareOfAccounts}% of ${count(
+                    audience.accounts.total,
+                  )} accounts`}
+                />
+                <Metric
+                  label="Accounts"
+                  value={count(audience.accounts.total)}
+                  detail={`+${count(audience.accounts.newToday)} today · +${count(
+                    audience.accounts.newLast7Days,
+                  )} in 7 days`}
+                />
+              </div>
+
+              <div className="grid gap-4 px-5 pb-1 sm:grid-cols-4">
+                <Metric
+                  label="Pro MRR"
+                  value={formatMoney(
+                    audience.pro.mrrCents,
+                    audience.pro.mrrCurrency,
+                  )}
+                  detail={`${formatMoney(
+                    audience.pro.arrCents,
+                    audience.pro.mrrCurrency,
+                  )} annualised from catalog prices`}
+                />
+                <Metric
+                  label="New Pro (7d)"
+                  value={count(audience.pro.newLast7Days)}
+                  detail={`+${count(audience.pro.newToday)} today`}
+                />
+                <Metric
+                  label="Canceled (30d)"
+                  value={count(audience.pro.canceledLast30Days)}
+                  detail={`${audience.pro.churnPercent}% of active + canceled`}
+                />
+                <Metric
+                  label="Paid but not Pro"
+                  value={count(audience.payments.missingEntitlement)}
+                  alert={audience.payments.missingEntitlement > 0}
+                  detail={
+                    audience.payments.missingEntitlement > 0
+                      ? `${count(audience.payments.missingEntitlement)} of ${count(
+                          audience.payments.paidProCheckouts,
+                        )} paid Pro checkouts in ${PAYMENT_GUARD_DAYS} days have no subscription record${
+                          audience.payments.lastMissingAt
+                            ? ` · last ${fmtTime(audience.payments.lastMissingAt)}`
+                            : ""
+                        }`
+                      : `all ${count(
+                          audience.payments.paidProCheckouts,
+                        )} paid Pro checkouts in ${PAYMENT_GUARD_DAYS} days are entitled`
+                  }
+                />
+              </div>
+
+              <div className="grid gap-5 border-t border-[#16233d] px-5 py-4 sm:grid-cols-2">
+                <div>
+                  <h3 className={LABEL}>PRO by billing option</h3>
+                  <table className="mt-2 w-full text-left text-xs">
+                    <thead className="text-[10px] uppercase tracking-wider text-[#7f9bbd]">
+                      <tr>
+                        <th className="py-1 font-medium">Option</th>
+                        <th className="py-1 text-right font-medium">Members</th>
+                        <th className="py-1 text-right font-medium">MRR</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {(
+                        [
+                          ["Weekly", audience.pro.breakdown.weekly, audience.pro.mrrByInterval.weekly],
+                          ["Monthly", audience.pro.breakdown.monthly, audience.pro.mrrByInterval.monthly],
+                          ["Yearly", audience.pro.breakdown.yearly, audience.pro.mrrByInterval.yearly],
+                          ["No interval recorded", audience.pro.breakdown.unknownInterval, 0],
+                          ["Trialing", audience.pro.breakdown.trialing, 0],
+                          ["Past due", audience.pro.breakdown.pastDue, 0],
+                        ] as const
+                      ).map(([label, value, mrr]) => (
+                        <tr key={label} className="border-t border-[#16233d]">
+                          <td className="py-1 text-[#a9c4dd]">{label}</td>
+                          <td className="py-1 text-right font-mono text-[#e6f7ff]">{count(value)}</td>
+                          <td className="py-1 text-right font-mono text-[#a9c4dd]">
+                            {mrr > 0
+                              ? formatMoney(mrr, audience.pro.mrrCurrency)
+                              : "—"}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  <p className="mt-2 text-[11px] text-[#5f7794]">
+                    Distinct subscribers whose Stripe status is active, trialing or past due — the same set the
+                    membership check uses. Trialing and past due overlap the interval rows.
+                  </p>
+                </div>
+
+                <div>
+                  <h3 className={LABEL}>Top games right now</h3>
+                  {audience.playing.topGames.length === 0 ? (
+                    <p className="mt-2 text-xs text-[#7f9bbd]">No live game boards.</p>
+                  ) : (
+                    <table className="mt-2 w-full text-left text-xs">
+                      <tbody>
+                        {audience.playing.topGames.map((game) => (
+                          <tr key={game.gameKey} className="border-t border-[#16233d]">
+                            <td className="py-1 font-mono text-[#a9c4dd]">{game.gameKey}</td>
+                            <td className="py-1 text-right font-mono text-[#e6f7ff]">{count(game.players)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  )}
+                  <p className="mt-2 text-[11px] text-[#5f7794]">
+                    Distinct players with a game heartbeat inside {audience.playing.windowSeconds}s — the casino
+                    lobby badge&apos;s window, so the two can never disagree.
+                  </p>
+                </div>
+              </div>
+
+              {/* Daily snapshots (migration 0250): peak online, players,
+                  signups and Pro members per UTC day. Empty until the
+                  audience-snapshot job has run at least once. */}
+              <div className="border-t border-[#16233d] px-5 py-4">
+                <div className="flex flex-wrap items-baseline justify-between gap-2">
+                  <h3 className={LABEL}>Last 14 days</h3>
+                  <span className="text-[11px] text-[#5f7794]">
+                    daily snapshot · peak online sampled every 15 min
+                  </span>
+                </div>
+                {audienceTrend.length === 0 ? (
+                  <p className="mt-2 text-xs text-[#7f9bbd]">
+                    No snapshots yet. The first row appears once
+                    /api/jobs/audience-snapshot runs after the 0250 migration.
+                  </p>
+                ) : (
+                  <table className="mt-2 w-full text-left text-xs">
+                    <thead className="text-[10px] uppercase tracking-wider text-[#7f9bbd]">
+                      <tr>
+                        <th className="py-1 font-medium">Day</th>
+                        <th className="py-1 text-right font-medium">Peak online</th>
+                        <th className="py-1 text-right font-medium">Players</th>
+                        <th className="py-1 text-right font-medium">Signups</th>
+                        <th className="py-1 text-right font-medium">Pro</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {audienceTrend.map((point) => (
+                        <tr key={point.day} className="border-t border-[#16233d]">
+                          <td className="py-1 font-mono text-[#a9c4dd]">{point.day}</td>
+                          <td className="py-1 text-right font-mono text-[#e6f7ff]">{count(point.peakOnline)}</td>
+                          <td className="py-1 text-right font-mono text-[#e6f7ff]">{count(point.players)}</td>
+                          <td className="py-1 text-right font-mono text-[#e6f7ff]">{count(point.signups)}</td>
+                          <td className="py-1 text-right font-mono text-[#e6f7ff]">{count(point.proMembers)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
+              </div>
+            </>
+          )}
+        </section>
+
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <section className={CARD}>
             <div className={LABEL}>Active release</div>
@@ -207,6 +447,10 @@ export default async function OperationsPage() {
               commit{" "}
               <span className="font-mono text-[#c9f7ff]">{snapshot.active?.shortCommit ?? "—"}</span>
               {snapshot.active?.buildId ? ` · build ${snapshot.active.buildId.slice(0, 10)}` : ""}
+            </div>
+            <div className="mt-1 text-xs text-[#7f9bbd]">
+              source branch{" "}
+              <span className="font-mono text-[#c9f7ff]">{snapshot.active?.sourceBranch ?? "—"}</span>
             </div>
             <div className="mt-1 text-xs text-[#7f9bbd]">activated {fmtTime(snapshot.active?.activatedAt ?? null)}</div>
             {snapshot.active?.health && (
@@ -289,7 +533,7 @@ export default async function OperationsPage() {
             returns a value, a prefix or a length. */}
         <section
           id="admin-second-factor"
-          className="mt-6 rounded-xl border border-[#1b2a4a] bg-[#0d1830]"
+          className="mt-6 rounded-xl border border-[#1b2a4a] bg-panel"
         >
           <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[#1b2a4a] px-5 py-3">
             <h2 className="text-sm font-semibold text-white">Admin second factor</h2>
@@ -356,7 +600,7 @@ export default async function OperationsPage() {
           </div>
         </section>
 
-        <section className="mt-6 rounded-xl border border-[#1b2a4a] bg-[#0d1830]">
+        <section className="mt-6 rounded-xl border border-[#1b2a4a] bg-panel">
           <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[#1b2a4a] px-5 py-3">
             <h2 className="text-sm font-semibold text-white">Live commit</h2>
             <span className="text-xs text-[#7f9bbd]">
@@ -382,14 +626,6 @@ export default async function OperationsPage() {
                     View the commit on GitHub ↗
                   </a>
                 )}
-                <DeployLatestButton
-                  liveCommit={live.commit}
-                  latest={deploy.latest}
-                  configured={deploy.configured}
-                  upToDate={deploy.upToDate}
-                  unavailableReason={deploy.reason}
-                  workflowUrl={deploy.workflowUrl}
-                />
               </div>
               {live.message && <p className="mt-2 max-w-3xl text-sm text-[#e6f7ff]">{live.message}</p>}
               <dl className="mt-3 grid gap-x-6 gap-y-1 text-xs text-[#7f9bbd] sm:grid-cols-2">
@@ -421,7 +657,21 @@ export default async function OperationsPage() {
           )}
         </section>
 
-        <section className="mt-4 rounded-xl border border-[#1b2a4a] bg-[#0d1830]">
+        <section className="mt-4 rounded-xl border border-[#1b2a4a] bg-panel">
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[#1b2a4a] px-5 py-3">
+            <h2 className="text-sm font-semibold text-white">Deployment target</h2>
+            <span className="text-xs text-[#7f9bbd]">
+              the branch is re-validated on the server; only the allowlist can be deployed
+            </span>
+          </div>
+          <DeployBranchSelector
+            liveCommit={live?.commit ?? null}
+            targets={deployTargets}
+            defaultBranch={DEFAULT_DEPLOY_BRANCH}
+          />
+        </section>
+
+        <section className="mt-4 rounded-xl border border-[#1b2a4a] bg-panel">
           <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[#1b2a4a] px-5 py-3">
             <h2 className="text-sm font-semibold text-white">Latest commit</h2>
             {latestDeployment ? (
@@ -496,7 +746,7 @@ export default async function OperationsPage() {
           )}
         </section>
 
-        <section className="mt-6 rounded-xl border border-[#1b2a4a] bg-[#0d1830]">
+        <section className="mt-6 rounded-xl border border-[#1b2a4a] bg-panel">
           <div className="flex items-center justify-between border-b border-[#1b2a4a] px-5 py-3">
             <h2 className="text-sm font-semibold text-white">Recent activity</h2>
             <Link href="/admin/operations/logs" className="text-xs text-[#f5ff3b] hover:underline">

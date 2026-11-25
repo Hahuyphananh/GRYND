@@ -1,0 +1,4 @@
+interface:
+  display_name: "Motion and Interaction"
+  short_description: "Design purposeful UI motion systems"
+  default_prompt: "Use $motion-and-interaction to add purposeful motion and interaction detail to this UI."

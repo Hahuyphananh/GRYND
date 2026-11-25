@@ -23,6 +23,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
+import { readProfileSource } from "./helpers/profile-source.mjs";
 
 const PROFILE = "src/app/profil/PageClient.jsx";
 
@@ -31,7 +32,7 @@ function read(path) {
 }
 
 test("profile: the three /api/titles loaders share one de-duplicated request", () => {
-  const source = read(PROFILE);
+  const source = readProfileSource();
 
   const dedupedCalls = source.match(/fetchDeduped\("\/api\/titles"/g) ?? [];
   assert.equal(
@@ -99,7 +100,7 @@ test("titles: every write path clears the cached payload", () => {
 });
 
 test("profile: the referral branch reads fresh stats, not the mount-time closure", () => {
-  const source = read(PROFILE);
+  const source = readProfileSource();
 
   const bootstrap = source.slice(
     source.indexOf("const bootstrap = async"),
@@ -183,7 +184,7 @@ function dedupeInitKey(source, url) {
 test("nav bar: the same two endpoints are read through the shared de-dupe", () => {
   const NAV = "src/components/navigation-bar.jsx";
   const nav = read(NAV);
-  const profil = read(PROFILE);
+  const profil = readProfileSource();
 
   assert.ok(
     nav.includes('from "../lib/dedupeFetch"'),

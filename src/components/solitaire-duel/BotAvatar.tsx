@@ -1,0 +1,73 @@
+// src/components/solitaire-duel/BotAvatar.tsx
+//
+// The reusable bot avatar slot.
+//
+// Every bot ships a local square image (`avatar.src` in
+// `src/lib/solitaire-duel/bots.ts`), so this component renders it inside ONE
+// frame: a square box, centred `object-cover` crop and the same rounded border.
+// That keeps all six portraits the same size and position regardless of the
+// artwork's framing. The initials block remains only as a defensive fallback for
+// a bot added without an image yet.
+//
+// The Perfect card uses `perfect` only for its border treatment; its avatar is
+// Glitch, supplied by the roster like any other bot.
+
+import { IconRobot } from "@tabler/icons-react";
+
+import type { SolitaireBot } from "../../lib/solitaire-duel/bots";
+
+export default function BotAvatar({
+  bot,
+  size = "h-20 w-20",
+  perfect = false,
+  className = "",
+}: {
+  bot: Pick<SolitaireBot, "name" | "initials" | "avatar">;
+  /** Tailwind size classes. The selection cards use a large square. */
+  size?: string;
+  perfect?: boolean;
+  className?: string;
+}) {
+  const frame = perfect
+    ? "border-amber-300/60 bg-linear-to-br from-amber-300/20 via-panel to-violet-400/15"
+    : "border-white/15 bg-linear-to-br from-white/[0.08] via-panel to-black/40";
+
+  if (bot.avatar.src) {
+    return (
+      // eslint-disable-next-line @next/next/no-img-element
+      <img
+        src={bot.avatar.src}
+        alt={bot.avatar.alt}
+        width={384}
+        height={384}
+        data-testid="solitaire-bot-avatar-image"
+        className={`aspect-square shrink-0 rounded-xl border object-cover object-center ${frame} ${size} ${className}`}
+      />
+    );
+  }
+
+  return (
+    <div
+      data-testid="solitaire-bot-avatar-placeholder"
+      aria-label={bot.avatar.alt}
+      className={`relative flex shrink-0 flex-col items-center justify-center gap-1 overflow-hidden rounded-xl border ${frame} ${size} ${className}`}
+    >
+      <span
+        aria-hidden="true"
+        className="pointer-events-none absolute inset-2 rounded-lg border border-dashed border-white/10"
+      />
+      <span
+        className={`relative font-mono text-xl font-black tracking-[0.16em] ${
+          perfect ? "text-amber-200" : "text-cyan-100/80"
+        }`}
+      >
+        {bot.initials}
+      </span>
+      <IconRobot
+        size={12}
+        aria-hidden="true"
+        className={perfect ? "relative text-amber-200/55" : "relative text-cyan-200/40"}
+      />
+    </div>
+  );
+}

@@ -97,9 +97,9 @@ for (const route of ROUTES) {
       const key = v.impact || "minor";
       byImpact[key] = (byImpact[key] || 0) + 1;
       ruleCounts[v.id] = (ruleCounts[v.id] || 0) + 1;
-      // Surface the offending element for serious/critical findings.
-      if (key === "serious" || key === "critical") {
-        console.log(`    ${v.id}: ${v.nodes[0]?.target?.join(" ") || v.nodes[0]?.html?.slice(0, 80)}`);
+      // Surface every offending element: a reporter is only as useful as its targets.
+      for (const target of v.nodes) {
+        console.log(`    ${v.id} (${key}): ${target}`);
       }
     }
     summary[route] = { http: response.status(), ...byImpact };

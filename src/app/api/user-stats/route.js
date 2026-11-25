@@ -4,6 +4,8 @@ import { getHighestTitle } from "../../../lib/titles";
 import { cacheOrFetch } from "../../../lib/redis/cache";
 import { CacheKeys, CacheTTL } from "../../../lib/redis/keys";
 import { getRatingsForUser, overallEloFromRatingsMap } from "../../../lib/rating";
+import { getTotalTrophyProgressForUser } from "../../../lib/trophyStore";
+import { getPlayerProgression } from "../../../lib/playerLevel";
 import { OVERALL_MIN_GAMES } from "../../../lib/elo";
 
 import { db } from "../../../db";
@@ -356,12 +358,29 @@ export async function GET() {
     // ratings never count. Not stored anywhere and never client-supplied.
     const overall = overallEloFromRatingsMap(ratings);
 
+    // Trophy-derived level + rank. Read OUTSIDE the stats cache so a settled
+    // match is reflected immediately; a failure degrades to level 1/Rookie
+    // rather than blocking the profile. The permanent peak is maintained by
+    // the database trigger (migration 0247), not by any client value.
+    let playerLevel = getPlayerProgression();
+    try {
+      playerLevel = await getTotalTrophyProgressForUser(clerkId);
+    } catch (levelErr) {
+      console.error("[user-stats] Failed to load player level:", levelErr);
+    }
+
     return new Response(
       JSON.stringify({
         success: true,
         stats: {
           ...stats,
           ratings,
+          // The trophy-derived level replaces the retired stored level for
+          // display. `playerLevel` carries the permanent peak/rank payload.
+          currentLevel: playerLevel.level,
+          playerLevel,
+          totalTrophies: playerLevel.currentTrophies,
+          peakTotalTrophies: playerLevel.peakTrophies,
           overallElo: overall.overallElo,
           overallEligibleGames: overall.eligibleGames,
           overallEligible: overall.eligible,

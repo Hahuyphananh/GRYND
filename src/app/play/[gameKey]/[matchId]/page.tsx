@@ -54,7 +54,7 @@ export default async function PlayMatchPage({
     <div
       data-testid="portal-match"
       data-game={game.gameKey}
-      className="min-h-dvh bg-[#000d1a] text-white"
+      className="min-h-dvh bg-[var(--tint-bg--000d1a)] text-white"
     >
       {/* The SDK bridge belongs on the board too: gameplayStart/Stop and the
           end-of-match ad break are measured here, not on the lobby. */}

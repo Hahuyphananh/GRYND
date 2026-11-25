@@ -20,8 +20,8 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import NavigationBar from "../../components/navigation-bar";
 import Footer from "../../components/Footer";
-import InteractiveCasinoBg from "../../components/InteractiveCasinoBg";
 import UpgradeProContent from "../../components/UpgradeProContent";
+import ProTrialReminderSettings from "../../components/ProTrialReminderSettings";
 import {
   changeProBillingInterval,
   openProBillingPortal,
@@ -31,6 +31,8 @@ import {
 import { useTranslation } from "../../hooks/useTranslation";
 import type { ProBillingInterval } from "../../lib/proBilling";
 import type { ProPlanDisplay } from "../../lib/membershipDisplay";
+import type { ProTestimonial } from "../../lib/featuredReview";
+import type { ProTrialReminderDays } from "../../lib/proTrial";
 
 type Subscription = {
   planKey: string;
@@ -42,25 +44,22 @@ type PageClientProps = {
   plan: ProPlanDisplay;
   signedIn: boolean;
   subscription: Subscription | null;
+  /** A real approved review, resolved server-side (null when there is none). */
+  testimonial?: ProTestimonial | null;
+  /** Server-resolved: has this account never subscribed before? */
+  trialEligible?: boolean | null;
 };
-
-/** What every player keeps for free — GRYND PRO adds convenience only. */
-const FREE_FEATURES = [
-  "All games",
-  "Ranked play",
-  "Game-specific Elo",
-  "Leaderboards",
-  "Free tournaments",
-  "Profiles",
-  "Normal match history",
-  "Progression systems",
-  "Cosmetic rewards",
-];
 
 const CONFIRM_ATTEMPTS = 10;
 const CONFIRM_INTERVAL_MS = 1500;
 
-export default function PageClient({ plan, signedIn, subscription }: PageClientProps) {
+export default function PageClient({
+  plan,
+  signedIn,
+  subscription,
+  testimonial = null,
+  trialEligible: initialTrialEligible = null,
+}: PageClientProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { t } = useTranslation();
@@ -79,6 +78,16 @@ export default function PageClient({ plan, signedIn, subscription }: PageClientP
   const isSignedIn = status.loaded ? status.signedIn : signedIn;
   const resolvedPlan = status.plan ?? plan;
   const currentInterval = status.billingInterval;
+  // The status read is fresher than the server render; the server value keeps
+  // the first paint honest while it is in flight.
+  const resolvedTrialEligible = status.loaded
+    ? status.trialEligible
+    : initialTrialEligible;
+  // Before the status read answers, the server-rendered subscription keeps the
+  // trial wording honest.
+  const trialing = status.loaded
+    ? status.status === "trialing"
+    : subscription?.status === "trialing";
 
   // Returning from Stripe Checkout: the webhook records the subscription
   // asynchronously, so poll the existing session-status endpoint until it
@@ -140,12 +149,14 @@ export default function PageClient({ plan, signedIn, subscription }: PageClientP
   }, [status, t]);
 
   const handleUpgrade = useCallback(
-    (interval: ProBillingInterval) => {
+    (interval: ProBillingInterval, reminderDays: ProTrialReminderDays) => {
       if (!isSignedIn) {
         router.push("/sign-up?redirect_url=%2Fupgrade-pro");
         return;
       }
-      return runAction(() => startProCheckout(resolvedPlan.key, interval));
+      return runAction(() =>
+        startProCheckout(resolvedPlan.key, interval, reminderDays),
+      );
     },
     [isSignedIn, resolvedPlan.key, router, runAction],
   );
@@ -165,16 +176,15 @@ export default function PageClient({ plan, signedIn, subscription }: PageClientP
   );
 
   return (
-    <div className="relative min-h-screen">
-      <InteractiveCasinoBg variant="subtle" />
+    <div className="relative min-h-screen bg-[color:var(--bg-page)] text-[color:var(--text-primary)]">
       <NavigationBar currentPath="/upgrade-pro" />
 
       <main className="relative z-10 mx-auto max-w-5xl px-4 pb-20 pt-24 sm:pt-28">
         <header className="mb-8 text-center">
-          <h1 className="text-3xl font-black tracking-tight text-[#f5ff3b] drop-shadow-[0_0_10px_rgba(245,255,59,0.5)] sm:text-5xl">
+          <h1 className="text-3xl font-black tracking-tight text-[color:var(--state-gold)] sm:text-5xl">
             {t("pro.headline")}
           </h1>
-          <p className="mx-auto mt-3 max-w-2xl text-sm text-[#9dd8ff]/85 sm:text-base">
+          <p className="mx-auto mt-3 max-w-2xl text-sm text-white/65 sm:text-base">
             {t("pro.subtitle")}
           </p>
         </header>
@@ -182,7 +192,7 @@ export default function PageClient({ plan, signedIn, subscription }: PageClientP
         {checkoutState === "cancelled" && (
           <p
             role="status"
-            className="mx-auto mb-5 max-w-xl rounded-lg border border-[#00e5ff]/30 bg-[#0b224f]/80 px-4 py-2 text-center text-sm text-[#9dd8ff]"
+            className="mx-auto mb-5 max-w-xl rounded-lg border border-[color:var(--border-hairline)] bg-[color:var(--bg-surface)] px-4 py-2 text-center text-sm text-[color:var(--text-secondary)]"
           >
             {t("pro.checkout_cancelled")}
           </p>
@@ -203,6 +213,8 @@ export default function PageClient({ plan, signedIn, subscription }: PageClientP
           signedIn={isSignedIn}
           currentPeriodEnd={currentPeriodEnd}
           currentInterval={currentInterval}
+          trialEligible={resolvedTrialEligible}
+          trialing={trialing}
           busy={busy}
           error={error}
           variant="page"
@@ -210,46 +222,56 @@ export default function PageClient({ plan, signedIn, subscription }: PageClientP
           onUpgrade={handleUpgrade}
           onChangeInterval={handleChangeInterval}
           onManage={handleManage}
-          onSignIn={() => handleUpgrade("yearly")}
+          testimonial={testimonial}
+          onSignIn={(reminderDays) => handleUpgrade("yearly", reminderDays)}
         />
 
-        {/* ── What free players keep ─────────────────────────────────── */}
-        <section className="mt-8 rounded-2xl border border-[#00e5ff]/25 bg-[#0b224f]/70 p-6">
-          <h2 className="text-xl font-bold text-[#00e5ff]">{t("pro.free_title")}</h2>
-          <p className="mt-1 text-sm text-[#9dd8ff]/80">{t("pro.free_body")}</p>
-          <ul className="mt-4 grid grid-cols-2 gap-2 text-sm text-[#d8fbff] sm:grid-cols-3">
-            {FREE_FEATURES.map((feature) => (
-              <li key={feature} className="flex items-start gap-2">
-                <span aria-hidden className="mt-0.5 text-[#00ffa6]">
-                  ✓
-                </span>
-                <span>{feature}</span>
-              </li>
-            ))}
-          </ul>
-          <p className="mt-4 text-xs text-[#9dd8ff]/70">{t("pro.free_note")}</p>
+        {/* A trial is running: let the member move the reminder (or turn it
+            off) without contacting anyone. The component fetches its own
+            authoritative trial state and renders nothing outside a trial. */}
+        {active && status.status === "trialing" && <ProTrialReminderSettings />}
+
+        {/* ── Fair-play promise: ONE quiet trust box, never a feature list.
+               A nine-item checklist under the CTA answered "what's free?" so
+               thoroughly that it argued against the purchase. The promise is
+               kept in two lines; the PRO list above is the only feature list
+               on this page. */}
+        <section
+          data-testid="pro-free-trust"
+          className="mt-6 rounded-xl border border-[color:var(--border-hairline)] bg-[color:var(--bg-panel)] px-5 py-4"
+        >
+          <p className="text-sm leading-relaxed text-white/60">
+            <span className="font-bold text-[color:var(--accent-strong)]">{t("pro.free_title")}.</span>{" "}
+            {t("pro.free_body")}
+          </p>
         </section>
 
         {/* ── Billing ────────────────────────────────────────────────── */}
-        <section className="mt-6 rounded-2xl border border-[#00e5ff]/25 bg-[#0b224f]/70 p-6">
-          <h2 className="text-xl font-bold text-[#00e5ff]">{t("pro.billing_title")}</h2>
-          <ul className="mt-3 space-y-2 text-sm text-[#9dd8ff]/85">
+        <section className="mt-6 rounded-2xl border border-[color:var(--border-hairline)] bg-[color:var(--bg-surface)] p-6">
+          <h2 className="text-xl font-bold text-[color:var(--accent-strong)]">{t("pro.billing_title")}</h2>
+          <ul className="mt-3 space-y-2 text-sm text-white/65">
             {active && currentOption ? (
-              <li>
-                •{" "}
-                {t("pro.billing_current", {
-                  interval: t(`pro.interval.${currentOption.interval}`).toLowerCase(),
-                  price: currentOption.priceDisplay,
-                  unit: t(`pro.unit.${currentOption.interval}`),
-                })}
-              </li>
+              <>
+                <li>
+                  •{" "}
+                  {t("pro.billing_current", {
+                    interval: t(`pro.interval.${currentOption.interval}`).toLowerCase(),
+                    price: currentOption.priceDisplay,
+                    unit: t(`pro.unit.${currentOption.interval}`),
+                  })}
+                </li>
+                <li>• {t("pro.billing_change")}</li>
+              </>
             ) : (
-              <li>• {t("pro.billing_options")}</li>
+              // `billing_options_lead` ends in an em dash and exists only to
+              // introduce the change sentence, so the two render as one line.
+              <li>
+                • {t("pro.billing_options_lead")} {t("pro.billing_change")}
+              </li>
             )}
-            <li>• {t("pro.billing_change")}</li>
             <li>
               • {t("pro.billing_profile_lead")}{" "}
-              <Link href="/profil" className="text-[#f5ff3b] underline">
+              <Link href="/profil" className="text-[color:var(--state-gold)] underline">
                 {t("pro.billing_profile_link")}
               </Link>
             </li>

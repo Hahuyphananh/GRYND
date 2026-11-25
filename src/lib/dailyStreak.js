@@ -30,33 +30,28 @@ export function daysBetween(fromStr, toStr) {
 }
 
 /**
- * The daily streak day a claim would land on RIGHT NOW, computed without
+ * The daily streak day a completion would land on RIGHT NOW, computed without
  * writing anything.
  *
- * This exists so the daily reward's STATUS read and the CLAIM it previews can
- * never disagree about the amount: both derive the streak day through this one
- * function, so the number on the button is the number that gets paid. (The bug
- * it fixes: the status read used the STORED streak, which is stale until
- * something advances it — a player who missed a day was shown "Claim 250" and
- * then paid day 1.)
- *
- * It mirrors `updateDailyStreak`'s daily arithmetic exactly:
- *   * never logged in            → day 1;
- *   * already logged in today    → the stored streak (already advanced today);
- *   * logged in yesterday        → the next day;
- *   * any longer gap             → day 1, unless a streak shield absorbs the
- *                                  missed day, in which case the streak holds.
+ * A streak day is credited by finishing a game, never by opening the site, so
+ * this is the read-side projection of the same arithmetic the write path uses:
+ *   * never completed a game  → day 1;
+ *   * already credited today  → the stored streak (already advanced today);
+ *   * credited yesterday      → the next day;
+ *   * any longer gap          → day 1, unless a streak shield absorbs the
+ *                               missed day, in which case the streak holds.
  *
  * The weekly streak, the all-time best and shields' CONSUMPTION stay in
- * `updateDailyStreak`; this is only the read-side projection.
+ * `updateDailyStreak`; this is only the projection.
  *
  * @param {object} [state]
- * @param {string|Date|null} [state.lastLoginDate] The stored `users.last_login_date`.
+ * @param {string|Date|null} [state.lastLoginDate] The stored `users.last_login_date`
+ *   (the last day a game completion credited the streak).
  * @param {number|null} [state.current] The stored `users.daily_streak_current`.
  * @param {boolean} [state.shieldAvailable] Whether a streak shield is there to
  *   absorb the missed day (the caller consumes it; this only reports).
  * @param {Date} [today]
- * @returns {number} The 1-based streak day a claim made now would land on.
+ * @returns {number} The 1-based streak day a completion now would credit.
  */
 export function projectDailyStreakDay(
   { lastLoginDate, current, shieldAvailable = false } = {},
@@ -76,7 +71,11 @@ export function projectDailyStreakDay(
 }
 
 /**
- * Updates a user's daily login streak AND weekly streak.
+ * Updates a user's daily streak AND weekly streak.
+ *
+ * Called ONLY from the authoritative game-completion writer
+ * (`recordStreakCompletion` in src/lib/streaks/server.ts). Reading the streak,
+ * visiting a page or starting a game must never call this.
  *
  * **Daily Streak:**
  * - Same day → no-op (idempotent).
@@ -127,8 +126,8 @@ export async function updateDailyStreak(clerkId) {
   // --- Daily Streak ---
   //
   // The day the streak lands on is decided in ONE place —
-  // `projectDailyStreakDay` — so the daily reward's status read (which calls the
-  // same function) can never advertise an amount this write would not pay.
+  // `projectDailyStreakDay` — so a reader can project the same day without
+  // writing anything.
   //
   // A Daily Streak Shield (consumable) absorbs exactly one missed day. It is
   // CONSUMED first and its result feeds the projection, so the shield is spent

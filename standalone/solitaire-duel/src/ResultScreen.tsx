@@ -14,6 +14,8 @@
 // above the replay controls; and its copy never claims this match was saved or
 // transferred anywhere.
 
+import React from "react";
+
 import { progressLabel } from "../../../src/lib/solitaire-duel/ui";
 import type { SeatProgress } from "../../../src/lib/solitaire-duel/types";
 import type { PortalConfig } from "./portal-config";
@@ -108,7 +110,7 @@ export default function ResultScreen({
           onClick={onChangeDifficulty}
           className="gr-focusable mt-2 w-full rounded-xl border border-white/15 px-4 py-2.5 text-[11px] font-bold uppercase tracking-[0.18em] text-white/60 transition hover:border-white/30 hover:text-white"
         >
-          Change difficulty
+          Change opponent
         </button>
       </div>
     </div>

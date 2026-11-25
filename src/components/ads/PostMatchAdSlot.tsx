@@ -45,6 +45,14 @@ const PRACTICE_ID_KEY = "grynd:postMatchPracticeId:v1";
  */
 const PRACTICE_ID_REUSE_MS = 60_000;
 
+/**
+ * How long the result stays unobstructed before this surface starts working.
+ * The player gets a beat to read the outcome, then the server answer and the
+ * tag request begin; nothing is drawn until a creative is actually ready, so
+ * this delay is the entire gap between the result and the overlay.
+ */
+export const POST_MATCH_AD_DELAY_MS = 1_500;
+
 interface SurfaceAnswer {
   enabled: boolean;
   adFree: boolean;
@@ -126,27 +134,30 @@ export default function PostMatchAdSlot({
     setResolvedId(practiceResultId(pathname || window.location.pathname));
   }, [routeId, pathname]);
 
-  // One server answer per mounted result screen. A failure renders nothing —
-  // the surface must never guess, and the result content is already on screen.
+  // One server answer per mounted result screen, asked after a readable beat.
+  // A failure renders nothing — the surface must never guess, and the result
+  // content is already on screen. Unmounting during the wait cancels it.
   useEffect(() => {
     let cancelled = false;
-    fetch("/api/ads/post-match", { cache: "no-store", credentials: "include" })
-      .then((response) => (response.ok ? response.json() : null))
-      .then((data: SurfaceAnswer | null) => {
-        if (cancelled) return;
-        if (!data) {
-          settle(false);
-          return;
-        }
-        setSurface({ enabled: Boolean(data.enabled), adFree: Boolean(data.adFree) });
-      })
-      .catch(() => {
-        // Silent: a failed read means "no ad", never a broken result screen —
-        // and the host's held action must still be released.
-        if (!cancelled) settle(false);
-      });
+    const timer = window.setTimeout(() => {
+      fetch("/api/ads/post-match", { cache: "no-store", credentials: "include" })
+        .then((response) => (response.ok ? response.json() : null))
+        .then((data: SurfaceAnswer | null) => {
+          if (cancelled) return;
+          if (!data) {
+            settle(false);
+            return;
+          }
+          setSurface({ enabled: Boolean(data.enabled), adFree: Boolean(data.adFree) });
+        })
+        .catch(() => {
+          // Silent: a failed read means "no ad", never a broken result screen.
+          if (!cancelled) settle(false);
+        });
+    }, POST_MATCH_AD_DELAY_MS);
     return () => {
       cancelled = true;
+      window.clearTimeout(timer);
     };
   }, [settle]);
 

@@ -36,8 +36,10 @@
 // authenticated gameplay URLs (/games/<slug>/play) are absent — they are
 // noindex by design, and the indexable page for each game is the landing page.
 //
-// `/help` and `/about` do not exist in this repo and are deliberately NOT
-// invented here; /faq is the help surface.
+// `/help` does not exist in this repo and is deliberately NOT invented here;
+// /faq is the help surface. `/about` DOES exist (src/app/about) and is listed
+// under INFO_PAGES, because a publisher statement is a page a visitor — and an
+// ad reviewer — has to be able to reach.
 
 import type { MetadataRoute } from "next";
 import type { AnyPgColumn, AnyPgTable } from "drizzle-orm/pg-core";
@@ -68,6 +70,7 @@ import {
   userStats,
 } from "../db/schema";
 import { GAME_LANDING_PAGES, gameLandingPath } from "./gameLandingPages";
+import { isGameAvailable } from "./gameAvailability";
 import { GUIDES, GUIDES_INDEX_PATH, guidePath } from "./guides";
 
 type ChangeFrequency = NonNullable<MetadataRoute.Sitemap[number]["changeFrequency"]>;
@@ -76,7 +79,7 @@ type ChangeFrequency = NonNullable<MetadataRoute.Sitemap[number]["changeFrequenc
  * Which heading a URL belongs under. Used by the tests and by the grouped
  * report, so the three families can never silently blur together.
  */
-export type SeoPageGroup = "home" | "hub" | "games" | "guides" | "info";
+export type SeoPageGroup = "home" | "hub" | "games" | "guides" | "modes" | "learn" | "info";
 
 export type SeoPage = {
   /** Path only — the origin is applied once, by the sitemap route. */
@@ -178,6 +181,52 @@ const GUIDE_PAGES: SeoPage[] = [
 ];
 
 /**
+ * The Solitaire mode surfaces: the play hub and the public lobby each mode
+ * owns.
+ *
+ * Every one of these has its own copy, its own canonical URL and no `noindex`,
+ * so it is a real search surface rather than app chrome. `/play` itself is the
+ * hub that lists the six modes — the older rule that banned anything ending in
+ * `/play` was written when that path was only an authenticated lobby; it now
+ * guards the gameplay URLs (`/games/<slug>/play` and `/play/<mode>/play`) and
+ * those stay out because their own metadata says `noindex`.
+ */
+const MODE_PAGES: SeoPage[] = [
+  { path: "/play", group: "modes", changeFrequency: "daily", priority: 0.8 },
+  // `/play/solo` and `/play/daily` are deliberately absent: both 308 to the
+  // standalone page that owns the intent (`/solitaire`, `/daily`). Their lobby
+  // routes still exist for the app, but two URLs for one intent split the
+  // crawl — see EXCLUDED_FROM_SITEMAP.
+  { path: "/play/ai", group: "modes", changeFrequency: "weekly", priority: 0.6 },
+  { path: "/play/ranked", group: "modes", changeFrequency: "daily", priority: 0.7 },
+  // Puzzle Ranked and Puzzle vs AI are their own routes with their own queues,
+  // not aliases of /play/ranked and /play/ai, so each owns a URL in the crawl.
+  // Strategic puzzles is the curated, multi-move set behind them.
+  { path: "/play/puzzle-ranked", group: "modes", changeFrequency: "daily", priority: 0.6 },
+  { path: "/play/puzzle-ai", group: "modes", changeFrequency: "weekly", priority: 0.5 },
+  { path: "/play/strategic-puzzles", group: "modes", changeFrequency: "weekly", priority: 0.5 },
+  { path: "/play/daily-puzzle", group: "modes", changeFrequency: "daily", priority: 0.6 },
+  { path: "/play/unlimited-puzzles", group: "modes", changeFrequency: "daily", priority: 0.6 },
+  // The two single-player surfaces outside /play. `/daily` is the challenge —
+  // a full deal — and is NOT one of the puzzle pages.
+  { path: "/solitaire", group: "modes", changeFrequency: "weekly", priority: 0.7 },
+  { path: "/daily", group: "modes", changeFrequency: "daily", priority: 0.7 },
+];
+
+/**
+ * The GRYND Academy — video course, structured lessons and drills.
+ *
+ * Listed for the same reason the guides are: it is original instructional
+ * content a visitor searches for, not a playable route.
+ */
+const LEARN_PAGES: SeoPage[] = [
+  { path: "/learn", group: "learn", changeFrequency: "weekly", priority: 0.6 },
+  { path: "/learn/courses", group: "learn", changeFrequency: "weekly", priority: 0.5 },
+  { path: "/learn/videos", group: "learn", changeFrequency: "monthly", priority: 0.5 },
+  { path: "/learn/practice", group: "learn", changeFrequency: "weekly", priority: 0.5 },
+];
+
+/**
  * Public informational pages, highest-value first.
  *
  * Every one of these is public (no session) and indexable (no `noindex`), which
@@ -198,27 +247,27 @@ const INFO_PAGES: SeoPage[] = [
   { path: "/reviews", group: "info", changeFrequency: "weekly", priority: 0.6 },
   // The GRYND PRO offer: a public commercial landing page.
   { path: "/upgrade-pro", group: "info", changeFrequency: "monthly", priority: 0.6 },
-  // The rewards surface. Public (src/proxy.ts) and indexable on purpose: it
-  // explains what rewards the platform offers rather than showing account data,
-  // and a signed-out visitor reads the whole page. The caller's own coin balance
-  // is a client-side read of the existing coin system, so there is nothing
-  // user-specific in the HTML for a crawler to pick up.
-  { path: "/rewards", group: "info", changeFrequency: "monthly", priority: 0.5 },
-  { path: "/contact", group: "info", changeFrequency: "monthly", priority: 0.5 },
   { path: "/faq", group: "info", changeFrequency: "monthly", priority: 0.4 },
-  { path: "/terms", group: "info", changeFrequency: "monthly", priority: 0.3 },
-  { path: "/privacy-policy", group: "info", changeFrequency: "monthly", priority: 0.3 },
-  { path: "/security-policy", group: "info", changeFrequency: "monthly", priority: 0.3 },
-  { path: "/fair-play", group: "info", changeFrequency: "monthly", priority: 0.3 },
-  { path: "/accessibility", group: "info", changeFrequency: "monthly", priority: 0.3 },
+  // The publisher statement: who runs the site, how it is funded, and what it
+  // will not do. Added for the same reason a site review asks for it — a
+  // visitor (or a reviewer) should be able to find out who published a page.
+  { path: "/about", group: "info", changeFrequency: "yearly", priority: 0.4 },
+  // The cookie + advertising disclosure, including the opt-out paths for
+  // personalised advertising. Its own URL rather than a section of the privacy
+  // policy, so it can be linked to directly from the banner and the footer.
+  { path: "/cookie-policy", group: "info", changeFrequency: "yearly", priority: 0.3 },
 ];
 
 /** Every URL the sitemap emits, in a stable order. */
 export const PUBLIC_SEO_PAGES: SeoPage[] = [
   ...HOME_PAGES,
   ...HUB_PAGES,
-  ...GAME_PAGES,
+  // Archived games stay in GAME_LANDING_PAGES (their implementation and
+  // history are preserved) but are not advertised to crawlers.
+  ...GAME_PAGES.filter((page) => isGameAvailable(page.path.slice("/games/".length))),
   ...GUIDE_PAGES,
+  ...MODE_PAGES,
+  ...LEARN_PAGES,
   ...INFO_PAGES,
 ];
 
@@ -242,18 +291,26 @@ export const PUBLIC_SEO_PATHS: string[] = PUBLIC_SEO_PAGES.map((page) => page.pa
 export const EXCLUDED_FROM_SITEMAP: Record<string, string> = {
   "/casino":
     "308 alias of /games — the canonical hub URL is /games, and a sitemap must list canonical URLs only",
-  "/casino/chess/ai":
-    "free AI practice board — a playable route with no unique content, and already disallowed in robots.txt",
-  "/casino/rps/play-ai": "free AI practice board — a playable route, not a search surface",
-  "/casino/four-in-a-row/play-ai": "free AI practice board — a playable route, not a search surface",
-  "/casino/barrier-blitz/play-ai":
-    "free AI practice board — a playable route with no unique content; the indexable page for the game is /games/barrier-blitz",
-  "/casino/hillstrike/play-ai":
-    "free AI practice board — a playable route with no unique content; the indexable page for the game is /games/hillstrike",
-  "/casino/hex-duel": "live matchmaking lobby — nothing for a crawler to index",
-  "/casino/hex-duel/history": "per-player match history — user-specific data, never a landing page",
-  "/casino/lane-runner/history": "per-player match history — user-specific data, never a landing page",
-  "/casino/precision/test": "single-player timing sandbox with no unique content",
+  "/play/solo": "308 alias of /solitaire — the standalone solo surface owns this intent",
+  "/play/daily": "308 alias of /daily — the daily challenge page owns this intent",
+  "/casino/solitaire-duel/play-ai":
+    "308 alias of /play/ai — the public practice surface owns this intent",
+  "/game-unavailable":
+    'the noindex "game temporarily unavailable" page an archived game URL is rewritten to — not a search surface',
+  // Utility and legal pages stay public and indexable (and footer-linked) for
+  // trust, but they are not pages anybody should find by searching, so they do
+  // not belong in the sitemap.
+  "/rewards": "public rewards explainer, linked from navigation, not a search landing page",
+  "/contact": "utility page — a support channel rather than a search surface",
+  "/terms": "legal terms, footer-linked and indexed for trust, not a ranking target",
+  "/privacy-policy": "legal disclosure, footer-linked and indexed for trust, not a ranking target",
+  "/security-policy":
+    "security disclosure, footer-linked and indexed for trust, not a ranking target",
+  "/fair-play": "fair-play policy, linked from game and guide pages, not a ranking target",
+  "/accessibility":
+    "accessibility statement, footer-linked and indexed for trust, not a ranking target",
+  "/account-deletion":
+    "the public deletion URL Google Play policy requires — a policy destination a reviewer or a signed-out user must reach, not a search landing page",
 };
 
 /**

@@ -1,7 +1,8 @@
 # .github/dependabot.yml
 #
-# Weekly, grouped dependency updates for the two npm manifests this repository
-# builds: the Next.js app at the root and the realtime server beside it.
+# Weekly, grouped dependency updates for the manifests this repository builds:
+# the Next.js app at the root, the realtime server beside it, and the Android
+# project under android/.
 #
 # Without a config Dependabot opens one PR per dependency, and a single stale
 # major holds up everything behind it. Here each directory gets:
@@ -14,6 +15,13 @@
 # Security updates that GitHub raises outside a group still land as normal
 # alert-driven PRs. Nothing here changes the release pipeline: a dependabot
 # branch deploys nothing until it is merged into main.
+#
+# The Gradle entry is the odd one out: android/ has no lockfile, so Dependabot
+# updates the version LITERALS the build pins — android/variables.gradle (SDK
+# and AndroidX versions) and the AGP/Google-services classpath in
+# android/build.gradle. The Gradle wrapper version lives in
+# android/gradle/wrapper/gradle-wrapper.properties and is updated by the wrapper
+# itself (`./gradlew wrapper --gradle-version X`), not by Dependabot.
 
 version: 2
 updates:
@@ -56,5 +64,29 @@ updates:
         patterns: ["*"]
         update-types: ["major"]
       npm-security:
+        applies-to: security-updates
+        patterns: ["*"]
+
+  # Android. Kept to 3 open PRs: an AGP or compileSdk bump has to be re-signed
+  # and re-tested through the release workflow, so a queue of them is noise
+  # rather than throughput.
+  - package-ecosystem: gradle
+    directory: "/android"
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: Etc/UTC
+    open-pull-requests-limit: 3
+    groups:
+      gradle-minor-patch:
+        applies-to: version-updates
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
+      gradle-major:
+        applies-to: version-updates
+        patterns: ["*"]
+        update-types: ["major"]
+      gradle-security:
         applies-to: security-updates
         patterns: ["*"]

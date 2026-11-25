@@ -71,41 +71,8 @@ export type PortalExportGame = {
  */
 export const PORTAL_EXPORT_GAMES: readonly PortalExportGame[] = [
   {
-    gameKey: "tic-tac-toe",
-    name: "Ultimate Tic-Tac-Toe",
-    route: "/casino/tic-tac-toe",
-    playRoute: "/play/tic-tac-toe",
-    mode: "practice",
-    requiresAccount: false,
-  },
-  {
-    gameKey: "dominoes",
-    name: "Dominoes",
-    route: "/casino/dominoes",
-    playRoute: "/play/dominoes",
-    mode: "practice",
-    requiresAccount: false,
-  },
-  {
-    gameKey: "battleship",
-    name: "Battleship",
-    route: "/casino/battleship",
-    playRoute: "/play/battleship",
-    mode: "practice",
-    requiresAccount: false,
-  },
-  {
-    gameKey: "odds",
-    name: "Odds",
-    route: "/casino/odds",
-    playRoute: "/play/odds",
-    mode: "practice",
-    requiresAccount: false,
-  },
-  {
-    // The reviewed exception: no guest-progress row, but practice is open to a
-    // signed-out visitor (see the note above) and the board is a real route, so
-    // a portal can frame the whole match.
+    // Practice is open to a signed-out visitor (see the note above) and the
+    // board is a real route, so a portal can frame the whole match.
     gameKey: "solitaire-duel",
     name: "Solitaire Duel",
     route: "/casino/solitaire-duel",

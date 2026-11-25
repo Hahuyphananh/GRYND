@@ -1,20 +1,32 @@
 // src/app/api/admin/deploy-latest/route.ts
 //
-// POST → ask GitHub Actions to build and deploy the newest commit on `main`.
+// POST → ask GitHub Actions to build and deploy the newest commit of an
+// allowlisted branch (`main` or `solitaire-first`).
 //
 // The middleware already gates /api/admin on Clerk auth, the admin badge and a
 // recent second factor. This handler re-checks auth + admin itself so a
 // middleware regression cannot expose a production deploy.
 //
+// The branch arrives from the browser, so it is UNTRUSTED: it is validated here
+// against the same allowlist the dispatch library and the workflow use, and an
+// unknown value is rejected with 400 before any GitHub call. `deployLatest`
+// validates again — a caller cannot widen the allowlist by skipping this route.
+//
 // The response never carries the GitHub token, the repository's visibility or
-// any request/response body from GitHub — only a commit, a short commit, a
-// public GitHub URL and an error code the dashboard can explain.
+// any request/response body from GitHub — only a branch, a commit, a short
+// commit, a public GitHub URL and an error code the dashboard can explain.
 
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 
 import { getOperationsSnapshot } from "../../../../lib/admin/operations";
-import { DeployError, deployLatest } from "../../../../lib/admin/deployLatest";
+import {
+  DEFAULT_DEPLOY_BRANCH,
+  DEPLOY_BRANCHES,
+  DeployError,
+  deployLatest,
+  isDeployBranch,
+} from "../../../../lib/admin/deployLatest";
 import { isAdmin } from "../../../../lib/auth/isAdmin";
 import { adminAuditLog } from "../../../../lib/security/adminAuditLog";
 
@@ -22,10 +34,25 @@ export const runtime = "nodejs";
 
 const STATUS_BY_CODE: Record<string, number> = {
   "not-configured": 503,
+  "branch-not-allowed": 400,
   "github-auth": 502,
   "github-not-found": 502,
   "github-unavailable": 502,
   "dispatch-rejected": 502,
+};
+
+/**
+ * Copy for the dashboard. The DeployError message is for the server log: it
+ * can name the workflow file, the repository and the GitHub response, and
+ * this response goes to a browser. The dashboard keys off `status` anyway.
+ */
+const PUBLIC_ERROR: Record<string, string> = {
+  "not-configured": "Deployment is not configured on this host.",
+  "branch-not-allowed": "That branch cannot be deployed.",
+  "github-auth": "The deploy workflow could not authenticate to GitHub.",
+  "github-not-found": "The deploy workflow or branch was not found.",
+  "github-unavailable": "GitHub is unavailable right now.",
+  "dispatch-rejected": "GitHub rejected the deploy request.",
 };
 
 export async function POST(req: NextRequest) {
@@ -41,14 +68,29 @@ export async function POST(req: NextRequest) {
   // A free-text reason is optional and bounded; it is written into workflow run
   // metadata, so it must never carry a token or a database URL.
   let reason = "Admin operations dashboard";
+  // The production target by default; the client must name a branch explicitly
+  // to deploy anything else.
+  let branch: unknown = DEFAULT_DEPLOY_BRANCH;
   try {
     const body = await req.json();
     if (body && typeof body.reason === "string") {
       const cleaned = body.reason.replace(/\s+/g, " ").trim().slice(0, 120);
       if (cleaned) reason = cleaned;
     }
+    if (body && body.branch !== undefined) branch = body.branch;
   } catch {
     // No body is the normal case.
+  }
+
+  if (!isDeployBranch(branch)) {
+    return NextResponse.json(
+      {
+        success: false,
+        status: "branch-not-allowed",
+        error: `branch must be one of ${DEPLOY_BRANCHES.join(", ")}`,
+      },
+      { status: 400 },
+    );
   }
 
   try {
@@ -57,12 +99,12 @@ export async function POST(req: NextRequest) {
     const snapshot = await getOperationsSnapshot();
     const liveCommit = snapshot.live?.commit ?? null;
 
-    const outcome = await deployLatest({ liveCommit, reason });
+    const outcome = await deployLatest({ liveCommit, branch, reason });
 
     if (outcome.status === "dispatched") {
       adminAuditLog("admin_deploy_dispatch", {
         clerkId: userId,
-        details: { commit: outcome.commit, reason },
+        details: { branch: outcome.branch, commit: outcome.commit, reason },
       }).catch(() => {});
       return NextResponse.json({ success: true, ...outcome }, { status: 202 });
     }
@@ -70,8 +112,13 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ success: true, ...outcome }, { status: 200 });
   } catch (error) {
     if (error instanceof DeployError) {
+      console.error("[admin:deploy-latest]", error.code, error.message);
       return NextResponse.json(
-        { success: false, status: error.code, error: error.message },
+        {
+          success: false,
+          status: error.code,
+          error: PUBLIC_ERROR[error.code] ?? "Deploy request failed.",
+        },
         { status: STATUS_BY_CODE[error.code] ?? 502 },
       );
     }

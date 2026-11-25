@@ -1,5 +1,5 @@
-
 import { NextResponse } from "next/server";
+import { verifyPmRequest } from "../../../../lib/security/pmAuth";
 import { createClient } from "@supabase/supabase-js";
 
 type DbClient = ReturnType<typeof createClient>;
@@ -17,14 +17,8 @@ function getSupabase(): DbClient | null {
 
 export async function GET(request: Request) {
   try {
-    const authHeader = request.headers.get("authorization");
-
-    if (authHeader !== `Bearer ${process.env.PM_API_KEY}`) {
-      return NextResponse.json(
-        { error: "Unauthorized" },
-        { status: 401 }
-      );
-    }
+    const authError = verifyPmRequest(request);
+    if (authError) return authError;
 
     const supabase = getSupabase();
     if (!supabase) {
@@ -44,19 +38,16 @@ export async function GET(request: Request) {
       .order("created_at", { ascending: false })
       .limit(200);
 
- if (error) {
-  console.error("Failed to fetch error logs:", error);
+    if (error) {
+      // The driver's message/details/hint expose table and policy internals.
+      // They go to the server log; the key holder gets a stable message.
+      console.error("Failed to fetch error logs:", error);
 
-  return NextResponse.json(
-    {
-      error: error.message,
-      details: error.details,
-      hint: error.hint,
-      code: error.code,
-    },
-    { status: 500 }
-  );
-}
+      return NextResponse.json(
+        { error: "Failed to fetch error logs" },
+        { status: 500 }
+      );
+    }
 
     return NextResponse.json({
       period: "previous_24_hours",

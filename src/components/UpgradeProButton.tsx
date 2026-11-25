@@ -20,7 +20,7 @@
 // client can neither claim PRO nor flash the wrong action. The price shown in
 // the modal comes from the server-resolved plan, never from this component.
 
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import UpgradeProModal from "./UpgradeProModal";
 import {
@@ -33,6 +33,11 @@ import {
   useMembershipStatus,
 } from "../lib/upgradePro";
 import type { ProBillingInterval } from "../lib/proBilling";
+import {
+  DEFAULT_PRO_TRIAL_REMINDER_DAYS,
+  type ProTrialReminderDays,
+} from "../lib/proTrial";
+import { fetchFeaturedReview, type ProTestimonial } from "../lib/featuredReview";
 
 export type UpgradeProButtonProps = {
   /** `cta` (default) is the full-width attention button; `compact` fits headers. */
@@ -51,10 +56,10 @@ export type UpgradeProButtonProps = {
 };
 
 const CTA_CLASS =
-  "inline-flex w-full items-center justify-center rounded-xl border border-[#f5ff3b]/60 bg-gradient-to-r from-[#ffd700] via-[#f5ff3b] to-[#ffb800] px-5 py-3 text-base font-bold text-[#1f1700] shadow-[0_0_25px_rgba(245,255,59,0.35)] transition hover:brightness-110 hover:shadow-[0_0_40px_rgba(245,255,59,0.55)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#f5ff3b] focus-visible:ring-offset-2 focus-visible:ring-offset-[#030817] disabled:opacity-60 sm:w-auto";
+  "inline-flex w-full items-center justify-center rounded-xl border border-[#f5ff3b]/60 bg-linear-to-r from-[#ffd700] via-[#f5ff3b] to-[#ffb800] px-5 py-3 text-base font-bold text-[#1f1700] shadow-[0_0_25px_rgba(245,255,59,0.35)] transition hover:brightness-110 hover:shadow-[0_0_40px_rgba(245,255,59,0.55)] focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#f5ff3b] focus-visible:ring-offset-2 focus-visible:ring-offset-[#030817] disabled:opacity-60 sm:w-auto";
 
 const COMPACT_CLASS =
-  "inline-flex items-center justify-center rounded-lg border border-[#f5ff3b]/50 bg-[#f5ff3b]/10 px-3 py-1.5 text-sm font-semibold text-[#f5ff3b] transition hover:bg-[#f5ff3b]/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#f5ff3b] focus-visible:ring-offset-2 focus-visible:ring-offset-[#030817] disabled:opacity-60";
+  "inline-flex items-center justify-center rounded-lg border border-[#f5ff3b]/50 bg-[#f5ff3b]/10 px-3 py-1.5 text-sm font-semibold text-[#f5ff3b] transition hover:bg-[#f5ff3b]/20 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#f5ff3b] focus-visible:ring-offset-2 focus-visible:ring-offset-[#030817] disabled:opacity-60";
 
 export default function UpgradeProButton({
   variant = "cta",
@@ -71,6 +76,20 @@ export default function UpgradeProButton({
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // The testimonial is fetched the first time the dialog opens, from the same
+  // moderated review feed /reviews reads — never typed into the component.
+  const [testimonial, setTestimonial] = useState<ProTestimonial | null>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    let cancelled = false;
+    void fetchFeaturedReview().then((review) => {
+      if (!cancelled) setTestimonial(review);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [open]);
 
   const ready = status.loaded || Boolean(initialPlan);
   const plan = status.plan ?? initialPlan;
@@ -91,7 +110,10 @@ export default function UpgradeProButton({
   }, []);
 
   const handleUpgrade = useCallback(
-    async (interval: ProBillingInterval = "monthly") => {
+    async (
+      interval: ProBillingInterval,
+      reminderDays: ProTrialReminderDays = DEFAULT_PRO_TRIAL_REMINDER_DAYS,
+    ) => {
       if (!plan) return;
       if (!signedIn) {
         router.push(`/sign-up?redirect_url=${encodeURIComponent(UPGRADE_PRO_PATH)}`);
@@ -99,7 +121,7 @@ export default function UpgradeProButton({
       }
       setError(null);
       setBusy(true);
-      const result = await startProCheckout(plan.key, interval);
+      const result = await startProCheckout(plan.key, interval, reminderDays);
       if (!result.ok) {
         setBusy(false);
         setError(result.error ?? "Could not start the subscription.");
@@ -144,6 +166,7 @@ export default function UpgradeProButton({
         className={buttonClass}
         data-testid="upgrade-pro-button"
         data-pro-active={active ? "true" : "false"}
+        data-sound-hover=""
       >
         {busy
           ? "Opening Stripe…"
@@ -166,7 +189,10 @@ export default function UpgradeProButton({
             error,
             onUpgrade: handleUpgrade,
             onManage: handleManage,
-            onSignIn: handleUpgrade,
+            testimonial,
+            trialEligible: status.trialEligible,
+            onSignIn: (reminderDays: ProTrialReminderDays) =>
+              handleUpgrade("yearly", reminderDays),
           }}
         />
       )}

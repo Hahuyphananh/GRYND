@@ -20,6 +20,7 @@ export const MAX_DEPLOYMENT_RECORDS = 50;
 export const MAX_RECORD_BYTES = 256 * 1024;
 
 const COMMIT_RE = /^[0-9a-f]{40}$/;
+const BRANCH_RE = /^[A-Za-z0-9._/-]{1,100}$/;
 const BUILD_ID_RE = /^[A-Za-z0-9_-]{1,120}$/;
 const RUN_ID_RE = /^[0-9]{1,20}$/;
 const HASH_RE = /^sha256:[0-9a-f]{64}$/;
@@ -69,6 +70,10 @@ function enumOrNull(value, allowed) {
 
 function commitOrNull(value) {
   return typeof value === "string" && COMMIT_RE.test(value) ? value : null;
+}
+
+function branchOrNull(value) {
+  return typeof value === "string" && BRANCH_RE.test(value) ? value : null;
 }
 
 function releaseIdOrNull(value) {
@@ -135,6 +140,7 @@ export function sanitizeDeploymentRecord(input) {
     target: enumOrNull(input.target, TARGETS) ?? "production",
     commit,
     shortCommit: commit.slice(0, 7),
+    sourceBranch: branchOrNull(input.sourceBranch),
     releaseId: releaseIdOrNull(input.releaseId),
     buildId: typeof input.buildId === "string" && BUILD_ID_RE.test(input.buildId) ? input.buildId : null,
     builtAt: isoOrNull(input.builtAt),
@@ -203,6 +209,7 @@ export function createDeploymentRecord({
     event: request.event,
     target: request.target,
     commit,
+    sourceBranch: branchOrNull(request.sourceBranch),
     releaseId: request.releaseId,
     buildId: request.buildId,
     builtAt: request.builtAt,

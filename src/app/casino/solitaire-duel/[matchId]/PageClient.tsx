@@ -14,12 +14,14 @@
 // progress value, a completion, a completion time, a score, a winner, a result,
 // an Elo value or a trophy.
 //
-// There is no local prediction of the board either: a move is drawn from the
-// snapshot the server answers with. The client cannot even render an optimistic
-// flip, because a face-down identity is not in its view until the server names
-// it in `revealed`. That is a deliberate simplification — the authoritative
-// state IS the response — and it is why a rejected move can never leave the
-// local board ahead of the server's.
+// The player's OWN move is drawn before the server answers, so a click never
+// waits for a round trip: `applyMoveToView` rewrites the projected board for a
+// move that touches only visible cards, and the snapshot replaces it moments
+// later. Two things are deliberately NOT predicted — a `draw` (the stock order
+// is the server's secret) and the identity a face-down card flips to (it arrives
+// in `revealed`) — so those appear when the snapshot lands. Every prediction is
+// dropped the moment the server refuses a move, which is what keeps the board
+// from ever drifting ahead of the authority.
 //
 // ── FLOW ────────────────────────────────────────────────────────────────
 //
@@ -28,7 +30,8 @@
 //   socket `solitaire-duel:opponent-progress`   → the opponent's bar, instantly
 //   socket `solitaire-duel:countdown`/`match-started` → the server's GO instant
 //   socket `solitaire-duel:match-finished`      → refetch the settled row
-//   click a card, click a target → POST /move → adopt the returned snapshot
+//   click a card, click a target → draw it locally → queue POST /move → adopt
+//   the returned snapshot (a refusal drops the prediction and resyncs)
 //   the inactivity clock runs out → STOP; the server resolves and this page
 //   renders the result it is handed (fetchMatch resolves an idle match on read)
 //
@@ -50,6 +53,7 @@ import { useUser } from "@clerk/nextjs";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   IconAlertTriangle,
+  IconArrowBackUp,
   IconCards,
   IconClock,
   IconStopwatch,
@@ -58,15 +62,33 @@ import {
   IconHourglassHigh,
   IconRefresh,
   IconSwords,
+  IconTrophy,
 } from "@tabler/icons-react";
 
 import NavigationBar from "../../../../components/navigation-bar";
 import GameSessionHost from "../../../../components/GameSessionHost";
 import MatchWaiting from "../../../../components/lobby/MatchWaiting";
 import PvpResultScreen from "../../../../components/result/PvpResultScreen";
+import CompetitiveStreakResultBadge from "../../../../components/profil/CompetitiveStreakResultBadge";
+import GuestResultPrompt from "../../../../components/solitaire-duel/GuestResultPrompt";
+import MatchTimeline from "../../../../components/solitaire-duel/MatchTimeline";
 import { useMatchRouter } from "../../../../hooks/useMatchRouter";
 import SeatAvatar from "../../../../components/game/SeatAvatar";
 import SolitaireBoard from "../../../../components/solitaire-duel/SolitaireBoard";
+import SolitaireThemePicker from "../../../../components/solitaire-duel/SolitaireThemePicker";
+import AutoFinishAnimation from "../../../../components/solitaire-duel/AutoFinishAnimation";
+import {
+  measureFinishCards,
+  type FlyingCard,
+} from "../../../../components/solitaire-duel/measureFinishCards";
+import { applyMoveToView } from "../../../../lib/solitaire-duel/optimistic";
+import BotAvatar from "../../../../components/solitaire-duel/BotAvatar";
+import BotSpeech from "../../../../components/solitaire-duel/BotSpeech";
+import { solitaireResultLine } from "../../../../lib/solitaire-duel/dialogueDirector";
+import { useSolitaireBotDialogue } from "../../../../hooks/useSolitaireBotDialogue";
+import { isSolitaireBotId } from "../../../../lib/solitaire-duel/bots";
+import type { SolitaireDialogueSnapshot } from "../../../../lib/solitaire-duel/dialogueEvents";
+import type { AiDialogueEventSummary } from "../../../../lib/solitaire-duel/aiDialogueEvents";
 import { useSocket } from "../../../../context/SocketProvider";
 import useGameEmotes from "../../../../hooks/useGameEmotes";
 import GameEmoteLayer from "../../../../components/game/emotes/GameEmoteLayer";
@@ -83,7 +105,6 @@ import {
   solitaireDuelMatchRoom,
 } from "../../../../lib/solitaire-duel/rooms";
 import { INACTIVITY_COUNTDOWN_MS } from "../../../../lib/solitaire-duel/constants";
-import { aiMoveDelayMs, aiPaceLabel } from "../../../../lib/solitaire-duel/ai";
 import {
   clockLabel,
   durationSeconds,
@@ -106,9 +127,26 @@ type SeatIdentity = {
   iconKey?: string | null;
   nameColor?: string | null;
   profileFrame?: unknown;
+  /** Per-game trophy count for this seat, or null for a bot/unranked seat. */
+  trophies?: number | null;
   /** True for a signed-out free-play visitor (renders the "G" guest badge). */
   isGuest?: boolean;
 } | null;
+
+type MatchBot = {
+  id: string;
+  name: string;
+  rating: number | null;
+  ratingLabel: string;
+  difficulty: string;
+  difficultyLabel: string;
+  description: string;
+  initials: string;
+  avatar: { src: string | null; alt: string };
+  audience: string;
+  audienceLabel: string;
+  order: number;
+};
 
 type MatchDto = {
   matchId: string;
@@ -122,8 +160,21 @@ type MatchDto = {
   isParticipant: boolean;
   /** True for a free practice match against the bot (never rated). */
   isAi: boolean;
-  /** The bot's tier on a practice match, or null on a human duel. */
+  /** The stable id of the selected bot on a practice match. */
   aiDifficulty: string | null;
+  /** The public identity of that bot; null on a human duel. */
+  bot: MatchBot | null;
+  /** True when the opponent is a RECORDED human run — never an AI seat. */
+  isGhost?: boolean;
+  /** The anonymised handle, recorded strength and recorded pace of that run. */
+  ghost?: {
+    name: string;
+    rating: number | null;
+    /** Foundation progress at the recording's own instants (from GO). */
+    trail?: { atMs: number; foundationCards: number }[] | null;
+    /** When the recording solved the deal, in ms from GO (null if it never did). */
+    completedAtMs?: number | null;
+  } | null;
   goAtMs: number | null;
   /** The viewer's own inactivity alarm instant (15 min without a move). */
   inactivityAlarmAtMs: number | null;
@@ -140,6 +191,8 @@ type MatchDto = {
   view: SolitaireView | null;
   progress: SeatProgress | null;
   opponent: OpponentProgress | null;
+  /** Additive, count-only summary of the bot's latest planner batch. */
+  aiEvents?: AiDialogueEventSummary | null;
   players?: { player1: SeatIdentity; player2: SeatIdentity } | null;
 };
 
@@ -147,6 +200,10 @@ type OpponentProgressPayload = OpponentProgress & { matchId?: string };
 
 /** How long the "GO" flash stays up once the countdown reaches zero. */
 const GO_FLASH_MS = 700;
+// How many moves may be drawn ahead of the server's confirmation. Enough for a
+// fast run of stock cycles or a quick two-card combination, bounded so a stuck
+// request can never grow an unbounded local queue.
+const MOVE_QUEUE_LIMIT = 12;
 /** How long an invalid-move notice lingers. */
 const NOTICE_MS = 2200;
 
@@ -183,6 +240,9 @@ function Meter({
   completed,
   identity,
   isAi = false,
+  ratingLabel,
+  ghostTrail = null,
+  ghostElapsedMs = null,
 }: {
   label: string;
   percent: number;
@@ -192,6 +252,12 @@ function Meter({
   identity?: SeatIdentity;
   /** Bot seat: the GRYND mark stands in for a pfp it cannot have. */
   isAi?: boolean;
+  /** The bot's displayed opponent strength (never a player trophy). */
+  ratingLabel?: string | null;
+  /** A ghost's recorded checkpoints, offsets from the server's GO instant. */
+  ghostTrail?: { atMs: number; foundationCards: number }[] | null;
+  /** The viewer's elapsed race time, for marking the reached checkpoints. */
+  ghostElapsedMs?: number | null;
 }) {
   const clamped = Math.max(0, Math.min(100, Math.round(percent)));
   // BOTH seats are identified the same way: a face and a name. A seat whose
@@ -227,6 +293,28 @@ function Meter({
           <span className="truncate text-xs font-bold uppercase tracking-wider text-white/75">
             {label}
           </span>
+          {ratingLabel && (
+            <span
+              data-testid={`solitaire-bot-rating-${tone}`}
+              title="Opponent strength rating — not a player trophy"
+              className="inline-flex shrink-0 items-center gap-1 rounded-full border border-violet-400/40 bg-violet-400/10 px-1.5 py-0.5 font-mono text-[10px] font-bold text-violet-200"
+            >
+              <IconTrophy size={10} aria-hidden="true" />
+              {ratingLabel}
+            </span>
+          )}
+          {/* The ladder count travels with the seat identity, so both names are
+              introduced with the number their matchmaking was based on. */}
+          {identity?.trophies != null && Number.isFinite(Number(identity.trophies)) && (
+            <span
+              data-testid={`solitaire-trophies-${tone}`}
+              title={`${Number(identity.trophies).toLocaleString()} Solitaire Duel trophies`}
+              className="inline-flex shrink-0 items-center gap-1 rounded-full border border-amber-400/40 bg-amber-400/10 px-1.5 py-0.5 font-mono text-[10px] font-bold text-amber-200"
+            >
+              <IconTrophy size={11} aria-hidden="true" />
+              {Number(identity.trophies).toLocaleString()}
+            </span>
+          )}
           {completed && (
             <span className="shrink-0 rounded-full border border-emerald-400/50 bg-emerald-400/15 px-2 py-0.5 text-[9px] font-black uppercase tracking-wider text-emerald-300">
               Solved
@@ -241,13 +329,56 @@ function Meter({
         <div
           className={
             tone === "mine"
-              ? "h-full rounded-full bg-gradient-to-r from-amber-500 to-amber-300 transition-[width] duration-200"
-              : "h-full rounded-full bg-gradient-to-r from-sky-500 to-[#00e5ff] transition-[width] duration-200"
+              ? "h-full rounded-full bg-linear-to-r from-amber-500 to-amber-300 transition-[width] duration-200"
+              : "h-full rounded-full bg-linear-to-r from-sky-500 to-[#00e5ff] transition-[width] duration-200"
           }
           style={{ width: `${clamped}%` }}
         />
       </div>
       <p className="mt-1 truncate text-[10px] text-white/45">{detail}</p>
+      {/* THE RECORDED RUN, UNFOLDING. Each bar is a checkpoint from the
+          recording's OWN verified replay: its height is how many cards that run
+          had on the foundations, and it lights up when the race clock reaches
+          the instant it really happened. The database row is a recording, so
+          nothing here is interpolated or predicted — the player sees the run
+          they are racing at the pace it was played. */}
+      {ghostTrail && ghostTrail.length > 1 && (
+        <div
+          data-testid={`solitaire-ghost-trail-${tone}`}
+          data-reached={
+            ghostElapsedMs == null
+              ? 0
+              : ghostTrail.filter((point) => point.atMs <= ghostElapsedMs).length
+          }
+          aria-label="Recorded run progress"
+          className="mt-1.5 flex h-7 items-end gap-[2px]"
+        >
+          {ghostTrail.map((point, index) => {
+            const reached = ghostElapsedMs != null && point.atMs <= ghostElapsedMs;
+            const height = Math.max(
+              6,
+              Math.round(
+                (Math.max(0, Math.min(52, Number(point.foundationCards) || 0)) / 52) * 100,
+              ),
+            );
+            return (
+              <span
+                key={`${point.atMs}-${index}`}
+                aria-hidden="true"
+                className={`flex-1 rounded-sm ${
+                  reached ? "bg-[#00e5ff]/75" : "bg-white/[0.08]"
+                }`}
+                style={{ height: `${height}%` }}
+              />
+            );
+          })}
+        </div>
+      )}
+      {ghostTrail && ghostTrail.length > 1 && (
+        <p className="mt-1 text-[10px] text-white/35">
+          Recorded run — their real pace on this deal
+        </p>
+      )}
     </div>
   );
 }
@@ -277,6 +408,12 @@ export default function SolitaireDuelMatchPage() {
   const [goAtOverride, setGoAtOverride] = useState<number | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
+  // The cosmetic flight over a board the SERVER has already finished. It owns
+  // no progress, no completion and no result; it only delays the result screen.
+  const [finishing, setFinishing] = useState<FlyingCard[] | null>(null);
+  const finishingRef = useRef(false);
+  // The board as the player's own move draws it, before the server answers.
+  const [optimisticView, setOptimisticView] = useState<SolitaireView | null>(null);
   const [now, setNow] = useState(() => Date.now());
   const [goFlash, setGoFlash] = useState(false);
   const [showResign, setShowResign] = useState(false);
@@ -284,6 +421,7 @@ export default function SolitaireDuelMatchPage() {
   const [cancelling, setCancelling] = useState(false);
   const [requeueing, setRequeueing] = useState(false);
   const [restarting, setRestarting] = useState(false);
+  const [undoing, setUndoing] = useState(false);
   const [leaving, setLeaving] = useState(false);
   // True while the "your board was impossible to solve, it has been re-dealt"
   // popup is up. Raised only when the server's reset counter ticks up under the
@@ -296,9 +434,15 @@ export default function SolitaireDuelMatchPage() {
   // carries `serverNow`, so the countdown and the timer are anchored to the
   // server's timeline rather than to the local clock.
   const skewRef = useRef(0);
-  const inFlightRef = useRef(false);
-  const queuedDrawsRef = useRef(0);
-  const sendMoveRef = useRef<(move: SolitaireMove) => void>(() => {});
+  // Outbound moves are QUEUED and serialized: the board is drawn optimistically
+  // the instant a move is made, while the requests themselves stay ordered and
+  // one-at-a-time so the server's ply cursor is never raced.
+  const queueRef = useRef<{ move: SolitaireMove }[]>([]);
+  const drainingRef = useRef(false);
+  const optimisticRef = useRef<SolitaireView | null>(null);
+  const authoritativeViewRef = useRef<SolitaireView | null>(null);
+  const rebuildRef = useRef<() => void>(() => {});
+  const drainRef = useRef<() => void>(() => {});
   const loadRef = useRef<() => void>(() => {});
   // The reset counter of the last snapshot this page has seen. `null` until the
   // FIRST snapshot, so reconnecting into an already-re-dealt match never fires a
@@ -344,13 +488,19 @@ export default function SolitaireDuelMatchPage() {
     setResigning(false);
     setCancelling(false);
     setRestarting(false);
+    setUndoing(false);
     setLeaving(false);
     setBoardResetNotice(false);
     resetSeenRef.current = null;
     loadedRef.current = false;
     skewRef.current = 0;
-    inFlightRef.current = false;
-    queuedDrawsRef.current = 0;
+    queueRef.current = [];
+    drainingRef.current = false;
+    optimisticRef.current = null;
+    authoritativeViewRef.current = null;
+    setOptimisticView(null);
+    setFinishing(null);
+    finishingRef.current = false;
     setLoading(true);
   }, [matchId]);
 
@@ -367,7 +517,18 @@ export default function SolitaireDuelMatchPage() {
     // here is what stops a stray (or forged) countdown instant from pinning the
     // board in the countdown phase — the next authoritative read always wins.
     if (snapshot.goAtMs != null) setGoAtOverride(null);
+    // The cursor every queued move is validated against: the newest board the
+    // server has actually confirmed (a re-deal always wins over a ply).
+    const incomingPly = Number(snapshot.view?.ply ?? -1);
+    const heldPly = Number(authoritativeViewRef.current?.ply ?? -1);
+    const incomingReset = Number(snapshot.view?.resetCount ?? 0);
+    const heldReset = Number(authoritativeViewRef.current?.resetCount ?? 0);
+    if (snapshot.view && (incomingPly >= heldPly || incomingReset > heldReset)) {
+      authoritativeViewRef.current = snapshot.view;
+    }
     setMatch((prev) => (isStaleSnapshot(prev, snapshot) ? prev : { ...(prev ?? {}), ...snapshot }));
+    // Anything still queued is rebased on the board the server just confirmed.
+    rebuildRef.current();
     // The snapshot is authoritative for the opponent too, so a socket-only
     // progress value is retired as soon as one arrives.
     setLiveOpponent(null);
@@ -406,7 +567,7 @@ export default function SolitaireDuelMatchPage() {
   const cancelled = status === "cancelled";
   const terminal = TERMINAL.has(status);
   const seat: Seat | null = match?.seat ?? null;
-  const view = match?.view ?? null;
+  const view = optimisticView ?? match?.view ?? null;
   const serverNowMs = now + skewRef.current;
   const goAtMs = goAtOverride ?? match?.goAtMs ?? null;
   // The match is untimed, so the clock is the VIEWER'S OWN inactivity clock:
@@ -503,6 +664,15 @@ export default function SolitaireDuelMatchPage() {
   // LIVE race, so a human duel keeps the purely event-driven path.
   const opponentIsBot = Boolean(match?.isAi);
   usePracticeBotHeartbeat(opponentIsBot && racing && !paused, () => loadRef.current());
+  // A GHOST has no socket events of its own: its recorded moves are replayed by
+  // the store only when the match is READ. So it needs the same visible-tab
+  // heartbeat a practice bot does, or the recording stands still while the
+  // player thinks. A live human duel keeps the purely event-driven path.
+  const opponentIsRecorded = Boolean(match?.isGhost);
+  usePracticeBotHeartbeat(
+    opponentIsRecorded && racing && !paused,
+    () => loadRef.current(),
+  );
 
   // When the local inactivity clock says the forfeit is due, the server still
   // owns the verdict — ask it, and let it resolve. Nothing is decided here.
@@ -564,75 +734,115 @@ export default function SolitaireDuelMatchPage() {
   }, [socket, matchId, mySeatKey]);
 
   // ── Sending: the ONLY thing this page ever tells the server ────────────
-  const sendMove = useCallback(
-    async (move: SolitaireMove) => {
-      const current = matchRef.current;
-      if (!matchId || !current || pausedRef.current) return;
-      const expectedPly = Number(current.view?.ply ?? 0);
-
-      inFlightRef.current = true;
-      setPending(true);
-      setNotice(null);
-      try {
-        const res = await fetch(`${apiMatch}/move`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          // The whole request: a move and this seat's own cursor.
-          body: JSON.stringify({ move, expectedPly }),
-        });
-        const data = await res.json().catch(() => null);
-        if (!res.ok || !data?.success) {
-          // Refused by the server (a stale cursor, the clock, a finished seat)
-          // — say so quietly, drop any queued draws and resync rather than
-          // guessing at a board.
-          queuedDrawsRef.current = 0;
-          setNotice(data?.error || "That move was refused");
-          void load();
-          return;
-        }
-        adopt(data.data.match as MatchDto);
-        // A bare nudge so the opponent's view refreshes immediately; the
-        // realtime server only relays the match id.
-        socket?.emit(SOLITAIRE_DUEL_EVENTS.READY, { matchId });
-        if (data.data.completed || data.data.raceResolved) void load();
-      } catch {
-        queuedDrawsRef.current = 0;
-        setNotice("Connection hiccup — resyncing");
-        void load();
-      } finally {
-        inFlightRef.current = false;
-        setPending(false);
-        // Drain one queued stock click, so cycling the deck stays responsive
-        // without ever sending two moves at once.
-        if (queuedDrawsRef.current > 0) {
-          queuedDrawsRef.current -= 1;
-          sendMoveRef.current({ kind: "draw" });
-        }
-      }
-    },
-    [adopt, apiMatch, load, matchId, socket],
-  );
+  //
+  // A move is drawn and sent at once. The board is the projected view, so a move
+  // that touches only visible cards is applied optimistically
+  // (`applyMoveToView`) and the server's snapshot replaces it a round trip
+  // later; a draw is the one move that cannot be predicted, because the card it
+  // turns over is the server's to name. Requests are serialized behind the
+  // scenes, in order, with the ply cursor taken from the last snapshot the
+  // server confirmed — so a fast player never waits for a verification and never
+  // races their own cursor.
+  const rebuildOptimistic = useCallback(() => {
+    let next: SolitaireView | null = authoritativeViewRef.current;
+    for (const entry of queueRef.current) {
+      next = applyMoveToView(next, entry.move);
+      if (!next) break;
+    }
+    optimisticRef.current = next;
+    setOptimisticView(next);
+  }, []);
 
   useEffect(() => {
-    sendMoveRef.current = (move: SolitaireMove) => void sendMove(move);
-  }, [sendMove]);
+    rebuildRef.current = rebuildOptimistic;
+  }, [rebuildOptimistic]);
 
-  const canPlayNow = phase === "racing" && !expired && !pending && !paused;
+  const drainQueue = useCallback(async () => {
+    if (drainingRef.current) return;
+    const entry = queueRef.current[0];
+    if (!entry || !matchId) return;
+    drainingRef.current = true;
+    setPending(true);
+    setNotice(null);
+    try {
+      const expectedPly = Number(authoritativeViewRef.current?.ply ?? 0);
+      const res = await fetch(`${apiMatch}/move`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        // The whole request: a move and this seat's own cursor.
+        body: JSON.stringify({ move: entry.move, expectedPly }),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok || !data?.success) {
+        // Refused by the server (a stale cursor, the clock, a finished seat) —
+        // drop every prediction and resync rather than guessing at a board.
+        queueRef.current = [];
+        optimisticRef.current = null;
+        setOptimisticView(null);
+        finishingRef.current = false;
+        setFinishing(null);
+        setNotice(data?.error || "That move was refused");
+        void load();
+        return;
+      }
+      queueRef.current.shift();
+      // AUTO-FINISH. The server plays the formality inside the same locked
+      // move — one legal `tableau-to-foundation` per remaining card — and hands
+      // the sequence back so it can be drawn. Measure the cards while the
+      // PRE-finish board is still on screen.
+      const steps = Array.isArray(data.data.autoFinish) ? data.data.autoFinish : [];
+      const flying = steps.length > 0 ? measureFinishCards(steps) : [];
+      const settled = Boolean(data.data.completed || data.data.raceResolved);
+      if (settled) {
+        // Nothing queued against the old board can survive a settled match.
+        queueRef.current = [];
+        optimisticRef.current = null;
+      }
+      adopt(data.data.match as MatchDto);
+      rebuildOptimistic();
+      if (settled) setOptimisticView(null);
+      if (flying.length > 0) {
+        finishingRef.current = true;
+        setFinishing(flying);
+      }
+      // A bare nudge so the opponent's view refreshes immediately; the
+      // realtime server only relays the match id.
+      socket?.emit(SOLITAIRE_DUEL_EVENTS.READY, { matchId });
+      if (settled) void load();
+    } catch {
+      queueRef.current = [];
+      optimisticRef.current = null;
+      setOptimisticView(null);
+      finishingRef.current = false;
+      setFinishing(null);
+      setNotice("Connection hiccup — resyncing");
+      void load();
+    } finally {
+      drainingRef.current = false;
+      setPending(false);
+      // Drain the next queued move, in order, without ever sending two at once.
+      if (queueRef.current.length > 0) drainRef.current();
+    }
+  }, [adopt, apiMatch, load, matchId, rebuildOptimistic, socket]);
+
+  useEffect(() => {
+    drainRef.current = () => void drainQueue();
+  }, [drainQueue]);
+
+  // A move in flight no longer locks the board: the optimistic view already
+  // shows the result, and the queue orders whatever the player does next.
+  const canPlayNow = phase === "racing" && !expired && !paused;
 
   const onMove = useCallback(
     (move: SolitaireMove) => {
       if (phase !== "racing" || expired || pausedRef.current) return;
-      if (inFlightRef.current) {
-        // A stock cycle is the one action worth queuing: it is the only move a
-        // player makes in rapid succession, and each one is applied in order.
-        if (move.kind === "draw") {
-          queuedDrawsRef.current = Math.min(queuedDrawsRef.current + 1, 8);
-        }
-        return;
-      }
-      void sendMove(move);
+      if (finishingRef.current) return;
+      if (queueRef.current.length >= MOVE_QUEUE_LIMIT) return;
+      queueRef.current.push({ move });
+      rebuildOptimistic();
+      drainRef.current();
     },
-    [expired, phase, sendMove],
+    [expired, phase, rebuildOptimistic],
   );
 
   // ── Exits ──────────────────────────────────────────────────────────────
@@ -694,7 +904,11 @@ export default function SolitaireDuelMatchPage() {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           ...(matchRef.current?.isAi
-            ? { body: JSON.stringify({ difficulty: matchRef.current?.aiDifficulty }) }
+            ? {
+                body: JSON.stringify({
+                  bot: matchRef.current?.bot?.id ?? matchRef.current?.aiDifficulty,
+                }),
+              }
             : {}),
         },
       );
@@ -723,7 +937,9 @@ export default function SolitaireDuelMatchPage() {
       const res = await fetch(`${apiMatch}/restart`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ difficulty: matchRef.current?.aiDifficulty }),
+        body: JSON.stringify({
+          bot: matchRef.current?.bot?.id ?? matchRef.current?.aiDifficulty,
+        }),
       });
       const data = await res.json().catch(() => null);
       if (res.ok && data?.success) {
@@ -743,9 +959,20 @@ export default function SolitaireDuelMatchPage() {
   const opponentProgress = liveOpponent ?? match?.opponent ?? null;
   const seatKeyForIdentity: Seat = mySeatKey === "player1" ? "player2" : "player1";
   const opponentIdentity: SeatIdentity = match?.players?.[seatKeyForIdentity] ?? null;
+  const practiceBot = match?.isAi ? match.bot : null;
+  // A ghost is a recording of a real player, so it is introduced by its
+  // anonymised handle rather than by a bot name or a missing account.
+  const ghost = match?.isGhost ? match.ghost ?? null : null;
+  // The race clock on the SERVER's clock, so the trail lights up exactly the
+  // checkpoints the recording had reached by now (never a local guess).
+  const ghostTrail = ghost?.trail ?? null;
+  const ghostElapsedMs =
+    ghost && match?.goAtMs != null
+      ? Math.max(0, serverNowMs - match.goAtMs)
+      : null;
   const opponentName = match?.isAi
-    ? "GRYND AI"
-    : opponentIdentity?.name || "Opponent";
+    ? practiceBot?.name || "Bot"
+    : ghost?.name || opponentIdentity?.name || "Opponent";
   // The viewer's OWN seat, resolved the same way, so both sides of the race are
   // introduced by the same face and the same username rather than "You" vs a
   // name. The viewer is never the bot seat (the bot is always player2).
@@ -755,6 +982,75 @@ export default function SolitaireDuelMatchPage() {
   const viewerName = viewerIdentity?.name || "You";
   const canCancelLobby = status === "waiting" && seat === "player1";
   const isPractice = Boolean(match?.isAi);
+  // PRACTICE-ONLY ROLLBACK. The server rebuilds this seat's board by replaying
+  // its own log without the final entry, so nothing here decides a position. A
+  // ranked duel has no undo at all: the opponent is racing the same deal.
+  const canUndo =
+    isPractice &&
+    phase === "racing" &&
+    !expired &&
+    !paused &&
+    !terminal &&
+    !finishing &&
+    Number(view?.ply ?? 0) > 0;
+
+  const undoLastMove = useCallback(async () => {
+    if (!canUndo || undoing) return;
+    setUndoing(true);
+    setNotice(null);
+    // Anything predicted against the old board is void once it rewinds.
+    queueRef.current = [];
+    optimisticRef.current = null;
+    setOptimisticView(null);
+    finishingRef.current = false;
+    setFinishing(null);
+    try {
+      const res = await fetch(`${apiMatch}/undo`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok || !data?.success) {
+        // A refused rollback (a re-dealt board, a settled match) is surfaced and
+        // followed by a resync rather than a guessed board.
+        setNotice(data?.error || "That move cannot be taken back");
+        void load();
+        return;
+      }
+      adopt(data.data.match as MatchDto);
+      socket?.emit(SOLITAIRE_DUEL_EVENTS.READY, { matchId });
+    } catch {
+      setNotice("Connection hiccup — resyncing");
+      void load();
+    } finally {
+      setUndoing(false);
+    }
+  }, [adopt, apiMatch, canUndo, load, matchId, socket, undoing]);
+  // ── Opponent dialogue (practice only) ──────────────────────────────────
+  // The Phase 2 hook receives ONLY the presentation-safe counts this page
+  // already has. It never sees the bot's board, stock or move list, and it is
+  // passed null in a human duel, so PvP can never produce a bot line.
+  const practiceBotId =
+    practiceBot && isSolitaireBotId(practiceBot.id) ? practiceBot.id : null;
+  const dialogueSnapshot: SolitaireDialogueSnapshot | null =
+    isPractice && practiceBot && practiceBotId && match
+      ? {
+          matchId: match.matchId,
+          botId: practiceBotId,
+          status: match.status,
+          result: match.result,
+          seat: match.seat,
+          progress: match.progress,
+          opponent: match.opponent,
+          aiEvents: match.aiEvents ?? null,
+          view: match.view
+            ? { ply: match.view.ply, resetCount: match.view.resetCount }
+            : null,
+          goAtMs: match.goAtMs,
+          serverNow: match.serverNow,
+        }
+      : null;
+  const botLine = useSolitaireBotDialogue(dialogueSnapshot, { paused });
   // A practice match is untimed and unrated, so it can always be restarted —
   // even after the bot has finished, which is exactly when a player wants a
   // fresh deal. A rated duel only offers a rematch from its result screen.
@@ -764,6 +1060,35 @@ export default function SolitaireDuelMatchPage() {
   const myPercent = myProgress?.progressPercent ?? 0;
   const opponentPercent = opponentProgress?.progressPercent ?? 0;
   const outcome = viewerOutcome(seat, match?.result) ?? "draw";
+// The server records every non-completion as `forfeit`; the clock instants
+  // it also sends distinguish an inactivity settlement from a concession, so
+  // the result can say what actually happened instead of guessing.
+  const settledByInactivity = Boolean(
+    finished &&
+      match?.resolutionReason === "forfeit" &&
+      match.endedAtMs != null &&
+      (outcome === "win"
+        ? match.opponentInactivityForfeitAtMs != null &&
+          match.endedAtMs >= match.opponentInactivityForfeitAtMs
+        : match.inactivityForfeitAtMs != null &&
+          match.endedAtMs >= match.inactivityForfeitAtMs),
+  );
+  // THE BOT'S LAST WORD. A practice result ALWAYS shows the opponent's ending
+  // line: the dialogue hook's latest line may be an ordinary one (or the ending
+  // transition may have happened between polls), so the settled outcome
+  // resolves the character's own win/loss line from the same library. The bot
+  // is the opponent here — Glitch only speaks on a ranked result.
+  const botResultLine =
+    botLine && (botLine.event === "win" || botLine.event === "loss")
+      ? botLine
+      : isPractice && practiceBotId && match && (outcome === "win" || outcome === "loss")
+        ? solitaireResultLine({
+            botId: practiceBotId,
+            matchId: match.matchId,
+            // The bot won exactly when the viewer lost.
+            botWon: outcome === "loss",
+          })
+        : null;
   const countdownSeconds =
     countdownMs == null ? 0 : Math.max(0, Math.ceil(countdownMs / 1000));
   const showCountdown = phase === "countdown" || goFlash;
@@ -788,38 +1113,23 @@ export default function SolitaireDuelMatchPage() {
       autoStop={terminal}
       gameLabel="solitaire-duel"
     >
-      <div className="min-h-screen overflow-x-clip bg-gradient-to-b from-[#100c02] via-[#0b0902] to-[#070502] px-2 pb-24 pt-20 text-white sm:px-6 md:pb-8">
+      <div className="min-h-screen overflow-x-clip bg-linear-to-b from-[var(--tint-from--100c02)] via-[var(--tint-via--0b0902)] to-[var(--tint-to--070502)] px-2 pb-24 pt-20 text-white sm:px-6 md:pb-8">
         <NavigationBar currentPath="/casino" />
 
         <div className="mx-auto mt-4 w-full max-w-4xl">
           {/* ── Header: identity · clock ─────────────────────────────── */}
           <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-amber-500/25 bg-white/[0.04] px-3 py-2.5 sm:px-4">
             <div className="min-w-0">
-              <h1 className="flex items-center gap-2 text-lg font-extrabold tracking-wide text-transparent bg-clip-text bg-gradient-to-r from-amber-200 via-amber-300 to-yellow-200 sm:text-2xl">
+              <h1 className="flex items-center gap-2 text-lg font-extrabold tracking-wide text-transparent bg-clip-text bg-linear-to-r from-amber-200 via-amber-300 to-yellow-200 sm:text-2xl">
                 <IconCards className="h-6 w-6 shrink-0 text-amber-400 sm:h-7 sm:w-7" />
                 Solitaire Duel
               </h1>
               <p className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[10px] font-semibold uppercase tracking-widest text-amber-200/60">
-                <span>{isPractice ? "Practice vs AI" : "Rated 1v1"}</span>
+                <span>{isPractice ? `Practice vs ${opponentName}` : "Rated 1v1"}</span>
                 <span aria-hidden="true">·</span>
                 <span>Same deal for both seats</span>
                 <span aria-hidden="true">·</span>
                 <span>First to solve it wins</span>
-                {/* Practice only: the tier is PACE. The bot replays the deal's
-                    proven line at every tier, so the picker never changes
-                    whether the puzzle gets solved — only how soon. */}
-                {isPractice && (
-                  <>
-                    <span aria-hidden="true">·</span>
-                    <span
-                      data-testid="solitaire-solver-pace"
-                      data-delay-ms={aiMoveDelayMs(match?.aiDifficulty)}
-                      title="The difficulty changes only how fast the bot plays — it solves this same deal at every tier."
-                    >
-                      {aiPaceLabel(match?.aiDifficulty)}
-                    </span>
-                  </>
-                )}
               </p>
             </div>
 
@@ -898,6 +1208,61 @@ export default function SolitaireDuelMatchPage() {
 
           {match && (
             <div data-testid="solitaire-match" data-status={match.status}>
+              {/* The selected opponent, stated plainly during the match. The
+                  rating is the BOT's strength label; it is never awarded to the
+                  player, and practice never touches ranked progression. */}
+              {ghost && (
+                <div
+                  data-testid="solitaire-ghost-opponent"
+                  className="mt-2 rounded-xl border border-cyan-400/25 bg-cyan-400/[0.06] px-3 py-2 text-[11px] font-semibold leading-relaxed text-cyan-100/80"
+                >
+                  Racing a recorded run by a real player — {ghost.name}
+                  {ghost.rating != null ? ` (${ghost.rating} Elo)` : ""}. A replay
+                  of their own moves on this exact deal: never an AI.
+                </div>
+              )}
+
+              {isPractice && practiceBot && (
+                <div
+                  data-testid="solitaire-bot-opponent"
+                  className="mt-2 flex items-center gap-3 rounded-xl border border-violet-400/25 bg-violet-400/[0.06] px-3 py-2"
+                >
+                  <BotAvatar bot={practiceBot} size="h-10 w-10" />
+                  <div className="min-w-0 flex-1">
+                    <p className="flex flex-wrap items-center gap-2">
+                      <span
+                        data-testid="solitaire-bot-name"
+                        className="text-sm font-black text-violet-100"
+                      >
+                        {practiceBot.name}
+                      </span>
+                      <span
+                        data-testid="solitaire-bot-rating"
+                        title="Opponent strength rating — not a player trophy"
+                        className="inline-flex items-center gap-1 rounded-full border border-amber-400/35 bg-amber-400/10 px-2 py-0.5 font-mono text-[10px] font-bold text-amber-200"
+                      >
+                        <IconTrophy size={10} aria-hidden="true" />
+                        {practiceBot.ratingLabel}
+                      </span>
+                      <span className="rounded-full border border-white/15 bg-white/[0.04] px-2 py-0.5 text-[9px] font-black uppercase tracking-[0.12em] text-white/55">
+                        {practiceBot.difficultyLabel}
+                      </span>
+                      <span className="rounded-full border border-emerald-400/30 bg-emerald-400/10 px-2 py-0.5 text-[9px] font-black uppercase tracking-[0.12em] text-emerald-300/80">
+                        Unrated
+                      </span>
+                    </p>
+                    <BotSpeech
+                      bot={practiceBot}
+                      // One voice at a time: while the result is mounted the
+                      // opponent speaks there, not in the strip behind it.
+                      line={phase === "result" ? null : botLine}
+                      fallback={practiceBot.description}
+                      showAvatar={false}
+                    />
+                  </div>
+                </div>
+              )}
+
               {/* The inactivity alarm: raised once the viewer's OWN seat has been
                   idle for 15 minutes, with the 20-minute forfeit counting down. */}
               {alarmActive && (
@@ -993,15 +1358,29 @@ export default function SolitaireDuelMatchPage() {
                       completed={Boolean(opponentProgress?.completed)}
                       identity={opponentIdentity}
                       isAi={isPractice}
+                      ratingLabel={isPractice ? practiceBot?.ratingLabel : null}
+                      ghostTrail={ghostTrail}
+                      ghostElapsedMs={ghostElapsedMs}
                     />
+                  </div>
+
+                  {/* Table customization. Ranked and practice matches read the
+                      SAME local preference as solo and the Daily Challenge (the
+                      board itself owns the paint), so the selector belongs here
+                      too — otherwise the only way to change the table would be
+                      to leave a live match. It sits ABOVE the board rather than
+                      floating over it: an expanded panel must never cover a
+                      face-up card during a timed duel. */}
+                  <div className="flex justify-end">
+                    <SolitaireThemePicker />
                   </div>
 
                   {/* ── The board (the main focus) ─────────────────── */}
                   <div className="relative rounded-2xl border-2 border-[color:var(--gr-outline)] bg-black/45 p-2 shadow-[0_10px_0_-2px_rgba(3,8,20,0.85),inset_0_2px_0_rgba(255,255,255,0.06)] sm:p-4">
                     <SolitaireBoard
                       view={view}
-                      interactive={canPlayNow}
-                      pending={pending}
+                      interactive={canPlayNow && !finishing}
+                      holdHeight={finishing?.[0]?.board.height}
                       onMove={onMove}
                       onInvalid={(message) => setNotice(message)}
                     />
@@ -1046,7 +1425,7 @@ export default function SolitaireDuelMatchPage() {
                         : expired
                           ? "The clock has run out — waiting for the server's verdict."
                           : pending
-                            ? "Verifying your move…"
+                            ? "Syncing your last move…"
                             : phase === "racing"
                               ? "Race for the foundations — fastest solve takes it."
                               : "Waiting for the countdown…"}
@@ -1073,6 +1452,25 @@ export default function SolitaireDuelMatchPage() {
                           onToggle={togglePause}
                           testId="solitaire-pause"
                         />
+                      )}
+                      {/* Practice only. A ranked duel offers Resign and nothing
+                          else: you either win it or you lose it. */}
+                      {isPractice && phase === "racing" && !terminal && !expired && (
+                        <button
+                          type="button"
+                          data-testid="solitaire-undo"
+                          onClick={() => void undoLastMove()}
+                          disabled={!canUndo || undoing}
+                          title={
+                            canUndo
+                              ? "Take back your last move (practice only)"
+                              : "Nothing to take back yet"
+                          }
+                          className="inline-flex items-center gap-1 rounded-xl border border-[color:var(--gr-outline)] bg-white/[0.04] px-3 py-2 text-xs font-bold text-white/75 transition hover:bg-white/10 active:translate-y-px disabled:opacity-45"
+                        >
+                          <IconArrowBackUp size={13} aria-hidden="true" />
+                          {undoing ? "Undoing…" : "Undo"}
+                        </button>
                       )}
                       {!terminal && status === "playing" && !expired && (
                         <button
@@ -1154,7 +1552,7 @@ export default function SolitaireDuelMatchPage() {
                 aria-modal="true"
                 aria-label="Resign this match?"
               >
-                <div className="w-full max-w-sm rounded-2xl border border-red-500/40 bg-[#160a0c] p-5 text-center">
+                <div className="w-full max-w-sm rounded-2xl border border-red-500/40 bg-[var(--tint-bg--160a0c)] p-5 text-center">
                   <IconAlertTriangle className="mx-auto h-7 w-7 text-red-300" aria-hidden="true" />
                   <p className="mt-2 text-sm font-bold text-white">Resign this match?</p>
                   <p className="mt-1.5 text-xs leading-relaxed text-white/60">
@@ -1207,7 +1605,7 @@ export default function SolitaireDuelMatchPage() {
                   initial={{ scale: 0.94, y: 10, opacity: 0 }}
                   animate={{ scale: 1, y: 0, opacity: 1 }}
                   exit={{ scale: 0.96, opacity: 0 }}
-                  className="w-full max-w-sm rounded-2xl border border-amber-400/40 bg-[#141005] p-5 text-center"
+                  className="w-full max-w-sm rounded-2xl border border-amber-400/40 bg-[var(--tint-bg--141005)] p-5 text-center"
                 >
                   <IconAlertTriangle className="mx-auto h-7 w-7 text-amber-300" aria-hidden="true" />
                   <p className="mt-2 text-sm font-black text-white" data-testid="solitaire-board-reset-title">
@@ -1239,7 +1637,7 @@ export default function SolitaireDuelMatchPage() {
       {/* The authoritative result: the outcome, the winner and the duration are
           all read off the settled row. Nothing here is computed. */}
       <PvpResultScreen
-        open={phase === "result" && finished}
+        open={phase === "result" && finished && !finishing}
         outcome={outcome}
         headline={
           outcome === "draw"
@@ -1256,11 +1654,73 @@ export default function SolitaireDuelMatchPage() {
           name: opponentName,
           iconKey: opponentIdentity?.iconKey ?? null,
           profileFrame: opponentIdentity?.profileFrame ?? null,
+          // Practice has no account behind the opponent: it is the roster bot,
+          // so the result shows its own portrait and names it without an "@".
+          isAi: isPractice,
+          imageSrc: isPractice ? practiceBot?.avatar?.src ?? null : null,
+          imageAlt: isPractice ? practiceBot?.avatar?.alt ?? null : null,
+          ratingLabel: isPractice ? practiceBot?.ratingLabel ?? null : null,
         }}
         gameName="Solitaire Duel"
-        onReturnToLobby={() => router.push("/casino/solitaire-duel")}
+        onReturnToLobby={() => router.push("/play")}
         gameKey="solitaire-duel"
+        // The opponent speaks in a practice result; the app mascot keeps its
+        // own reactions to rated duels. Never two voices on one result.
+        showGlitch={!isPractice}
+        extraContent={
+          <>
+            {finished && match?.resolutionReason === "forfeit" ? (
+              <div
+                role="status"
+                data-testid="solitaire-forfeit-notice"
+                className="rounded-xl border border-amber-400/35 bg-amber-500/10 px-4 py-3 text-left"
+              >
+                <p className="text-[11px] font-black uppercase tracking-[0.2em] text-amber-300">
+                  {settledByInactivity ? "Forfeit — inactivity" : "Forfeit"}
+                </p>
+                <p className="mt-1 text-sm font-bold text-white">
+                  {outcome === "win"
+                    ? "Your opponent left the duel."
+                    : "The duel was forfeited."}
+                </p>
+                <p className="mt-1 text-xs leading-relaxed text-white/60">
+                  {settledByInactivity
+                    ? outcome === "win"
+                      ? "They stopped responding: a seat that makes no move for 20 minutes forfeits, and the server recorded your win."
+                      : "No move was made for 20 minutes, so the server awarded the duel to your opponent."
+                    : "A seat left the match before it was solved; the server recorded the result."}
+                </p>
+              </div>
+            ) : null}
+            {/* A guest just finished their one free race: the result screen is
+                the honest place to ask for an account, and the prompt renders
+                nothing at all for a signed-in player. */}
+            <GuestResultPrompt />
+            {/* Post-match Mistake Finder: basic stats for everyone, the PRO
+                timeline scrubber for an active member. It reads the settled
+                match on the server, so nothing here decides who sees what. */}
+            <MatchTimeline matchId={match ? String(match.matchId) : ""} />
+            {isPractice && practiceBot && botResultLine ? (
+              <BotSpeech
+                bot={practiceBot}
+                line={botResultLine}
+                // The result hero above already shows this bot's portrait; this
+                // row is the bot's dialog, not a second avatar.
+                showAvatar={false}
+                testId="solitaire-bot-result-speech"
+              />
+            ) : null}
+            {!isPractice && finished ? (
+              <div className="mt-3 flex justify-center">
+                <CompetitiveStreakResultBadge gameKey="solitaire-duel" />
+              </div>
+            ) : null}
+          </>
+        }
         durationSeconds={resultDuration}
+        // Ranked and practice both reach this one result screen; the shared
+        // copy names which, and the time comes from `resultDuration` above.
+        shareWin={{ mode: isPractice ? "practice" : "ranked" }}
         sides={[
           {
             name: "You",
@@ -1290,8 +1750,29 @@ export default function SolitaireDuelMatchPage() {
           },
         ]}
         playAgain={{ label: isPractice ? "NEW DEAL" : "REMATCH", onClick: requeue }}
-        secondaryAction={{ label: "Back to games", href: "/casino" }}
+        // The review API serves this seat's own validated log, including a
+        // forfeited or resigned match (it is marked forfeit, not scored).
+        // Nothing opens it automatically — the player picks it here.
+        analysisAction={
+          match
+            ? {
+                label: "Match analysis",
+                href: `/solitaire/review/duel/${encodeURIComponent(match.matchId)}`,
+              }
+            : null
+        }
+        secondaryAction={{ label: "Back to home", href: "/" }}
       />
+
+      {finishing && (
+        <AutoFinishAnimation
+          cards={finishing}
+          onDone={() => {
+            finishingRef.current = false;
+            setFinishing(null);
+          }}
+        />
+      )}
 
       <PracticePauseOverlay
         paused={paused}

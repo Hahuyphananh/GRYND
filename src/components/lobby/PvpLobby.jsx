@@ -32,7 +32,6 @@ import Footer from "../Footer";
 import MatchWaiting from "./MatchWaiting";
 import { usePlatformQuickQueue } from "./PlatformQuickQueue";
 import DailyLossGuard from "../DailyLossGuard";
-import { GLOBAL_MAX_BET } from "../../lib/games/economy";
 import { isPortalPlayPath } from "../../lib/portal/framing";
 import SessionGuard from "../SessionGuard";
 import {
@@ -44,26 +43,6 @@ import {
   IconBook,
   IconX,
 } from "@tabler/icons-react";
-
-export function CoinIcon({ className = "" }) {
-  return (
-    <svg
-      xmlns="http://www.w3.org/2000/svg"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.75"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      className={className}
-      aria-hidden
-    >
-      <ellipse cx="12" cy="6" rx="8" ry="2.5" />
-      <path d="M4 6 V18 a8 2.5 0 0 0 16 0 V6" />
-      <ellipse cx="12" cy="18" rx="8" ry="2.5" />
-    </svg>
-  );
-}
 
 function LoadingDotsIcon({ className = "" }) {
   return (
@@ -83,8 +62,8 @@ function LoadingDotsIcon({ className = "" }) {
 
 // Shared palette tokens — keep the accents consistent across games.
 const PALETTE = {
-  page: "bg-[#07080b]",
-  card: "border-white/10 bg-[#0b0d12]",
+  page: "bg-page",
+  card: "border-white/10 bg-surface",
   kicker: "text-cyan-300/70",
   title: "text-white",
   chipActive:
@@ -122,78 +101,6 @@ export function formatTokens(value) {
 }
 
 /**
- * CoinWagerPicker — the stake selector for a coin lobby.
- *
- * Coins are the energy currency (src/lib/games/economy.ts): a small balance, a
- * bounded daily top-up, a hard ceiling on a single wager. The picker is
- * presentational — the lobby owns the value — so every game gets the same
- * control and the same presets. `balance` is the player's live balance (null
- * when unknown/signed out); an unaffordable stake is flagged here and rejected
- * by the server regardless.
- */
-export function CoinWagerPicker({
-  value,
-  onChange,
-  presets = [5, 10, 25, 50, GLOBAL_MAX_BET],
-  min = 1,
-  max = GLOBAL_MAX_BET,
-  balance = null,
-  label = "Stake",
-}) {
-  const stake = Number(value) || 0;
-  const insufficient =
-    balance !== null && Number.isFinite(Number(balance)) && stake > Number(balance);
-  return (
-    <div>
-      <label className="text-[11px] font-black uppercase tracking-[0.28em] text-white/35">
-        {label}
-      </label>
-      <div className="mt-2 flex flex-wrap items-center gap-1.5">
-        {presets.map((preset) => {
-          const disabled = preset < min || preset > max;
-          return (
-            <button
-              key={preset}
-              type="button"
-              onClick={() => onChange(preset)}
-              disabled={disabled}
-              aria-pressed={stake === preset}
-              className={`rounded-lg border px-2.5 py-1 text-xs font-bold tabular-nums transition disabled:cursor-not-allowed disabled:opacity-40 ${
-                stake === preset ? PALETTE.chipActive : PALETTE.chipIdle
-              }`}
-            >
-              {formatTokens(preset)}
-            </button>
-          );
-        })}
-        <input
-          type="number"
-          inputMode="numeric"
-          min={min}
-          max={max}
-          step={1}
-          value={Number.isFinite(stake) ? stake : ""}
-          onChange={(event) => onChange(Number(event.target.value))}
-          aria-label="Custom stake in coins"
-          className="w-20 rounded-lg border border-white/10 bg-white/[0.03] px-2 py-1 text-xs font-bold tabular-nums text-white focus:border-cyan-400/60 focus:outline-none"
-        />
-      </div>
-      <p
-        className={`mt-1.5 text-[11px] ${
-          insufficient ? "font-semibold text-red-300" : "text-white/40"
-        }`}
-      >
-        {balance === null
-          ? `Between ${formatTokens(min)} and ${formatTokens(max)} coins`
-          : insufficient
-            ? `Not enough coins — you have ${formatTokens(balance)}`
-            : `Balance: ${formatTokens(balance)} coins`}
-      </p>
-    </div>
-  );
-}
-
-/**
  * RulesModal — a "How to Play" overlay in the shared lobby palette. Each
  * section is { heading, body } where body may be JSX. Shared by every
  * game lobby so the rules popup looks identical across the casino.
@@ -204,7 +111,7 @@ export function RulesModal({ title = "How to Play", sections = [], onClose }) {
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 px-4 py-6 backdrop-blur-sm"
+      className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 px-4 py-6 backdrop-blur-xs"
       onClick={onClose}
     >
       <motion.div
@@ -212,10 +119,10 @@ export function RulesModal({ title = "How to Play", sections = [], onClose }) {
         animate={{ scale: 1, opacity: 1, y: 0 }}
         exit={{ scale: 0.96, opacity: 0, y: 16 }}
         transition={{ type: "spring", stiffness: 300, damping: 28 }}
-        className="relative w-full max-w-lg max-h-[88vh] overflow-hidden rounded-2xl border border-white/10 bg-[#0b0d12] shadow-[0_40px_120px_-40px_rgba(34,211,238,0.35)]"
+        className="relative w-full max-w-lg max-h-[88vh] overflow-hidden rounded-2xl border border-white/10 bg-surface shadow-[0_40px_120px_-40px_rgba(34,211,238,0.35)]"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-cyan-400/60 to-transparent" />
+        <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-linear-to-r from-transparent via-cyan-400/60 to-transparent" />
 
         <div className="relative flex items-center justify-between border-b border-white/[0.07] px-6 pb-4 pt-6">
           <div>
@@ -325,7 +232,7 @@ function LobbyTitle({ title }) {
   const words = title.trim().split(/\s+/);
   if (words.length < 2) {
     return (
-      <span className="bg-gradient-to-r from-cyan-300 to-violet-300 bg-clip-text text-transparent">
+      <span className="bg-linear-to-r from-cyan-300 to-violet-300 bg-clip-text text-transparent">
         {title}
       </span>
     );
@@ -334,7 +241,7 @@ function LobbyTitle({ title }) {
   return (
     <>
       <span>{words.join(" ")}</span>
-      <span className="bg-gradient-to-r from-cyan-300 to-violet-300 bg-clip-text text-transparent">
+      <span className="bg-linear-to-r from-cyan-300 to-violet-300 bg-clip-text text-transparent">
         {accent}
       </span>
     </>
@@ -342,6 +249,10 @@ function LobbyTitle({ title }) {
 }
 
 export function PvpLobby({
+  // The responsible-play break reminder. It is ON everywhere except Solitaire,
+  // which opts out through `sessionReminder={false}`: a lobby that reports
+  // elapsed play time is a nag on a game people drop into for a quick deal.
+  sessionReminder = true,
   // identity
   title,
   subtitle,
@@ -359,11 +270,6 @@ export function PvpLobby({
   canPlay = true,
   vsAi = null, // { label, onClick, disabled, busy }
   extraActions = null,
-  // coin wager, or null for a free lobby. Shape:
-  //   { value, onChange, presets?, min?, max?, balance?, label? }
-  // When present the lobby renders the stake picker instead of the
-  // "free play" chrome (see CoinWagerPicker).
-  wager = null,
   // game-specific context line shown under the searching overlay title
   // (e.g. "Pairing you with a player on the same stake…")
   waitingSubtitle = null,
@@ -384,6 +290,10 @@ export function PvpLobby({
   joinLabel = "Join",
   onRefresh,
   historyHref = null,
+  // Where the ghost "back" action points. The homepage IS the lobby, so it
+  // sends the player to the rules rather than a games hub.
+  backHref = "/games",
+  backLabel = "← Back to games",
   // "your open lobby" banner
   myOpenId = null,
   onResume,
@@ -454,7 +364,7 @@ export function PvpLobby({
 
   return (
     <DailyLossGuard>
-      <SessionGuard />
+      {sessionReminder && <SessionGuard />}
       {/* Unified full-screen "Searching for a match…" takeover — shown
           whenever a Play / Join / vs-AI action is in flight. Every game
           that renders this shared lobby gets the identical waiting
@@ -547,19 +457,15 @@ export function PvpLobby({
                 frame must not offer outbound navigation. */}
             {!practiceMode && (
               <Link
-                href="/games"
+                href={backHref}
                 className={`inline-flex h-12 items-center justify-center rounded-xl px-5 text-sm font-bold transition ${PALETTE.ghost}`}
               >
-                ← Back to games
+                {backLabel}
               </Link>
             )}
             <span className="inline-flex items-center gap-2 rounded-full border border-white/10 px-3 py-1.5 text-[11px] font-semibold text-white/40">
               <span aria-hidden="true" className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
-              {practiceMode
-                ? "Practice · unrated"
-                : wager
-                  ? "Coin · both stakes escrowed"
-                  : "Free play · no tokens at stake"}
+              {practiceMode ? "Practice · unrated" : "Free play · nothing at stake"}
             </span>
           </div>
 
@@ -567,14 +473,6 @@ export function PvpLobby({
             <div className="mt-4 flex items-center gap-2 rounded-xl border border-red-400/30 bg-red-400/[0.07] px-3 py-2 text-sm text-red-200">
               <IconAlertTriangle className="h-4 w-4 flex-shrink-0 text-red-300" />
               <span>{error}</span>
-            </div>
-          )}
-
-          {/* The stake picker is an online-money control: it has no meaning to
-              a visitor who cannot stake anything. */}
-          {wager && !practiceMode && (
-            <div className="mt-5">
-              <CoinWagerPicker {...wager} />
             </div>
           )}
 
@@ -601,7 +499,7 @@ export function PvpLobby({
           transition={{ duration: 0.35 }}
           className={`relative overflow-hidden rounded-2xl border p-5 shadow-[0_30px_80px_-50px_rgba(34,211,238,0.55)] ${PALETTE.card}`}
         >
-          <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-cyan-400/60 to-transparent" />
+          <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-linear-to-r from-transparent via-cyan-400/60 to-transparent" />
 
           <p className="text-[11px] font-black uppercase tracking-[0.28em] text-white/35">The match</p>
 
@@ -616,7 +514,7 @@ export function PvpLobby({
               >
                 <span className="flex items-center gap-2 text-xs text-cyan-100/80">
                   <LoadingDotsIcon className="h-4 w-4 animate-pulse text-cyan-200" />
-                  Lobby #{myOpenId} is waiting for an opponent…
+                  Your table is waiting for an opponent…
                 </span>
                 <div className="flex items-center gap-2">
                   {onResume && (
@@ -650,10 +548,10 @@ export function PvpLobby({
                   ["Progress", "Saved in this browser"],
                 ]
               : [
-                  ["Entry", wager ? `${formatTokens(wager?.value ?? 0)} coins` : "Free"],
+                  ["Entry", "Free"],
                   ["Opponent", "Live player"],
-                  ["Winner", wager ? "Takes 1.8× the stake" : "Nothing wagered"],
-                  ["Draw", "Both seats refunded"],
+                  ["Winner", "First to solve it"],
+                  ["Draw", "No rating change"],
                 ]
             ).map(([label, value]) => (
               <div
@@ -673,19 +571,12 @@ export function PvpLobby({
                 matched, and the result is unrated — no coins, trophies or
                 ranking change.
               </>
-            ) : wager ? (
-              <>
-                Coins are energy: both stakes are escrowed on match-up and the
-                winner takes <b className="text-white/70">1.8× their stake</b>{" "}
-                (stake back + 90% of the loser&apos;s). An exact draw refunds both
-                seats.
-              </>
             ) : (
-              <>Free to play — nothing is escrowed and no tokens are at stake.</>
+              <>Free to play — no coins, no escrow and no payouts.</>
             )}
           </p>
 
-          {quickQueue && !practiceMode && (
+          {quickQueue && quickQueue.hasGames !== false && !practiceMode && (
             <div className="mt-4 rounded-xl border border-white/10 bg-white/[0.02] p-4">
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div>
@@ -771,8 +662,8 @@ export function PvpLobby({
                 className={`flex items-center justify-between rounded-2xl border p-4 ${PALETTE.row}`}
               >
                 <div className="space-y-2">
-                  <div className="h-3.5 w-32 animate-pulse rounded bg-white/10" />
-                  <div className="h-2.5 w-20 animate-pulse rounded bg-white/5" />
+                  <div className="h-3.5 w-32 animate-pulse rounded-sm bg-white/10" />
+                  <div className="h-2.5 w-20 animate-pulse rounded-sm bg-white/5" />
                 </div>
                 <div className="h-7 w-16 animate-pulse rounded-lg bg-white/10" />
               </div>

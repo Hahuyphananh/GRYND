@@ -197,8 +197,11 @@ export default function QuestionnairePageClient({ from }: Props) {
     [answers]
   );
 
-  const allAnswered = useMemo(
-    () => QUESTIONNAIRE_QUESTIONS.every((q) => isAnswered(q)),
+  // Only REQUIRED questions gate progress. Every personalization question in
+  // the Solitaire catalog is optional, so a player who declines to answer still
+  // reaches the board — skipping is recorded as skipping, never as an answer.
+  const allRequiredAnswered = useMemo(
+    () => QUESTIONNAIRE_QUESTIONS.every((q) => q.optional === true || isAnswered(q)),
     [isAnswered]
   );
 
@@ -210,7 +213,7 @@ export default function QuestionnairePageClient({ from }: Props) {
   // when nothing is loading, saving or retrying.
   const questionGlitch = glitchQuestionnaireLine(step);
   const isLast = step === TOTAL - 1;
-  const canAdvance = isAnswered(question);
+  const canAdvance = isAnswered(question) || question.optional === true;
 
   const toggleOption = useCallback(
     (questionKey: string, type: "single" | "multi", value: string) => {
@@ -268,8 +271,9 @@ export default function QuestionnairePageClient({ from }: Props) {
   }, [destination]);
 
   const submit = useCallback(async () => {
-    // Guard: never submit a partially answered questionnaire.
-    if (!QUESTIONNAIRE_QUESTIONS.every((q) => isAnswered(q))) return;
+    // Guard: every REQUIRED question must be answered. Optional ones may be
+    // blank — the API normalizes them to [] and never invents a value.
+    if (!QUESTIONNAIRE_QUESTIONS.every((q) => q.optional === true || isAnswered(q))) return;
     setSaving(true);
     setSaveFailed(false);
     try {
@@ -302,17 +306,34 @@ export default function QuestionnairePageClient({ from }: Props) {
     goTo(step + 1);
   }, [canAdvance, goTo, step]);
 
+
   // Finish: if anything is still unanswered, jump to that question instead of
   // submitting an incomplete payload — the API validates too.
   const finish = useCallback(() => {
-    if (!allAnswered) {
-      const firstMissing = QUESTIONNAIRE_QUESTIONS.findIndex((q) => !isAnswered(q));
+    if (!allRequiredAnswered) {
+      const firstMissing = QUESTIONNAIRE_QUESTIONS.findIndex(
+        (q) => q.optional !== true && !isAnswered(q)
+      );
       setShowValidation(true);
       if (firstMissing !== -1 && firstMissing !== step) setStep(firstMissing);
       return;
     }
     void submit();
-  }, [allAnswered, isAnswered, step, submit]);
+  }, [allRequiredAnswered, isAnswered, step, submit]);
+
+  // "Skip this question" — offered only on optional questions and writes NO
+  // value: the answer stays absent, so it can never be mistaken for a
+  // preference the player expressed. On the last question it finishes, which
+  // is how a questionnaire whose optional answers were all skipped is
+  // submitted as an empty optional set (the one required question is first).
+  const skipQuestion = useCallback(() => {
+    if (question.optional !== true) return;
+    if (isLast) {
+      finish();
+      return;
+    }
+    goTo(step + 1);
+  }, [finish, goTo, isLast, question, step]);
 
   const onKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
@@ -358,7 +379,7 @@ export default function QuestionnairePageClient({ from }: Props) {
         className={`flex items-center justify-center px-4 ${fullBleed}`}
         style={{ background: "linear-gradient(135deg, #001933 0%, #000d1a 100%)" }}
       >
-        <div className="w-full max-w-md rounded-2xl border border-[#ff2d9b]/40 bg-[#040d24]/80 p-8 text-center shadow-[0_0_30px_rgba(255,45,155,0.15)]">
+        <div className="w-full max-w-md rounded-2xl border border-[#ff2d9b]/40 bg-surface/80 p-8 text-center shadow-[0_0_30px_rgba(255,45,155,0.15)]">
           <p className="mb-2 text-4xl">⚠️</p>
           <h1 className="mb-2 text-lg font-extrabold text-white">
             {t("onboarding.questionnaire.error.title")}
@@ -370,7 +391,7 @@ export default function QuestionnairePageClient({ from }: Props) {
             <button
               type="button"
               onClick={() => void load()}
-              className="rounded-xl bg-[#00e5ff] px-6 py-2.5 text-sm font-extrabold text-[#001a2e] shadow-[0_0_18px_rgba(0,229,255,0.5)] transition hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff]"
+              className="rounded-xl bg-[#00e5ff] px-6 py-2.5 text-sm font-extrabold text-[#001a2e] shadow-[0_0_18px_rgba(0,229,255,0.5)] transition hover:brightness-110 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#00e5ff]"
             >
               {t("onboarding.questionnaire.error.retry")}
             </button>
@@ -406,7 +427,7 @@ export default function QuestionnairePageClient({ from }: Props) {
           onClick={() => goTo(step - 1)}
           disabled={step === 0 || saving}
           aria-label={t("onboarding.questionnaire.back")}
-          className="flex h-11 w-11 items-center justify-center rounded-full border border-[#00e5ff]/40 text-[#9dd8ff] transition hover:bg-[#00e5ff]/10 hover:text-[#d8fbff] disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff]"
+          className="flex h-11 w-11 items-center justify-center rounded-full border border-[#00e5ff]/40 text-[#9dd8ff] transition hover:bg-[#00e5ff]/10 hover:text-[#d8fbff] disabled:opacity-40 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#00e5ff]"
         >
           <IconArrowLeft size={18} />
         </button>
@@ -445,7 +466,7 @@ export default function QuestionnairePageClient({ from }: Props) {
              completion) — changing your mind must never alter server state. */
           <Link
             href={destination}
-            className="flex h-11 items-center rounded-full px-3 text-xs font-bold text-[#9dd8ff]/70 underline-offset-4 transition hover:text-[#d8fbff] hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff]"
+            className="flex h-11 items-center rounded-full px-3 text-xs font-bold text-[#9dd8ff]/70 underline-offset-4 transition hover:text-[#d8fbff] hover:underline focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#00e5ff]"
           >
             {t("onboarding.questionnaire.edit.cancel")}
           </Link>
@@ -454,7 +475,7 @@ export default function QuestionnairePageClient({ from }: Props) {
             type="button"
             onClick={skip}
             disabled={saving}
-            className="h-11 rounded-full px-3 text-xs font-bold text-[#9dd8ff]/70 underline-offset-4 transition hover:text-[#d8fbff] hover:underline disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff]"
+            className="h-11 rounded-full px-3 text-xs font-bold text-[#9dd8ff]/70 underline-offset-4 transition hover:text-[#d8fbff] hover:underline disabled:opacity-40 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#00e5ff]"
           >
             {t("onboarding.questionnaire.skip")}
           </button>
@@ -467,7 +488,7 @@ export default function QuestionnairePageClient({ from }: Props) {
           ref={contentRef}
           tabIndex={-1}
           onKeyDown={onKeyDown}
-          className="w-full max-w-2xl outline-none"
+          className="w-full max-w-2xl outline-hidden"
         >
           <AnimatePresence mode="wait">
             <motion.div
@@ -495,11 +516,19 @@ export default function QuestionnairePageClient({ from }: Props) {
               >
                 {t(question.titleKey)}
               </h1>
-              <p className="mb-6 text-sm leading-relaxed text-[#9dd8ff] sm:text-base">
+              <p
+                className={`${question.optional === true ? "mb-2" : "mb-6"} text-sm leading-relaxed text-[#9dd8ff] sm:text-base`}
+              >
+                {t(question.hintKey)}
                 {question.type === "multi"
-                  ? t("onboarding.questionnaire.multiHint")
-                  : t(question.hintKey)}
+                  ? ` · ${t("onboarding.questionnaire.multiHint")}`
+                  : ""}
               </p>
+              {question.optional === true && (
+                <p className="mb-6 text-xs font-semibold text-[#9dd8ff]/60">
+                  {t("onboarding.solitaire.questionnaire.optionalHint")}
+                </p>
+              )}
 
               {question.type === "single" ? (
                 <div
@@ -516,10 +545,10 @@ export default function QuestionnairePageClient({ from }: Props) {
                         role="radio"
                         aria-checked={selected}
                         onClick={() => toggleOption(question.key, "single", option.value)}
-                        className={`flex w-full items-center gap-3 rounded-2xl border px-4 py-3.5 text-left transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff] ${
+                        className={`flex w-full items-center gap-3 rounded-2xl border px-4 py-3.5 text-left transition-all duration-200 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#00e5ff] ${
                           selected
                             ? "border-[#00e5ff]/70 bg-[#00e5ff]/10 shadow-[0_0_20px_rgba(0,229,255,0.25)]"
-                            : "border-[#00e5ff]/25 bg-[#040d24]/80 hover:bg-[#0b1b3f]/80"
+                            : "border-[#00e5ff]/25 bg-surface/80 hover:bg-[#0b1b3f]/80"
                         }`}
                       >
                         <span
@@ -558,10 +587,10 @@ export default function QuestionnairePageClient({ from }: Props) {
                         aria-pressed={selected}
                         disabled={atLimit}
                         onClick={() => toggleOption(question.key, "multi", option.value)}
-                        className={`flex items-center gap-3 rounded-2xl border px-4 py-3.5 text-left transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff] disabled:opacity-40 ${
+                        className={`flex items-center gap-3 rounded-2xl border px-4 py-3.5 text-left transition-all duration-200 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#00e5ff] disabled:opacity-40 ${
                           selected
                             ? "border-[#00e5ff]/70 bg-[#00e5ff]/10 shadow-[0_0_20px_rgba(0,229,255,0.25)]"
-                            : "border-[#00e5ff]/25 bg-[#040d24]/80 hover:bg-[#0b1b3f]/80"
+                            : "border-[#00e5ff]/25 bg-surface/80 hover:bg-[#0b1b3f]/80"
                         }`}
                       >
                         <span
@@ -619,12 +648,22 @@ export default function QuestionnairePageClient({ from }: Props) {
 
       {/* Footer controls */}
       <div className="relative z-10 mt-8 w-full max-w-2xl">
+        {question.optional === true && !isAnswered(question) && (
+          <button
+            type="button"
+            onClick={skipQuestion}
+            disabled={saving}
+            className="mb-3 h-11 w-full rounded-xl border border-[#00e5ff]/30 text-xs font-bold text-[#9dd8ff]/80 transition hover:bg-[#00e5ff]/10 hover:text-[#d8fbff] disabled:opacity-40 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#00e5ff]"
+          >
+            {t("onboarding.solitaire.questionnaire.skipQuestion")}
+          </button>
+        )}
         {!isLast ? (
           <button
             type="button"
             onClick={advance}
             disabled={saving}
-            className="flex w-full items-center justify-center gap-2 rounded-2xl bg-[#00e5ff] px-8 py-4 text-base font-extrabold text-[#001a2e] shadow-[0_0_25px_rgba(0,229,255,0.45)] transition hover:brightness-110 active:scale-[0.99] disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff]"
+            className="flex w-full items-center justify-center gap-2 rounded-2xl bg-[#00e5ff] px-8 py-4 text-base font-extrabold text-[#001a2e] shadow-[0_0_25px_rgba(0,229,255,0.45)] transition hover:brightness-110 active:scale-[0.99] disabled:opacity-50 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#00e5ff]"
           >
             {t("onboarding.questionnaire.next")} <IconArrowRight size={18} />
           </button>
@@ -633,7 +672,7 @@ export default function QuestionnairePageClient({ from }: Props) {
             type="button"
             onClick={finish}
             disabled={saving}
-            className="flex w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-[#FFD700] to-[#FFB300] px-8 py-4 text-base font-extrabold text-black shadow-[0_0_30px_rgba(255,215,0,0.5)] transition-all hover:brightness-110 active:scale-[0.99] disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FFD700]"
+            className="flex w-full items-center justify-center gap-2 rounded-2xl bg-linear-to-r from-[#FFD700] to-[#FFB300] px-8 py-4 text-base font-extrabold text-black shadow-[0_0_30px_rgba(255,215,0,0.5)] transition-all hover:brightness-110 active:scale-[0.99] disabled:opacity-50 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#FFD700]"
           >
             {saving
               ? t("onboarding.questionnaire.saving")
@@ -659,7 +698,7 @@ export default function QuestionnairePageClient({ from }: Props) {
               <button
                 type="button"
                 onClick={() => void submit()}
-                className="rounded-lg bg-red-400/90 px-4 py-1.5 text-xs font-extrabold text-black transition hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-300"
+                className="rounded-lg bg-red-400/90 px-4 py-1.5 text-xs font-extrabold text-black transition hover:brightness-110 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-red-300"
               >
                 {t("onboarding.error.retry")}
               </button>

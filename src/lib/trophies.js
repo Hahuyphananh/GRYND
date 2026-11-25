@@ -77,6 +77,23 @@ export const TROPHY_DRAW = 0;
 export const TROPHY_MIN = 0;
 
 /**
+ * Opponent-strength adjustment (Clash-Royale style).
+ *
+ * The ±30 above is the value at EQUAL trophy counts. Every 10 trophies the
+ * opponent is above the player adds +1 to a win (and makes the loss cheaper by
+ * 1); every 10 below subtracts 1. The adjustment is capped at ±20, so a match
+ * pays at most +50 / costs at most −50, and never turns a win into a loss.
+ *
+ * The adjustment is SYMMETRIC: the two nominal deltas always sum to zero. A
+ * higher-rated player risks more for a smaller reward and is compensated for a
+ * loss to a lower-rated one, exactly like a ladder should behave.
+ */
+export const TROPHY_OPPONENT_DIFF_DIVISOR = 10;
+
+/** Largest adjustment the opponent gap may add to (or remove from) ±30. */
+export const TROPHY_ADJUSTMENT_MAX = 20;
+
+/**
  * The eligible games — EXACTLY the Elo registry, re-exported so every trophy
  * surface reads one list and cannot drift from the rating system.
  */
@@ -138,6 +155,42 @@ export function trophyDeltaForOutcome(outcome) {
   if (outcome === "loss") return TROPHY_LOSS;
   if (outcome === "draw") return TROPHY_DRAW;
   return 0;
+}
+
+/**
+ * The opponent-strength adjustment for one player: positive when the opponent
+ * has MORE trophies (beating them is worth more, losing to them costs less),
+ * negative when the opponent has fewer. Equal counts (and missing data) → 0,
+ * so two players on the same trophy count keep the clean ±30.
+ */
+export function trophyAdjustmentForOpponent({
+  playerTrophies,
+  opponentTrophies,
+} = {}) {
+  const player = clampTrophies(playerTrophies);
+  const opponent = clampTrophies(opponentTrophies);
+  const raw = Math.round(
+    (opponent - player) / Math.max(1, TROPHY_OPPONENT_DIFF_DIVISOR),
+  );
+  return Math.max(-TROPHY_ADJUSTMENT_MAX, Math.min(TROPHY_ADJUSTMENT_MAX, raw));
+}
+
+/**
+ * The nominal delta for one seat of a DUEL, adjusted for the opponent's trophy
+ * count. A win at equal trophies is exactly +30 and a loss exactly −30; the
+ * opponent gap moves those numbers and nothing else. A draw is always 0.
+ */
+export function duelTrophyDelta({
+  playerTrophies,
+  opponentTrophies,
+  outcome,
+} = {}) {
+  const base = trophyDeltaForOutcome(outcome);
+  if (base === TROPHY_DRAW) return 0;
+  return (
+    base +
+    trophyAdjustmentForOpponent({ playerTrophies, opponentTrophies })
+  );
 }
 
 /**
@@ -209,10 +262,33 @@ export function computeMatchTrophies({
   result = "win",
 }) {
   const isDraw = result === "draw";
+  if (isDraw) {
+    return {
+      result: "draw",
+      winner: applyTrophyDelta(winnerTrophies, "draw"),
+      loser: applyTrophyDelta(loserTrophies, "draw"),
+    };
+  }
+  // Each seat's delta is adjusted by the OTHER seat's trophy count, so the two
+  // nominal values mirror each other and the ladder stays zero-sum.
   return {
-    result: isDraw ? "draw" : "win",
-    winner: applyTrophyDelta(winnerTrophies, isDraw ? "draw" : "win"),
-    loser: applyTrophyDelta(loserTrophies, isDraw ? "draw" : "loss"),
+    result: "win",
+    winner: applyTrophyChange(
+      winnerTrophies,
+      duelTrophyDelta({
+        playerTrophies: winnerTrophies,
+        opponentTrophies: loserTrophies,
+        outcome: "win",
+      }),
+    ),
+    loser: applyTrophyChange(
+      loserTrophies,
+      duelTrophyDelta({
+        playerTrophies: loserTrophies,
+        opponentTrophies: winnerTrophies,
+        outcome: "loss",
+      }),
+    ),
   };
 }
 
@@ -534,6 +610,37 @@ export function overallTrophiesFromCounts(entries) {
   return { overallTrophies: total, gamesPlayed: played.length, eligible: true };
 }
 
+// ── Trophy-gain leaderboard periods ────────────────────────────────────────
+//
+// The leaderboard ranks POSITIVE trophy movement inside the current calendar
+// week / month / year (UTC), read from the trophy journal. These helpers are
+// pure so the window math is unit-tested independently of Postgres.
+
+export const TROPHY_GAIN_PERIODS = Object.freeze(["week", "month", "year"]);
+
+/** True for one of the three gain periods. */
+export function isTrophyGainPeriod(value) {
+  return TROPHY_GAIN_PERIODS.includes(String(value));
+}
+
+/**
+ * The UTC instant the CURRENT calendar period began, or null for an unknown
+ * period. Weeks start Monday (ISO), matching the weekly leaderboard reset.
+ */
+export function trophyGainPeriodStart(period, nowMs = Date.now()) {
+  const date = new Date(nowMs);
+  if (!Number.isFinite(date.getTime())) return null;
+  const year = date.getUTCFullYear();
+  const month = date.getUTCMonth();
+  if (period === "week") {
+    const day = (date.getUTCDay() + 6) % 7; // Monday = 0
+    return Date.UTC(year, month, date.getUTCDate() - day);
+  }
+  if (period === "month") return Date.UTC(year, month, 1);
+  if (period === "year") return Date.UTC(year, 0, 1);
+  return null;
+}
+
 /**
  * Config snapshot — exposed so tests can assert the tunables without
  * re-deriving them, and so a future admin surface has one object to read.
@@ -544,6 +651,8 @@ export const TROPHY_CONFIG = Object.freeze({
   loss: TROPHY_LOSS,
   draw: TROPHY_DRAW,
   min: TROPHY_MIN,
+  opponentDiffDivisor: TROPHY_OPPONENT_DIFF_DIVISOR,
+  adjustmentMax: TROPHY_ADJUSTMENT_MAX,
   gameCount: TROPHY_GAMES.length,
   outcomes: TROPHY_OUTCOMES,
   overallMinGames: OVERALL_TROPHY_MIN_GAMES,

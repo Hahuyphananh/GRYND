@@ -27,7 +27,7 @@ export default function StatTile({
           : "text-white";
 
   return (
-    <div className="rounded-xl border border-[#00e5ff]/25 bg-[#04122b]/70 p-4">
+    <div className="rounded-xl border border-[#00e5ff]/25 bg-surface/70 p-4">
       <p className="text-[11px] font-semibold uppercase tracking-wider text-[#9dd8ff]/70">
         {label}
       </p>

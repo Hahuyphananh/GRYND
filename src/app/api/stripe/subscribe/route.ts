@@ -27,6 +27,7 @@ import {
   CANONICAL_MEMBERSHIP_PLAN_KEY,
   ensureSubscriptionPlanStripe,
   findActiveSubscription,
+  hasPriorSubscription,
   resolvePriceCharge,
 } from "../../../../lib/stripe/subscriptions";
 import {
@@ -35,8 +36,17 @@ import {
   isProBillingInterval,
   type ProBillingInterval,
 } from "../../../../lib/proBilling";
+import {
+  DEFAULT_PRO_TRIAL_REMINDER_DAYS,
+  PRO_TRIAL_DAYS,
+  isProTrialReminderDays,
+} from "../../../../lib/proTrial";
 import { BASE_CURRENCY, currencyForCountry } from "../../../../lib/currency";
 import { countryFromHeaders } from "../../../../lib/consentRegions";
+import {
+  NATIVE_PURCHASE_UNAVAILABLE_MESSAGE,
+  isNativeShellRequest,
+} from "../../../../lib/native/shell";
 import { auditLog } from "../../../../lib/security/auditLog";
 
 export const runtime = "nodejs";
@@ -53,7 +63,19 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
   }
 
-  let body: { planKey?: unknown; interval?: unknown };
+  // NATIVE APP: a GRYND PRO subscription is a digital good consumed in-app, so
+  // Play requires Play Billing. Checkout from the Android build is refused
+  // before the plan is even resolved. The app identifies itself in the WebView
+  // User-Agent (capacitor.config.ts → appendUserAgent), which the client cannot
+  // forge into a purchase it is otherwise entitled to make.
+  if (isNativeShellRequest(req)) {
+    return NextResponse.json(
+      { success: false, error: NATIVE_PURCHASE_UNAVAILABLE_MESSAGE },
+      { status: 403 },
+    );
+  }
+
+  let body: { planKey?: unknown; interval?: unknown; reminderDays?: unknown };
   try {
     body = await req.json().catch(() => ({}));
   } catch {
@@ -72,6 +94,14 @@ export async function POST(req: NextRequest) {
   const interval: ProBillingInterval = isProBillingInterval(body?.interval)
     ? body.interval
     : "monthly";
+
+  // The trial reminder the member picked on the paywall (3 / 1 / 0 days before
+  // the first charge). Validated here so the server only ever stores an option
+  // the reminder job understands; a stale client that sends nothing gets the
+  // default rather than a broken promise.
+  const reminderDays = isProTrialReminderDays(body?.reminderDays)
+    ? body.reminderDays
+    : DEFAULT_PRO_TRIAL_REMINDER_DAYS;
 
   if (!process.env.STRIPE_SECRET_KEY) {
     return NextResponse.json(
@@ -106,6 +136,12 @@ export async function POST(req: NextRequest) {
       { status: 409 }
     );
   }
+
+  // THE TRIAL IS GRANTED ONCE PER CUSTOMER. A subscription row exists from the
+  // first successful checkout and survives cancellation, so a returning member
+  // gets a normal paid subscription with no second free week. Decided here, on
+  // the server, from the caller's own rows — never from a client flag.
+  const trialDays = (await hasPriorSubscription(clerkId)) ? 0 : PRO_TRIAL_DAYS;
 
   // Ensure the plan has a real Stripe Product + a recurring Price for EVERY
   // billing option, creating only what is missing, then use the price for the
@@ -189,7 +225,19 @@ export async function POST(req: NextRequest) {
       // Carried onto the Subscription object so the webhook can map every paid
       // invoice back to the plan (and user) without trusting the payload.
       subscription_data: {
-        metadata: { clerkId, planKey: plan.key, billingInterval: interval },
+        metadata: {
+          clerkId,
+          planKey: plan.key,
+          billingInterval: interval,
+          ...(trialDays > 0 ? { trialReminderDays: String(reminderDays) } : {}),
+        },
+        // A REAL free trial: Stripe collects the payment method now and does
+        // not charge it until the trial ends. Entitlement already treats
+        // `trialing` as active (ACTIVE_SUBSCRIPTION_STATUSES), so the member
+        // gets PRO immediately and the paywall's timeline is the truth.
+        // Omitted entirely for a returning customer — the first charge then
+        // happens at checkout, exactly as the paywall says it will.
+        ...(trialDays > 0 ? { trial_period_days: trialDays } : {}),
       },
       success_url: `${baseUrl}/upgrade-pro?checkout=success&session_id={CHECKOUT_SESSION_ID}`,
       // The Checkout back button is `cancel_url` (Stripe: "If set, Checkout
@@ -232,6 +280,8 @@ export async function POST(req: NextRequest) {
     userId: clerkId,
     planKey: plan.key,
     billingInterval: interval,
+    trialDays,
+    reminderDays,
     sessionId: session.id,
     amountCents,
     currency: chargedCurrency,

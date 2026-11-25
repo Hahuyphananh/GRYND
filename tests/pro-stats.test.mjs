@@ -36,6 +36,7 @@ import {
   toResultEvents,
 } from "../src/lib/stats/performance.ts";
 import { overallEloFromRatings } from "../src/lib/elo.js";
+import { readProfileSource } from "./helpers/profile-source.mjs";
 
 const read = (path) => fs.readFileSync(path, "utf8");
 
@@ -430,7 +431,7 @@ test("free reads are untouched", () => {
 
   // The rank/wins boards and the profile link stay as they are.
   assert.match(read("src/app/api/leaderboard/overall/route.js"), /fetchRatingLeaderboard|overall/i);
-  assert.match(read("src/app/profil/PageClient.jsx"), /href="\/stats"/);
+  assert.match(readProfileSource(), /href="\/stats"/);
 });
 
 // ── Copy ───────────────────────────────────────────────────────────────────

@@ -101,7 +101,7 @@ export default function PracticeMatchButton({
         disabled={busy}
         aria-busy={busy}
         data-testid="landing-practice-cta"
-        className="inline-flex items-center justify-center gap-2 rounded-lg border border-[#00e5ff]/35 px-5 py-3 text-sm font-semibold text-[#9dd8ff] transition hover:bg-[#00e5ff]/10 hover:text-[#d8fbff] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff] disabled:cursor-not-allowed disabled:opacity-60"
+        className="inline-flex items-center justify-center gap-2 rounded-lg border border-[#00e5ff]/35 px-5 py-3 text-sm font-semibold text-[#9dd8ff] transition hover:bg-[#00e5ff]/10 hover:text-[#d8fbff] focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#00e5ff] disabled:cursor-not-allowed disabled:opacity-60"
       >
         <IconRobot size={16} aria-hidden="true" />
         {busy ? "Starting practice…" : label}

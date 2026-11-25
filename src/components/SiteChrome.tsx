@@ -26,12 +26,20 @@
 import { usePathname } from "next/navigation";
 
 import ClerkSafeChatWidget from "./ClerkSafeChatWidget";
+import UiSounds from "./UiSounds";
 import CookieConsentBanner from "./CookieConsentBanner";
 import CmpConsentBridge from "./CmpConsentBridge";
 import GoogleAnalytics from "./GoogleAnalytics";
 import SplashScreen from "./SplashScreen";
 import GlitchProvider from "./mascot/GlitchProvider";
 import { isPortalPlayPath } from "../lib/portal/framing";
+import GryndProWidget from "./GryndProWidget";
+import StreakUnlockModal from "./streaks/StreakUnlockModal";
+import GuestStreakPrompt from "./streaks/GuestStreakPrompt";
+import BoardAppearanceDrawer from "./solitaire/BoardAppearanceDrawer";
+import MobileTabBar from "./shell/MobileTabBar";
+import { shouldShowProWidget } from "../lib/proWidget";
+import { useSolitaireBoardThemeSync } from "../hooks/useSolitaireBoardThemeSync";
 
 export default function SiteChrome({
   children,
@@ -42,6 +50,10 @@ export default function SiteChrome({
   requiresCmp: boolean;
 }) {
   const pathname = usePathname();
+  // The Solitaire table is a site-wide preference, not a page one: reconcile
+  // it with the account once here, so the choice follows a signed-in player
+  // between devices. Site-only — the portal keeps its purely local store.
+  useSolitaireBoardThemeSync();
 
   // ── Portal surface ──────────────────────────────────────────────────────
   // The game is the whole page. `<main>` stays (it is the landmark the app and
@@ -50,7 +62,7 @@ export default function SiteChrome({
   // the board.
   if (isPortalPlayPath(pathname)) {
     return (
-      <main id="main-content" className="min-h-dvh bg-[#000d1a]">
+      <main id="main-content" className="min-h-dvh bg-[color:var(--bg-page)]">
         {children}
       </main>
     );
@@ -64,10 +76,27 @@ export default function SiteChrome({
           banner there to earn the consent it needs. */}
       <GoogleAnalytics />
 
+      {/* Interface sounds — event-driven, mute-aware, and site-only (the portal
+          surface owns its game audio and must stay untouched). Renders nothing. */}
+      <UiSounds />
+
+      {/* APPEARANCE. The drawer is the Settings/Profile entry point to the
+          board cosmetics the board header opens. The old flame chip that
+          duplicated the daily-streak card is gone — there is one streak
+          surface now (components/StreakWidget). */}
+      {(pathname === "/settings" || pathname === "/profil") && (
+        <div className="pointer-events-none fixed right-3 top-[calc(var(--nav-height)_+_var(--safe-top)_+_0.5rem)] z-40 flex items-center gap-2 sm:right-4">
+          <div className="pointer-events-auto">
+            <BoardAppearanceDrawer />
+          </div>
+        </div>
+      )}
+      <StreakUnlockModal />
+
       {/* Skip to content — accessibility */}
       <a
         href="#main-content"
-        className="sr-only focus:not-sr-only focus:fixed focus:top-3 focus:left-3 focus:z-[9999] focus:rounded-lg focus:border focus:border-[#00e5ff] focus:bg-[#030817] focus:px-4 focus:py-2 focus:text-sm focus:font-semibold focus:text-[#00e5ff] focus:shadow-[0_0_20px_rgba(0,229,255,0.4)] focus:outline-none"
+        className="sr-only focus:not-sr-only focus:fixed focus:top-3 focus:left-3 focus:z-[9999] focus:rounded-lg focus:border focus:border-[color:var(--border-strong)] focus:bg-[color:var(--bg-surface)] focus:px-4 focus:py-2 focus:text-sm focus:font-semibold focus:text-[color:var(--text-primary)] focus:outline-2 focus:outline-offset-2 focus:outline-[color:var(--focus-ring)]"
       >
         Skip to main content
       </a>
@@ -82,10 +111,15 @@ export default function SiteChrome({
           everywhere the platform reports no inset. */}
       <main
         id="main-content"
-        className="pt-[calc(68px_+_var(--safe-top))] sm:pt-[calc(4rem_+_var(--safe-top))]"
+        className="pt-[calc(var(--nav-height)_+_var(--safe-top))]"
       >
+        <GuestStreakPrompt />
         {children}
       </main>
+
+      {/* The four destinations a phone actually uses. Hidden from md up, where
+          the top bar has room for all seven. */}
+      <MobileTabBar />
 
       {/* GLITCH's floating layer — the ONLY mount of the mascot provider. Its
           own decisions (cadence, suppression, session limits) come from
@@ -96,6 +130,11 @@ export default function SiteChrome({
           board is an uninvited interruption in someone else's product. */}
       <GlitchProvider />
       <ClerkSafeChatWidget />
+      {/* GRYND PRO — restored as ONE floating card for the whole site (it used
+          to be mounted separately by the casino hub and the game landing
+          pages). lib/proWidget owns the route gate, so it never sits over a
+          live board, the upgrade page it points at, or a sign-in form. */}
+      {shouldShowProWidget(pathname) && <GryndProWidget />}
       {/* Mirrors Google's CMP decision into the local consent record so the
           existing gating (GA, PostHog, Sentry) keeps working for EEA/UK/Swiss
           visitors. No-op elsewhere. */}

@@ -31,16 +31,23 @@ import fs from "node:fs";
 const read = (p) => fs.readFileSync(p, "utf8").replace(/\r\n/g, "\n");
 
 const GLOBALS = read("src/app/globals.css");
-const THEME_CSS = read("src/app/light-theme.css");
+const THEME_CSS = read("src/app/globals.css");
 const TAILWIND = read("tailwind.config.js");
-const GENERATOR = read("scripts/generate-light-theme.mjs");
+const GROUND_TOKENS = { PAGE: "--gr-surface-page", CARD: "--gr-surface-raised", PANEL: "--gr-surface-panel" };
 
 // ── The token block, and only the token block ──────────────────────────────
 
 const MARKER = "GRYND GAME VISUAL TOKENS";
 const start = GLOBALS.indexOf(MARKER);
 assert.ok(start > 0, "globals.css must still carry the GRYND GAME VISUAL TOKENS block");
-const BLOCK = GLOBALS.slice(GLOBALS.lastIndexOf("/*", start));
+// Stop at the next section header: later, unrelated CSS (for example the
+// Solitaire card keyframes) must not be treated as part of this additive block.
+const blockStart = GLOBALS.lastIndexOf("/*", start);
+const nextSection = GLOBALS.indexOf("/* ═", start + MARKER.length);
+const BLOCK = GLOBALS.slice(
+  blockStart,
+  nextSection > blockStart ? nextSection : undefined,
+);
 
 /** The dark-first declarations, i.e. the `:root { … }` block. */
 const ROOT = BLOCK.match(/:root \{([\s\S]*?)\n\}/)?.[1] ?? "";
@@ -87,7 +94,8 @@ const simulateDeut = (hex) => {
 const distance = (a, b) => Math.sqrt(a.reduce((sum, v, i) => sum + (v - b[i]) ** 2, 0));
 
 /** The light grounds, read from the generator — never re-typed here. */
-const genConst = (name) => GENERATOR.match(new RegExp(`const ${name} = "(#[0-9a-f]{6})"`))?.[1];
+const LIGHT_RULE = THEME_CSS.match(/html\[data-theme="light"\] \{([\s\S]*?)\n\}/)?.[1] ?? "";
+const genConst = (name) => LIGHT_RULE.match(new RegExp(`${GROUND_TOKENS[name]}: (#[0-9a-f]{6});`))?.[1];
 
 // ── 1. Coverage ────────────────────────────────────────────────────────────
 
@@ -297,7 +305,7 @@ test("every class the block introduces is gr- prefixed", () => {
     for (const part of selector.split(",")) {
       const one = part.trim();
       assert.ok(
-        one.startsWith(".gr-"),
+        one.startsWith(".gr-") || one.startsWith("html["),
         `"${one}" is not gr- prefixed — phase 1 must not restyle an existing game class`,
       );
     }
@@ -317,9 +325,9 @@ test("the token layer does not size boards", () => {
 test("light mode re-points the three grounds and nothing else", () => {
   const rules = [...THEME_CSS.matchAll(/html\[data-theme="light"\] \{\n([\s\S]*?)\n\}/g)].map((m) => m[1]);
   const tokenRule = rules.find((r) => r.includes("--gr-surface-page"));
-  assert.ok(tokenRule, "light-theme.css must re-point the surface tokens");
+  assert.ok(tokenRule, "globals.css must re-point the surface tokens");
 
-  const overrides = declarationsIn(tokenRule);
+  const overrides = declarationsIn(tokenRule).filter(([name]) => name.startsWith("--gr-"));
   assert.deepEqual(
     overrides.map(([name]) => name).sort(),
     [
@@ -352,7 +360,7 @@ test("the token block and the light theme cannot drift apart by load order", () 
   // is parsed LAST. The light overrides win on SPECIFICITY (0,1,1 vs 0,1,0) —
   // this asserts the selector that supplies that, not just the rule's values.
   assert.match(THEME_CSS, /html\[data-theme="light"\] \{\n\s+--gr-surface-page:/);
-  assert.match(GLOBALS, /@import "\.\/light-theme\.css"/);
+  assert.ok(!GLOBALS.includes("light-theme.css"), "the generated remap sheet is retired");
 });
 
 // ── 6. Motion ──────────────────────────────────────────────────────────────

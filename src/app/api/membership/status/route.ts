@@ -27,6 +27,7 @@ import { users } from "../../../../db/schema";
 import {
   findActiveSubscription,
   getProPlanDisplay,
+  hasPriorSubscription,
 } from "../../../../lib/stripe/subscriptions";
 import { countryFromHeaders } from "../../../../lib/consentRegions";
 import { currencyForCountry } from "../../../../lib/currency";
@@ -60,6 +61,9 @@ export async function GET() {
       signedIn: false,
       active: false,
       tier: "free",
+      // A brand-new visitor is eligible; signing up creates a new account, and
+      // the real check runs again on the next status read.
+      trialEligible: true,
       plan,
     });
   }
@@ -73,11 +77,21 @@ export async function GET() {
     return null;
   });
   if (!subscription) {
+    // The free trial is once per customer: any prior subscription row (even a
+    // canceled one) means this account already used it. This is what lets the
+    // paywall show the plain subscription CTA instead of promising a trial it
+    // cannot grant. A failed read is treated as NOT eligible: better a plain
+    // price than a free week the checkout would not create.
+    const trialEligible = await hasPriorSubscription(userId).catch((err) => {
+      console.error("[membership/status] Failed to check trial eligibility:", err);
+      return false;
+    });
     return NextResponse.json({
       success: true,
       signedIn: true,
       active: false,
       tier: "free",
+      trialEligible,
       plan,
     });
   }
@@ -97,6 +111,9 @@ export async function GET() {
     plan,
     planKey: subscription.planKey,
     tier: "pro",
+    // A member has already used the trial slot (they hold a subscription row),
+    // and an active member is not a prospect anyway.
+    trialEligible: false,
     status: subscription.status,
     // The billing option this member is actually on (weekly | monthly |
     // yearly), for an accurate "renews …" line. Display only: the entitlement

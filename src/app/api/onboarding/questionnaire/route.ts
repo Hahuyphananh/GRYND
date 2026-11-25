@@ -18,7 +18,7 @@
 //
 // Auth/security:
 //   * Authentication comes from Clerk via `auth()` — the same server pattern
-//     /api/onboarding/complete and /api/user/default-wagers use.
+//     /api/onboarding/complete uses.
 //   * Any client-supplied user id is IGNORED: the row written is looked up
 //     from the Clerk session's clerkId, never from the request body.
 //   * Question keys, answer values, required questions, multi-select limits

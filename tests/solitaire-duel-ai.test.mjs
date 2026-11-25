@@ -343,24 +343,30 @@ test("a completed board yields no move", () => {
 // wherever it is, and that an off-line board falls back rather than inventing
 // a move.
 
-test("the tier is described as PACE, because that is all it changes", () => {
-  assert.equal(aiPaceLabel("easy"), "Easy pace · ~1.3s a move");
-  assert.equal(aiPaceLabel("normal"), "Normal pace · ~0.9s a move");
-  assert.equal(aiPaceLabel("hard"), "Hard pace · ~0.5s a move");
-  // The menu's per-tier estimate and the in-race label share one rounding, so
-  // the number a player picks never disagrees with the one they are shown.
-  for (const tier of ["easy", "normal", "hard"]) {
-    assert.equal(aiPaceLabel(tier).includes(`~${aiPaceSeconds(tier)}s a move`), true);
-    assert.equal(aiPaceSeconds(tier), (AI_MOVE_DELAY_MS[tier] / 1000).toFixed(1) === "0.8" ? "0.9" : aiPaceSeconds(tier));
+test("each bot has its own name and pace, ordered weak → strong", () => {
+  // Legacy tier spellings resolve through the roster, so an old caller cannot
+  // silently receive a different opponent.
+  assert.equal(aiMoveDelayMs("easy"), aiMoveDelayMs("rookie"));
+  assert.equal(aiMoveDelayMs("normal"), aiMoveDelayMs("ace"));
+  assert.equal(aiMoveDelayMs("hard"), aiMoveDelayMs("grandmaster"));
+  assert.equal(aiMoveDelayMs("nonsense"), aiMoveDelayMs("ace"));
+
+  // The label is an identity line, not a claim that pacing IS the difficulty.
+  assert.match(aiPaceLabel("rookie"), /Rookie · Very Easy/);
+  assert.match(aiPaceLabel("perfect"), /Perfect · Perfect/);
+  assert.equal(aiPaceLabel("nonsense"), aiPaceLabel("ace"));
+  assert.equal(aiPaceSeconds("nonsense"), aiPaceSeconds("ace"));
+  for (const bot of ["rookie", "felix", "ace", "professor", "grandmaster", "perfect"]) {
+    assert.equal(aiPaceLabel(bot).includes(`~${aiPaceSeconds(bot)}s a move`), true);
   }
-  assert.equal(aiPaceSeconds("normal"), "0.9");
-  assert.equal(aiPaceSeconds("nonsense"), aiPaceSeconds("normal"));
-  // An unknown tier falls back to the shared default rather than going blank.
-  assert.equal(aiPaceLabel("nonsense"), aiPaceLabel("normal"));
-  // The copy never claims strength, only speed: easy is not "weaker".
-  for (const tier of ["easy", "normal", "hard"]) {
-    assert.match(aiPaceLabel(tier), /pace/);
-    assert.doesNotMatch(aiPaceLabel(tier), /skill|weaker|smarter|easier/i);
+
+  // Stronger opponents present faster. Pacing is presentation only; the
+  // decision-strength proof lives in tests/solitaire-duel-bots.test.mjs.
+  const delays = ["rookie", "felix", "ace", "professor", "grandmaster", "perfect"].map(
+    (bot) => aiMoveDelayMs(bot),
+  );
+  for (let i = 1; i < delays.length; i += 1) {
+    assert.ok(delays[i - 1] > delays[i], "the roster is paced from slowest to fastest");
   }
 });
 
@@ -381,11 +387,14 @@ test("the verified line really solves the deal it came from", () => {
   }
 });
 
-test("the bot follows the line and finishes, on every tier", () => {
+test("the legacy line utility still replays a proven solution", () => {
   const deal = solvableDealFromSeed(2026);
   const line = solveDealLine(deal);
   assert.ok(line);
 
+  // NOTE: this is a TEST/DEBUG utility only. The practice store and the
+  // standalone bot deliberately no longer follow the deal's solution, because
+  // it contains future information the player cannot see.
   for (const difficulty of ["easy", "normal", "hard"]) {
     const plan = planAiSolution({
       state: initialStateFromDeal(deal),
@@ -395,13 +404,12 @@ test("the bot follows the line and finishes, on every tier", () => {
     assert.ok(plan, `${difficulty}: the line must be followable`);
     assert.equal(plan.completed, true, `${difficulty} must finish the puzzle`);
     assert.equal(plan.stuck, false, "a line that finishes is never stuck");
-    assert.deepEqual(plan.moves, line, "the bot plays exactly the proven moves");
-    // Difficulty is PACE: every tier plays the same winning line.
+    assert.deepEqual(plan.moves, line, "the utility replays exactly the proven moves");
     assert.ok(AI_MOVE_DELAY_MS[difficulty] > 0);
   }
 });
 
-test("the bot resumes the line from its own ply", () => {
+test("the legacy line utility resumes from its own ply", () => {
   const deal = solvableDealFromSeed(4242);
   const line = solveDealLine(deal);
   assert.ok(line);
@@ -418,7 +426,7 @@ test("the bot resumes the line from its own ply", () => {
   assert.deepEqual([...first.moves, ...rest.moves], line);
 });
 
-test("a board that is off the line falls back rather than inventing a move", () => {
+test("the legacy line utility refuses an off-line board rather than inventing a move", () => {
   const deal = solvableDealFromSeed(31337);
   const line = solveDealLine(deal);
   assert.ok(line);

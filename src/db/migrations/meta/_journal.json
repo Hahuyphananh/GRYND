@@ -1576,6 +1576,174 @@
       "when": 1800000087000,
       "tag": "0243_guest_and_platform_rls",
       "breakpoints": true
+    },
+    {
+      "idx": 225,
+      "version": "7",
+      "when": 1800000088000,
+      "tag": "0244_solitaire_solo_daily",
+      "breakpoints": true
+    },
+    {
+      "idx": 226,
+      "version": "7",
+      "when": 1800000089000,
+      "tag": "0245_solitaire_board_theme",
+      "breakpoints": true
+    },
+    {
+      "idx": 227,
+      "version": "7",
+      "when": 1800000090000,
+      "tag": "0246_solitaire_onboarding_progress",
+      "breakpoints": true
+    },
+    {
+      "idx": 228,
+      "version": "7",
+      "when": 1800000091000,
+      "tag": "0247_user_peak_total_trophies",
+      "breakpoints": true
+    },
+    {
+      "idx": 229,
+      "version": "7",
+      "when": 1800000092000,
+      "tag": "0248_solitaire_move_history",
+      "breakpoints": true
+    },
+    {
+      "idx": 230,
+      "version": "7",
+      "when": 1800000093000,
+      "tag": "0249_solitaire_analysis_cache",
+      "breakpoints": true
+    },
+    {
+      "idx": 231,
+      "version": "7",
+      "when": 1800000094000,
+      "tag": "0250_audience_daily_snapshots",
+      "breakpoints": true
+    },
+    {
+      "idx": 232,
+      "version": "7",
+      "when": 1800000095000,
+      "tag": "0251_solitaire_analysis_usage",
+      "breakpoints": true
+    },
+    {
+      "idx": 233,
+      "version": "7",
+      "when": 1800000096000,
+      "tag": "0252_pro_weekly_recap_sends",
+      "breakpoints": true
+    },
+    {
+      "idx": 234,
+      "version": "7",
+      "when": 1800000097000,
+      "tag": "0253_solitaire_puzzles",
+      "breakpoints": true
+    },
+    {
+      "idx": 235,
+      "version": "7",
+      "when": 1800000098000,
+      "tag": "0254_solitaire_puzzle_moves",
+      "breakpoints": true
+    },
+    {
+      "idx": 236,
+      "version": "7",
+      "when": 1800000099000,
+      "tag": "0255_solitaire_ghost_duels",
+      "breakpoints": true
+    },
+    {
+      "idx": 237,
+      "version": "7",
+      "when": 1800000100000,
+      "tag": "0256_solitaire_ghost_runs",
+      "breakpoints": true
+    },
+    {
+      "idx": 238,
+      "version": "7",
+      "when": 1800000101000,
+      "tag": "0257_pro_social_status",
+      "breakpoints": true
+    },
+    {
+      "idx": 239,
+      "version": "7",
+      "when": 1800000102000,
+      "tag": "0258_pro_social_status_perks",
+      "breakpoints": true
+    },
+    {
+      "idx": 240,
+      "version": "7",
+      "when": 1800000103000,
+      "tag": "0259_solitaire_duel_friend_links",
+      "breakpoints": true
+    },
+    {
+      "idx": 241,
+      "version": "7",
+      "when": 1800000104000,
+      "tag": "0260_pro_private_rooms_perk",
+      "breakpoints": true
+    },
+    {
+      "idx": 242,
+      "version": "7",
+      "when": 1800000105000,
+      "tag": "0261_pro_offer_refresh",
+      "breakpoints": true
+    },
+    {
+      "idx": 243,
+      "version": "7",
+      "when": 1800000106000,
+      "tag": "0262_streaks_board_cosmetics",
+      "breakpoints": true
+    },
+    {
+      "idx": 244,
+      "version": "7",
+      "when": 1800000107000,
+      "tag": "0263_drop_daily_reward_claim_marker",
+      "breakpoints": true
+    },
+    {
+      "idx": 245,
+      "version": "7",
+      "when": 1800000108000,
+      "tag": "0264_solitaire_puzzle_sessions",
+      "breakpoints": true
+    },
+    {
+      "idx": 246,
+      "version": "7",
+      "when": 1800000109000,
+      "tag": "0265_streak_rewards_and_competitive",
+      "breakpoints": true
+    },
+    {
+      "idx": 247,
+      "version": "7",
+      "when": 1800000110000,
+      "tag": "0266_streak_visual_rewards",
+      "breakpoints": true
+    },
+    {
+      "idx": 248,
+      "version": "7",
+      "when": 1800000111000,
+      "tag": "0267_competitive_streak_leaderboard_idx",
+      "breakpoints": true
     }
   ]
 }

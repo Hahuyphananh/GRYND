@@ -42,51 +42,51 @@ module.exports = {
       // src/app/light-theme.css without a single utility changing here.
       //
       // Colours that need an opacity modifier are declared as
-      // `rgb(var(--x-rgb) / <alpha-value>)` — a bare `var(--x)` cannot take
-      // `/40` in Tailwind. That is why every such token carries an `-rgb`
+      // `rgb(var(--x-rgb))` — a bare `var(--x)` cannot take
+      // `/40` in Tailwind, which wraps the value in `color-mix()`. That is why every such token carries an `-rgb`
       // triplet next to its hex.
-      // Every hex token is declared in the `rgb(var(--x-rgb) / <alpha-value>)`
+      // Every hex token is declared in the `rgb(var(--x-rgb))`
       // form, because a plain `var(--x)` colour CANNOT take an opacity
-      // modifier: `text-ink/70` would silently emit no CSS at all. The four
+      // modifier: `text-ink/70` would silently emit no CSS at all. v4 satisfies the modifier by wrapping the value in `color-mix(in oklab, …)`. The four
       // tokens written as `var(--x)` below are already semi-transparent
       // (rgba), so there is no modifier left to apply.
       colors: {
         brand: {
-          cyan: "rgb(var(--gr-brand-cyan-rgb) / <alpha-value>)",
-          "cyan-soft": "rgb(var(--gr-brand-cyan-soft-rgb) / <alpha-value>)",
-          yellow: "rgb(var(--gr-brand-yellow-rgb) / <alpha-value>)",
-          gold: "rgb(var(--gr-brand-gold-rgb) / <alpha-value>)",
+          cyan: "rgb(var(--gr-brand-cyan-rgb))",
+          "cyan-soft": "rgb(var(--gr-brand-cyan-soft-rgb))",
+          yellow: "rgb(var(--gr-brand-yellow-rgb))",
+          gold: "rgb(var(--gr-brand-gold-rgb))",
         },
         surface: {
-          page: "rgb(var(--gr-surface-page-rgb) / <alpha-value>)",
-          raised: "rgb(var(--gr-surface-raised-rgb) / <alpha-value>)",
-          panel: "rgb(var(--gr-surface-panel-rgb) / <alpha-value>)",
+          page: "rgb(var(--gr-surface-page-rgb))",
+          raised: "rgb(var(--gr-surface-raised-rgb))",
+          panel: "rgb(var(--gr-surface-panel-rgb))",
         },
         seat: {
-          1: "rgb(var(--gr-player-1-rgb) / <alpha-value>)",
-          2: "rgb(var(--gr-player-2-rgb) / <alpha-value>)",
-          neutral: "rgb(var(--gr-seat-neutral-rgb) / <alpha-value>)",
+          1: "rgb(var(--gr-player-1-rgb))",
+          2: "rgb(var(--gr-player-2-rgb))",
+          neutral: "rgb(var(--gr-seat-neutral-rgb))",
         },
         state: {
-          selected: "rgb(var(--gr-selected-rgb) / <alpha-value>)",
-          legal: "rgb(var(--gr-legal-move-rgb) / <alpha-value>)",
-          focus: "rgb(var(--gr-focus-ring-rgb) / <alpha-value>)",
+          selected: "rgb(var(--gr-selected-rgb))",
+          legal: "rgb(var(--gr-legal-move-rgb))",
+          focus: "rgb(var(--gr-focus-ring-rgb))",
         },
         piece: {
-          outline: "rgb(var(--gr-outline-rgb) / <alpha-value>)",
+          outline: "rgb(var(--gr-outline-rgb))",
         },
         ink: {
-          DEFAULT: "rgb(var(--gr-ink-rgb) / <alpha-value>)",
+          DEFAULT: "rgb(var(--gr-ink-rgb))",
           muted: "var(--gr-ink-muted)",
           subtle: "var(--gr-ink-subtle)",
-          "on-accent": "rgb(var(--gr-ink-on-accent-rgb) / <alpha-value>)",
-          disabled: "rgb(var(--gr-disabled-ink-rgb) / <alpha-value>)",
+          "on-accent": "rgb(var(--gr-ink-on-accent-rgb))",
+          disabled: "rgb(var(--gr-disabled-ink-rgb))",
         },
         // GLITCH's speech bubble — the one light surface in the app. Declared
         // in the "Mascot (GLITCH)" section of the token block in globals.css.
         mascot: {
-          bubble: "rgb(var(--gr-mascot-bubble-rgb) / <alpha-value>)",
-          ink: "rgb(var(--gr-mascot-bubble-ink-rgb) / <alpha-value>)",
+          bubble: "rgb(var(--gr-mascot-bubble-rgb))",
+          ink: "rgb(var(--gr-mascot-bubble-ink-rgb))",
         },
       },
       borderRadius: {

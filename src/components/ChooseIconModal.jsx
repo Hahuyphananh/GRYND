@@ -123,18 +123,18 @@ export default function ChooseIconModal({
 
   return (
     <div
-      className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm"
+      className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 p-4 backdrop-blur-xs"
       onClick={handleClose}
       role="dialog"
       aria-modal="true"
       aria-label="Choose Your Icon"
     >
       <div
-        className="relative w-full max-w-md overflow-hidden rounded-2xl border border-[#00e5ff]/40 bg-[#040d24] shadow-[0_0_40px_rgba(0,229,255,0.3)] sm:max-w-lg"
+        className="relative w-full max-w-md overflow-hidden rounded-2xl border border-[#00e5ff]/40 bg-surface shadow-[0_0_40px_rgba(0,229,255,0.3)] sm:max-w-lg"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Neon top edge */}
-        <div className="absolute top-0 left-0 h-0.5 w-full bg-gradient-to-r from-transparent via-[#00e5ff] to-transparent" />
+        <div className="absolute top-0 left-0 h-0.5 w-full bg-linear-to-r from-transparent via-[#00e5ff] to-transparent" />
 
         {/* Header */}
         <div className="flex items-center justify-between border-b border-[#00e5ff]/20 px-5 py-4">
@@ -169,7 +169,7 @@ export default function ChooseIconModal({
               {error}
             </div>
           ) : ownedIcons.length === 0 ? (
-            <div className="rounded-lg border border-[#00e5ff]/20 bg-[#08142f] px-4 py-8 text-center text-sm text-[#9dd8ff]">
+            <div className="rounded-lg border border-[#00e5ff]/20 bg-surface px-4 py-8 text-center text-sm text-[#9dd8ff]">
               You don't own any icons yet. Your default icon is always available.
             </div>
           ) : (
@@ -191,7 +191,7 @@ export default function ChooseIconModal({
                       equipped
                         ? "border-[#00e5ff] bg-[#00e5ff]/10 shadow-[0_0_16px_rgba(0,229,255,0.4)]"
                         : "border-white/10 bg-white/[0.03] hover:border-[#00e5ff]/50 hover:bg-[#00e5ff]/5"
-                    } ${busy ? "opacity-60" : ""} focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#040d24]`}
+                    } ${busy ? "opacity-60" : ""} focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#040d24]`}
                   >
                     <span className="relative">
                       <IconAvatar
@@ -201,7 +201,7 @@ export default function ChooseIconModal({
                         showFrame={false}
                         className={
                           equipped
-                            ? "ring-2 ring-[#00e5ff] ring-offset-2 ring-offset-[#040d24]"
+                            ? "ring-2 ring-[#00e5ff] ring-offset-2 ring-offset-surface"
                             : "transition group-hover:ring-2 group-hover:ring-[#00e5ff]/40 group-hover:ring-offset-2 group-hover:ring-offset-[#040d24]"
                         }
                       />

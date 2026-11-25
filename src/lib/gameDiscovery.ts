@@ -23,6 +23,7 @@
 
 import { GAME_LANDING_BY_SLUG, GAME_LANDING_PAGES } from "./gameLandingPages";
 import { GAME_CATALOG } from "./gameTags";
+import { isGameAvailable } from "./gameAvailability";
 
 /** One game as a discovery listing needs it. */
 export type DiscoveryGame = {
@@ -44,7 +45,8 @@ export type DiscoveryGroup = {
 
 const toDiscoveryGame = (slug: string): DiscoveryGame | null => {
   const game = GAME_LANDING_BY_SLUG[slug];
-  if (!game) return null;
+  // An archived game keeps its catalogue entry but is not discovered.
+  if (!game || !isGameAvailable(game.slug)) return null;
   return { slug: game.slug, name: game.name, shortDescription: game.shortDescription };
 };
 

@@ -14,9 +14,10 @@
 // free profile statistics, which keep working exactly as before.
 
 import Link from "next/link";
+import { IconLock } from "@tabler/icons-react";
 import { useTranslation } from "../../hooks/useTranslation";
 
-const FRAME = "rounded-xl border border-dashed border-[#00e5ff]/20 bg-[#04122b]/40";
+const FRAME = "rounded-xl border border-dashed border-[#00e5ff]/20 bg-surface/40";
 
 export default function ProAnalyticsLocked({
   provisionalGames,
@@ -31,7 +32,7 @@ export default function ProAnalyticsLocked({
 
   return (
     <div className="space-y-6">
-      <div className="rounded-2xl border border-[#f5ff3b]/40 bg-gradient-to-b from-[#0a214d]/90 to-[#04122b]/90 p-6 shadow-[0_0_28px_rgba(245,255,59,0.12)]">
+      <div className="rounded-2xl border border-[#f5ff3b]/40 bg-linear-to-b from-[#0a214d]/90 to-[#04122b]/90 p-6 shadow-[0_0_28px_rgba(245,255,59,0.12)]">
         <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-[#00e5ff]">
           GRYND PRO
         </p>
@@ -62,14 +63,14 @@ export default function ProAnalyticsLocked({
           {signedIn ? (
             <Link
               href="/upgrade-pro"
-              className="rounded-xl bg-[#f5ff3b] px-5 py-2.5 font-bold text-[#04122b] transition hover:bg-yellow-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#f5ff3b] focus-visible:ring-offset-2 focus-visible:ring-offset-[#04122b]"
+              className="rounded-xl bg-[#f5ff3b] px-5 py-2.5 font-bold text-[#04122b] transition hover:bg-yellow-300 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#f5ff3b] focus-visible:ring-offset-2 focus-visible:ring-offset-[#04122b]"
             >
               {t("stats.locked.cta")}
             </Link>
           ) : (
             <Link
               href="/sign-in"
-              className="rounded-xl bg-[#00e5ff] px-5 py-2.5 font-bold text-[#04122b] transition hover:bg-cyan-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#04122b]"
+              className="rounded-xl bg-[#00e5ff] px-5 py-2.5 font-bold text-[#04122b] transition hover:bg-cyan-300 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#04122b]"
             >
               {t("stats.locked.signin")}
             </Link>
@@ -80,18 +81,50 @@ export default function ProAnalyticsLocked({
         </div>
       </div>
 
+      <div className="relative overflow-hidden rounded-2xl border border-[#00e5ff]/20 bg-surface/60 p-5">
+        <div className="blur-[5px]" aria-hidden>
+          <div className="flex h-32 items-end gap-2">
+            {[38, 62, 47, 78, 55, 86, 68, 92, 74, 58, 82, 66].map((height, index) => (
+              <div
+                key={index}
+                className="min-w-0 flex-1 rounded-t bg-linear-to-t from-[#00e5ff]/20 to-[#00ffa3]/60"
+                style={{ height: `${height}%` }}
+              />
+            ))}
+          </div>
+          <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
+            {[0, 1, 2, 3].map((index) => (
+              <div key={index} className="h-16 rounded-xl border border-white/10 bg-white/[0.04]" />
+            ))}
+          </div>
+        </div>
+        <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-surface/55 p-4 text-center">
+          <IconLock size={22} aria-hidden="true" className="text-[#f5ff3b]" />
+          <p className="text-sm font-black text-[#f5ff3b]">{t("stats.locked.title")}</p>
+          <p className="max-w-md text-[11px] leading-relaxed text-white/60">
+            {t("stats.locked.body")}
+          </p>
+          <Link
+            href={signedIn ? "/upgrade-pro" : "/sign-in"}
+            className="mt-1 rounded-xl bg-[#f5ff3b] px-4 py-2 text-xs font-black text-[#04122b] transition hover:bg-yellow-300"
+          >
+            {signedIn ? t("stats.locked.cta") : t("stats.locked.signin")}
+          </Link>
+        </div>
+      </div>
+
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4" aria-hidden>
         {[0, 1, 2, 3].map((index) => (
           <div key={index} className={`${FRAME} h-24 p-4`}>
-            <div className="h-3 w-20 rounded bg-white/10" />
-            <div className="mt-3 h-6 w-16 rounded bg-white/5" />
+            <div className="h-3 w-20 rounded-sm bg-white/10" />
+            <div className="mt-3 h-6 w-16 rounded-sm bg-white/5" />
           </div>
         ))}
       </div>
 
       <div className={`${FRAME} p-6`} aria-hidden>
-        <div className="h-3 w-40 rounded bg-white/10" />
-        <div className="mt-4 h-40 rounded bg-gradient-to-r from-transparent via-white/5 to-transparent" />
+        <div className="h-3 w-40 rounded-sm bg-white/10" />
+        <div className="mt-4 h-40 rounded-sm bg-linear-to-r from-transparent via-white/5 to-transparent" />
       </div>
 
       <p className="text-xs text-[#9dd8ff]/60">

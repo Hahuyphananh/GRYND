@@ -1,0 +1,4 @@
+interface:
+  display_name: "Product Surface Copy"
+  short_description: "Write concise UI copy with product voice"
+  default_prompt: "Use $product-surface-copy to revise this interface copy and empty-state messaging."

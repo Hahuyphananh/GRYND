@@ -1,9 +1,28 @@
 @import url("https://fonts.googleapis.com/css2?family=Orbitron:wght@600;700&display=swap");
-@import "./light-theme.css";
+@import "tailwindcss";
+/* Grounds are semantic tokens (--bg-page/surface/panel) that flip on
+/* Tailwind v4 is CSS-first, but this app's palette, animations and radii live in
+   the JS config the token tests read (`tailwind.config.js`), so the stylesheet
+   points at it rather than duplicating it in an `@theme` block. */
+@config "../../tailwind.config.js";
 
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+/* v4 resolves `dark:` from a custom variant, not from `darkMode` in the config.
+   Same `.dark`-ancestor semantics the app had under v3. */
+@custom-variant dark (&:where(.dark, .dark *));
+
+@layer base {
+  /* v3's preflight defaulted every border to gray-200. v4 defaults to
+     `currentColor`, which would repaint any `border` that relies on that
+     default (and would turn light borders into the text colour). Restore the
+     v3 default so the migration changes no border anywhere. */
+  *,
+  ::after,
+  ::before,
+  ::backdrop,
+  ::file-selector-button {
+    border-color: var(--color-gray-200, currentColor);
+  }
+}
 
 html,
 body {
@@ -360,7 +379,7 @@ body {
 /* Smooth animated background gradient */
 .animated-bg {
   min-height: 100vh; /* Full page height */
-  background: linear-gradient(270deg, #030817, #071536, #003b8e, #050b1f);
+  background: linear-gradient(270deg, var(--bg-page), var(--bg-panel), var(--bg-surface), var(--bg-page));
   background-size: 600% 600%;
   animation: gradientBG 30s ease infinite;
 }
@@ -631,7 +650,7 @@ a[class*="bg-[#f5ff3b]"]:not([class*="bg-[#f5ff3b]/"]) {
     radial-gradient(1px 1px at 70% 30%, #ffffffaa, transparent),
     radial-gradient(1px 1px at 40% 70%, #ffffffaa, transparent),
     radial-gradient(2px 2px at 85% 80%, #ffffffaa, transparent),
-    linear-gradient(to bottom, #050714, #02040a);
+    linear-gradient(to bottom, var(--bg-surface), var(--bg-page));
   background-size: 200px 200px;
   animation: stars-scroll 80s linear infinite;
 }
@@ -1088,7 +1107,7 @@ a[class*="bg-[#f5ff3b]"]:not([class*="bg-[#f5ff3b]/"]) {
   border-radius: 3px;
   background:
     linear-gradient(rgba(0, 229, 255, .05) 1px, transparent 1px) 0 0 / 100% 2.5rem,
-    linear-gradient(180deg, #061530 0%, #030d22 58%, #01060f 100%);
+    linear-gradient(180deg, var(--bg-surface) 0%, var(--bg-page) 58%, var(--bg-panel) 100%);
   box-shadow: inset 0 0 0 1px rgba(0, 229, 255, .07), inset 0 0 44px rgba(0, 229, 255, .05), 0 18px 34px rgba(0, 0, 0, .5), 0 0 26px rgba(0, 229, 255, .16);
 }
 
@@ -1128,7 +1147,7 @@ a[class*="bg-[#f5ff3b]"]:not([class*="bg-[#f5ff3b]/"]) {
 /* An empty cell is an angular socket, not a glossy pit. */
 .four-in-a-row-slot {
   border-radius: 5px;
-  background: radial-gradient(circle at 50% 46%, #04142b 0 44%, #020914 74%, #010409 100%);
+  background: radial-gradient(circle at 50% 46%, var(--bg-page) 0 44%, var(--bg-panel) 74%, var(--bg-panel) 100%);
   border-color: rgba(0, 229, 255, .22);
   box-shadow: inset 0 0 0 1px rgba(0, 229, 255, .1), inset 0 7px 11px rgba(0, 0, 0, .72);
 }
@@ -1178,7 +1197,7 @@ a[class*="bg-[#f5ff3b]"]:not([class*="bg-[#f5ff3b]/"]) {
 .four-in-a-row-panel {
   border-radius: 3px;
   border: 1px solid rgba(0, 229, 255, .28);
-  background: linear-gradient(180deg, rgba(3, 19, 43, .82), rgba(2, 8, 22, .88));
+  background: linear-gradient(180deg, var(--bg-surface), var(--bg-panel));
   box-shadow: 0 18px 35px rgba(0, 0, 0, .45), 0 0 24px rgba(0, 229, 255, .07);
 }
 
@@ -1534,7 +1553,7 @@ a[class*="bg-[#f5ff3b]"]:not([class*="bg-[#f5ff3b]/"]) {
 }
 
 .casino-surface {
-  background: rgba(3, 19, 43, 0.72);
+  background: rgba(var(--gr-surface-raised-rgb), 0.72);
   border: 1px solid rgba(250, 204, 21, 0.22);
   box-shadow: 0 18px 35px rgba(0, 0, 0, 0.35);
   backdrop-filter: blur(2px);
@@ -1901,7 +1920,7 @@ a[class*="bg-[#f5ff3b]"]:not([class*="bg-[#f5ff3b]/"]) {
   overflow: hidden;
   /* Bright enough to read against the splash's dark overlay, but still
      navy-tinted so it matches the app's card surfaces. */
-  background-color: rgba(21, 48, 102, 0.62);
+  background-color: rgba(var(--gr-surface-raised-rgb), 0.62);
 }
 
 .skeleton::after {
@@ -1995,6 +2014,81 @@ a[class*="bg-[#f5ff3b]"]:not([class*="bg-[#f5ff3b]/"]) {
   box-shadow: 0 0 28px 4px rgba(16, 185, 129, 0.35);
 }
 
+/* Streak-earned profile glows (migration 0266). Pure CSS: no image assets. */
+.streak-glow-ember {
+  box-shadow: 0 0 24px 3px rgba(245, 158, 11, 0.38);
+}
+
+.streak-glow-frost {
+  box-shadow:
+    0 0 26px 4px rgba(103, 232, 249, 0.4),
+    inset 0 0 20px rgba(103, 232, 249, 0.08);
+}
+
+.streak-glow-electric {
+  box-shadow:
+    0 0 30px 5px rgba(56, 189, 248, 0.45),
+    0 0 46px 8px rgba(167, 139, 250, 0.18);
+  animation: streak-glow-electric 5s ease-in-out infinite;
+}
+
+.streak-glow-eternal {
+  box-shadow:
+    0 0 32px 5px rgba(201, 162, 74, 0.42),
+    inset 0 0 18px rgba(201, 162, 74, 0.1);
+  animation: streak-glow-eternal 7s ease-in-out infinite;
+}
+
+@keyframes streak-glow-electric {
+  0%, 100% {
+    box-shadow:
+      0 0 30px 5px rgba(56, 189, 248, 0.45),
+      0 0 46px 8px rgba(167, 139, 250, 0.18);
+  }
+  50% {
+    box-shadow:
+      0 0 38px 8px rgba(56, 189, 248, 0.55),
+      0 0 58px 12px rgba(167, 139, 250, 0.24);
+  }
+}
+
+@keyframes streak-glow-eternal {
+  0%, 100% {
+    box-shadow:
+      0 0 32px 5px rgba(201, 162, 74, 0.42),
+      inset 0 0 18px rgba(201, 162, 74, 0.1);
+  }
+  50% {
+    box-shadow:
+      0 0 42px 8px rgba(201, 162, 74, 0.5),
+      inset 0 0 24px rgba(201, 162, 74, 0.16);
+  }
+}
+
+/* Streak-earned username effects (migration 0266). Pure gradient text. */
+.streak-name-emerald,
+.streak-name-centurion,
+.streak-name-crimson {
+  background-size: 200% auto;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: transparent;
+  animation: cosmetic-shimmer 4.5s linear infinite;
+}
+
+.streak-name-emerald {
+  background-image: linear-gradient(90deg, #34d399, #d1fae5, #34d399);
+}
+
+.streak-name-centurion {
+  background-image: linear-gradient(90deg, #e0bd6d, #fff8dc, #e0bd6d);
+}
+
+.streak-name-crimson {
+  background-image: linear-gradient(90deg, #e11d48, #fecdd3, #e11d48);
+}
+
 .elite-aura {
   position: relative;
   box-shadow: 0 0 28px 4px rgba(139, 92, 246, 0.4);
@@ -2017,7 +2111,12 @@ a[class*="bg-[#f5ff3b]"]:not([class*="bg-[#f5ff3b]/"]) {
 @media (prefers-reduced-motion: reduce) {
   .avatar-pulse::after,
   .username-shimmer,
-  .chat-shimmer {
+  .chat-shimmer,
+  .streak-name-emerald,
+  .streak-name-centurion,
+  .streak-name-crimson,
+  .streak-glow-electric,
+  .streak-glow-eternal {
     animation: none;
   }
 }
@@ -2035,6 +2134,21 @@ a[class*="bg-[#f5ff3b]"]:not([class*="bg-[#f5ff3b]/"]) {
   box-shadow:
     0 0 0 3px #cdd6f4,
     0 0 18px rgba(205, 214, 244, 0.5);
+}
+
+/* GRYND PRO frames (migration 0257). The same ring mechanics as the free
+   frames; only the palette and the animated sheen differ, so a PRO frame can
+   never change an avatar's size or push a name row around. */
+.frame-founder {
+  box-shadow: 0 0 0 2px #f5ff3b, 0 0 16px rgba(245, 255, 59, 0.55),
+    inset 0 0 10px rgba(255, 215, 0, 0.35);
+  background-image: linear-gradient(135deg, rgba(255, 215, 0, 0.22), rgba(0, 229, 255, 0.18));
+}
+
+.frame-supporter {
+  box-shadow: 0 0 0 2px #00ffa6, 0 0 16px rgba(0, 255, 166, 0.45),
+    inset 0 0 10px rgba(0, 229, 255, 0.3);
+  background-image: linear-gradient(135deg, rgba(0, 255, 166, 0.2), rgba(0, 229, 255, 0.16));
 }
 
 .frame-inferno {
@@ -4276,7 +4390,7 @@ button.dominoes-tile:disabled {
    amending it.
 
    LIGHT MODE: light mode moves ONLY the near-black grounds (see
-   src/app/light-theme.css, generated from scripts/generate-light-theme.mjs).
+   the light token block at the end of this file).
    These tokens follow that same rule — the three surface tokens are re-pointed
    there, and brand, seat, state and motion tokens stay exactly as authored,
    because the light grounds are still deep blues.
@@ -4581,4 +4695,205 @@ button.dominoes-tile:disabled {
     transition-duration: 0s;
     animation-duration: 0s;
   }
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   GRYND SEMANTIC UI LAYER — role names for product chrome (phase 1)
+
+   The game token block above owns the COLOURS. This block only gives those
+   same colours a role name, so a page, a card or a button can say
+   `--bg-surface` without knowing that a game token exists. Two rules keep it
+   from becoming a second palette:
+
+     1. Grounds and inks are ALIASES (`var(--gr-*)`). They therefore inherit
+        light mode for free: the light block at the end re-points the three grounds on
+        `html[data-theme="light"]`, which out-ranks `:root`, and every alias
+        that reads one follows. Nothing here is duplicated into that file.
+     2. The few roles with no existing colour are authored here once, and
+        chosen to clear their contrast requirement on BOTH themes' grounds —
+        the same rule `--gr-selected` and `--gr-focus-ring` already follow —
+        so this block needs no light-mode override either.
+
+   MEASURED CONTRAST (WCAG, against page/raised/panel, dark then light):
+
+     --text-primary    #ffffff   18.4 / 17.8 / 16.3  ·  9.0 / 7.4 / 8.9
+     --text-secondary  #cddcef   14.4 / 13.9 / 12.7  ·  7.1 / 5.6 / 8.9
+     --text-muted      #b6c9e2   11.8 / 11.4 / 10.5  ·  5.8 / 4.7 / 7.3
+     --accent          #10b981    7.9 /  7.6 /  7.0  ·  3.9 / 3.1 / 4.9
+     --accent-strong   #34d399   10.4 / 10.0 /  9.2  ·  5.1 / 4.1 / 6.5
+     --state-win       #34d399   (as --accent-strong)
+     --state-loss      #fca5a5   10.5 / 10.2 /  9.3  ·  5.2 / 4.1 / 6.5
+     --state-gold      #ffd700   14.3 / 13.8 / 12.6  ·  7.0 / 5.6 / 8.8
+
+   `--accent` is a FILL and a BORDER, not body text: 3.9:1 on the light page
+   clears the 3:1 non-text requirement, but small text on light must use
+   `--accent-strong` (5.1:1) or `--text-primary`. `--on-accent` #04121c on
+   `--accent` measures 7.47:1.
+
+   NOT HERE: no page may import a hex value to adopt this layer. The primitives
+   in src/components/ui read these names only, and tests/ui-primitives.test.mjs
+   fails if one of them grows a literal colour.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+:root {
+  /* Grounds — aliases, so light mode follows automatically. */
+  --bg-page: var(--gr-surface-page);
+  --bg-surface: var(--gr-surface-raised);
+  --bg-panel: var(--gr-surface-panel);
+
+  /* Text */
+  --text-primary: var(--gr-ink);
+  --text-secondary: #cddcef;
+  --text-muted: #b6c9e2;
+
+  /* Borders — hairlines are decorative; contrast is not asserted on them. */
+  --border-hairline: var(--gr-hairline);
+  --border-strong: var(--gr-border-strong);
+  --border-warning: rgba(255, 215, 0, 0.35);
+  --border-success: rgba(52, 211, 153, 0.35);
+
+  /* One product accent: ranked. `-fill` is the soft tint for tags and rows. */
+  --accent: #10b981;
+  --accent-strong: #34d399;
+  --accent-fill: rgba(16, 185, 129, 0.12);
+  --on-accent: #04121c;
+
+  /* States */
+  --state-win: #34d399;
+  --state-loss: #fca5a5;
+  --state-gold: #ffd700;
+
+  /* Interaction + depth */
+  --focus-ring: var(--gr-focus-ring);
+  --shadow-raise: 0 8px 24px rgba(3, 8, 23, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  --radius-surface: 12px;
+
+  /* ── Shell metrics ────────────────────────────────────────────────────
+     The navigation used to encode its own height in FOUR places (the bar's
+     h-16/h-20/h-24, two padding offsets and the streak chip's top), and from
+     `sm` up the offset was 64px under a bar that rendered 80–96px tall. One
+     token is now the only source of truth for the bar and everything that
+     has to clear it. */
+  --nav-height: 4rem;
+  --tabbar-height: 3.5rem;
+  --shell-max: 90rem;
+}
+
+:root {
+  --tint-bg--000d1a: #000d1a;
+  --tint-bg--00172b: #00172b;
+  --tint-bg--001a33: #001a33;
+  --tint-bg--05170f: #05170f;
+  --tint-bg--071a33: #071a33;
+  --tint-bg--08203f: #08203f;
+  --tint-bg--141005: #141005;
+  --tint-bg--160a0c: #160a0c;
+  --tint-bg--1a0a16: #1a0a16;
+  --tint-from--001933: #001933;
+  --tint-from--041a2e: #041a2e;
+  --tint-from--062138: #062138;
+  --tint-from--0a0118: #0a0118;
+  --tint-from--100c02: #100c02;
+  --tint-from--16040a: #16040a;
+  --tint-to--000d1a: #000d1a;
+  --tint-to--070502: #070502;
+  --tint-via--0b0902: #0b0902;
+}
+
+/* Light mode re-points ONLY the grounds: the dark theme's own blue, lifted,
+   so the authored light ink and neon accents still read. Moved here when the
+   generated utility-remap sheet was retired. */
+html[data-theme="light"] {
+  --gr-surface-page: #24417f;
+  --gr-surface-page-rgb: 36 65 127;
+  --gr-surface-raised: #31508f;
+  --gr-surface-raised-rgb: 49 80 143;
+  --gr-surface-panel: #1b3266;
+  --gr-surface-panel-rgb: 27 50 102;
+  --tint-bg--000d1a: #1d5062;
+  --tint-bg--00172b: #1d5062;
+  --tint-bg--001a33: #113340;
+  --tint-bg--05170f: #265a47;
+  --tint-bg--071a33: #113340;
+  --tint-bg--08203f: #113340;
+  --tint-bg--141005: #5a4722;
+  --tint-bg--160a0c: #5a2e3d;
+  --tint-bg--1a0a16: #5a2e3d;
+  --tint-from--001933: #113340;
+  --tint-from--041a2e: #113340;
+  --tint-from--062138: #113340;
+  --tint-from--0a0118: #38265e;
+  --tint-from--100c02: #5a4722;
+  --tint-from--16040a: #4a2432;
+  --tint-to--000d1a: #1d5062;
+  --tint-to--070502: #4a3a1a;
+  --tint-via--0b0902: #4a3a1a;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   SOLITAIRE CARD ANIMATIONS
+
+   Four one-shot animations, deliberately short and physical. They are applied
+   inline by PlayingCard/SolitaireBoard only on the commit that detected the
+   change (see lib/solitaire-duel/cardAnimations.ts), never on a rerender, and
+   never at all under prefers-reduced-motion or in read-only review.
+
+   Only `transform` and `opacity` move, so the compositor does the work and the
+   board's layout (its `--cw` fit) is never touched.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+/* A tableau card turning over: the back narrows to its edge at 90°, swaps to
+   the face and settles. 300ms sits in the 250-350ms band. */
+@keyframes gr-card-reveal {
+  from {
+    transform: rotateY(0deg);
+  }
+  to {
+    transform: rotateY(180deg);
+  }
+}
+
+/* The drawn card's travel, on the non-rotating wrapper: it starts over the
+   stock (the measured offset) and lands exactly in the waste slot. */
+@keyframes gr-card-draw-translate {
+  from {
+    transform: translate3d(var(--gr-draw-x, 0px), var(--gr-draw-y, 0px), 0);
+  }
+  to {
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+/* The same card turning face-up while it travels. */
+@keyframes gr-card-draw-flip {
+  from {
+    transform: rotateY(0deg);
+  }
+  to {
+    transform: rotateY(180deg);
+  }
+}
+
+/* A redeal back flying home. Opacity is used only to soften the start of the
+   flight; there is no scale or bounce, and the destination is the real stock. */
+@keyframes gr-card-redeal {
+  from {
+    transform: translate3d(var(--gr-redeal-x, 0px), var(--gr-redeal-y, 0px), 0) scale(0.98);
+    opacity: 0.85;
+  }
+  to {
+    transform: translate3d(0, 0, 0) scale(1);
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-testid="solitaire-redeal-ghost"] {
+    display: none;
+  }
+}
+
+/* Streak reward: the 365-day profile frame (seeded by migration 0265). */
+.frame-eternal {
+  box-shadow: 0 0 0 2px #c9a24a, 0 0 18px rgba(201, 162, 74, 0.55);
 }

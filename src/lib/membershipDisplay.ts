@@ -14,7 +14,10 @@
 // plan catalog / the bound Stripe price), so there is exactly one source of
 // truth and no component can drift from what Stripe actually charges.
 
-import { PRO_BILLING_OPTIONS, type ProBillingOption } from "./proBilling";
+import {
+  PRO_BILLING_OPTIONS,
+  type ProBillingOption,
+} from "./proBilling";
 import {
   BASE_CURRENCY,
   formatAmount,
@@ -46,14 +49,14 @@ export type ProPlanDisplay = {
   /** Perk lines from the catalog, in display order. */
   perks: string[];
   /**
-   * The THREE billing options (weekly / monthly / yearly), already resolved to
+   * The TWO billing options (monthly / yearly), already resolved to
    * authoritative amounts with their formatted prices and DERIVED savings. The
    * upgrade surface renders these and never re-derives a price or a saving.
    */
   billingOptions: ProBillingOption[];
 };
 
-/** The catalog defaults for the three options, for a cold or client-only render. */
+/** The catalog defaults for the recurring options, for a cold render. */
 export const FALLBACK_BILLING_OPTIONS: ProBillingOption[] = PRO_BILLING_OPTIONS;
 
 /**

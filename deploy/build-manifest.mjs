@@ -28,6 +28,8 @@ import {
   validateManifest,
 } from "./lib/manifest.mjs";
 
+const BRANCH_RE = /^[A-Za-z0-9._/-]{1,100}$/;
+
 function parseFlags(argv) {
   const flags = {};
   for (let index = 0; index < argv.length; index += 1) {
@@ -61,6 +63,15 @@ async function main() {
   const commit = String(flags.commit ?? "").toLowerCase();
   if (!/^[0-9a-f]{40}$/.test(commit)) throw new Error(`--commit must be a full 40-character sha (got ${JSON.stringify(flags.commit)})`);
 
+  // The branch the artifact was built from, recorded so the active release can
+  // name its source. Defaults to the workflow's ref name; null only for a local
+  // (non-workflow) build.
+  const rawBranch = String(flags.branch ?? process.env.GITHUB_REF_NAME ?? "").trim();
+  if (rawBranch !== "" && !BRANCH_RE.test(rawBranch)) {
+    throw new Error(`--branch must be a plain branch name (got ${JSON.stringify(flags.branch)})`);
+  }
+  const sourceBranch = rawBranch === "" ? null : rawBranch;
+
   const buildIdPath = path.join(dist, "app", ".next", "BUILD_ID");
   const buildId = flags["build-id"] || (await fs.readFile(buildIdPath, "utf8")).trim();
 
@@ -76,6 +87,7 @@ async function main() {
     releaseId: id,
     commit,
     shortCommit: commit.slice(0, 7),
+    sourceBranch,
     buildId,
     createdAt: new Date().toISOString(),
     builder: {
@@ -112,7 +124,7 @@ async function main() {
   await fs.writeFile(path.join(dist, "release.json"), `${JSON.stringify(manifest, null, 2)}\n`);
   process.stdout.write(
     `manifest written  ${path.join(dist, "release.json")}\n` +
-      `  release   ${manifest.releaseId}\n  commit    ${manifest.commit}\n  build     ${manifest.buildId}\n` +
+      `  release   ${manifest.releaseId}\n  commit    ${manifest.commit}\n  branch    ${manifest.sourceBranch ?? "(not recorded)"}\n  build     ${manifest.buildId}\n` +
       `  arch/node ${manifest.builder.arch} / ${manifest.builder.node}\n  realtime  ${manifest.realtime.hash}\n` +
       `  artifact  ${manifest.artifact.hash} (${manifest.artifact.files} files, ${manifest.artifact.bytes} bytes)\n`,
   );

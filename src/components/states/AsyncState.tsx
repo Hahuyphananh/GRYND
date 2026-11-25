@@ -246,10 +246,10 @@ function DefaultSkeleton({ className = "" }: { className?: string }) {
         <div key={i} className="flex animate-pulse items-center gap-3 rounded-md px-2 py-3">
           <div className="h-8 w-8 shrink-0 rounded-full bg-white/10" />
           <div className="flex-1 space-y-1.5">
-            <div className="h-3.5 w-2/5 rounded bg-white/10" />
-            <div className="h-2.5 w-1/3 rounded bg-white/5" />
+            <div className="h-3.5 w-2/5 rounded-sm bg-white/10" />
+            <div className="h-2.5 w-1/3 rounded-sm bg-white/5" />
           </div>
-          <div className="h-4 w-12 shrink-0 rounded bg-white/10" />
+          <div className="h-4 w-12 shrink-0 rounded-sm bg-white/10" />
         </div>
       ))}
     </div>

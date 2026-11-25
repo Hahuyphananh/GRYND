@@ -1,0 +1,11 @@
+[Unit]
+Description=GRYND Solitaire inactivity sweep (every 5 minutes; settles untimed duels whose seat has been idle past the 20-minute forfeit so an abandoned match is recorded as a loss)
+
+[Timer]
+OnCalendar=*:0/5
+RandomizedDelaySec=20
+Persistent=true
+Unit=grynd-job@solitaire-inactivity.service
+
+[Install]
+WantedBy=timers.target

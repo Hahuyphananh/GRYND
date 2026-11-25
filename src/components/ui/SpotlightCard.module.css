@@ -1,0 +1,48 @@
+/* src/components/ui/SpotlightCard.module.css */
+
+.card {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid var(--border-hairline);
+  border-radius: var(--radius-surface);
+  background: var(--bg-panel);
+  box-shadow: var(--shadow-raise);
+  padding: 1.25rem;
+  transition: border-color 200ms ease;
+}
+
+.card:hover,
+.card:focus-within {
+  border-color: var(--border-strong);
+}
+
+.glow {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 240ms ease;
+  background: radial-gradient(
+    20rem circle at var(--spot-x, 50%) var(--spot-y, 50%),
+    var(--accent) 0%,
+    transparent 65%
+  );
+}
+
+.card:hover .glow,
+.card:focus-within .glow {
+  opacity: 0.14;
+}
+
+@media (min-width: 640px) {
+  .card {
+    padding: 1.5rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .card,
+  .glow {
+    transition: none;
+  }
+}

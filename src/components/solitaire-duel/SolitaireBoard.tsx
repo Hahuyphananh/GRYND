@@ -26,6 +26,7 @@
 import {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -33,7 +34,19 @@ import {
   type PointerEvent as ReactPointerEvent,
 } from "react";
 
+import { useReducedMotion } from "framer-motion";
+
 import PlayingCard, { cardLabel, suitGlyph } from "./PlayingCard";
+import {
+  EMPTY_CARD_ANIMATION_PLAN,
+  detectCardAnimations,
+  tableauSlotKey,
+} from "../../lib/solitaire-duel/cardAnimations";
+import { playCardPlace } from "../../lib/gameAudio";
+import BoardAppearanceDrawer from "../solitaire/BoardAppearanceDrawer";
+import { useTranslation } from "../../hooks/useTranslation";
+import { useSolitaireBoardTheme } from "../../hooks/useSolitaireBoardTheme";
+import { useSolitaireBoardCosmetics } from "../../hooks/useSolitaireBoardCosmetics";
 import { SUITS, TABLEAU_COLUMNS } from "../../lib/solitaire-duel/constants";
 import {
   canDraw,
@@ -86,6 +99,19 @@ const FACE_DOWN_ADVANCE = CARD_RATIO - 0.86; // 0.56
 const BOARD_CW = (CARD_RATIO + (CARD_RATIO + 6 * FACE_UP_ADVANCE)).toFixed(2); // "7.04"
 
 /**
+ * The felt's floor: the height of a full table, in card widths.
+ *
+ * Once the last card reaches a foundation the tableau is empty, so the board's
+ * content is only the top row. Without a floor the felt collapses under the
+ * finish animation (and again when the animation unmounts and the victory panel
+ * takes over), pulling the page and the foundations around. This minimum is
+ * derived from the same geometry as the height budget, so it scales with the
+ * card clamp on every viewport. There is deliberately NO maximum: the felt may
+ * still grow past the floor with its content.
+ */
+const MIN_BOARD_HEIGHT = `calc(var(--cw) * ${BOARD_CW})`;
+
+/**
  * Everything stacked ABOVE the tableau, in rem: the page's top padding, the
  * navigation bar, the header block, the two progress meters and the board's own
  * bordered frame. This is what the height term has to leave room for — the
@@ -98,8 +124,34 @@ export type SolitaireBoardProps = {
   view: SolitaireView | null;
   /** False before GO, once the clock expires, and once a result has landed. */
   interactive: boolean;
-  /** A move is in flight. Only the stock keeps responding (queued draws). */
-  pending?: boolean;
+  /**
+   * Keep the board this tall while the auto-finish cards fly.
+   *
+   * The finished board has an empty tableau, so it is much shorter than the
+   * board the player just finished on. Letting it collapse mid-animation shrinks
+   * the page, clamps the scroll and drags the foundations out from under the
+   * cards. Holding the measured height keeps the table still until the flight
+   * (and the victory panel) is done.
+   */
+  holdHeight?: number;
+
+  /**
+   * Game Review: draw the authoritative position with no play affordance and
+   * a review-specific legend. Interaction is already off via `interactive`;
+   * this only changes what the table SAYS.
+   */
+  readOnly?: boolean;
+
+  /**
+   * Game Review: animate the card change for THIS commit only.
+   *
+   * The review page sets this for a single forward step. A timeline jump,
+   * Home/End, a rewind or the initial paint leaves it false, so the destination
+   * board appears immediately instead of replaying every intermediate move.
+   * Ignored outside `readOnly` (normal play already animates accepted moves).
+   */
+  reviewAnimate?: boolean;
+
   onMove: (move: SolitaireMove) => void;
   /** A click that could not become a move — surfaced as an unobtrusive notice. */
   onInvalid?: (message: string) => void;
@@ -136,14 +188,52 @@ type DragSession = {
 /** How far a pointer must travel before a press becomes a drag, in CSS pixels. */
 const DRAG_THRESHOLD_PX = 6;
 
-/** A drag that just ended must not also fire the click underneath it. */
-const CLICK_AFTER_DRAG_MS = 250;
+/**
+ * How long a gesture's own click stays swallowed.
+ *
+ * A press the board has already decided must not be decided again by the click
+ * the browser fires on release. That click normally arrives immediately, so the
+ * flag below is cleared by it; this window is only the safety net for a gesture
+ * that never produces one at all (a drag released outside the element, a
+ * cancelled pointer).
+ */
+const CLICK_SWALLOW_MS = 500;
 
 /** How long the ghost takes to snap onto a pile, and to fly back home. */
 const GHOST_EASE_MS = 150;
 const GHOST_RETURN_MS = 190;
-/** How long an ACCEPTED drop settles onto its pile before the move is sent. */
-const GHOST_SETTLE_MS = 160;
+
+// ── Card animation budget ────────────────────────────────────────────────
+// These durations are shared with the keyframes in globals.css. They are
+// deliberately short: a fast player must never wait for a card to finish
+// turning before the next move is accepted, and the animation is purely
+// visual (the move is already submitted against the authoritative view).
+const REVEAL_MS = 300;
+const DRAW_MS = 340;
+const REDEAL_MS = 300;
+/** Per-card delay for the fly-back, so the stock refills as a riffle, not a slab. */
+const REDEAL_STAGGER_MS = 26;
+/** At most this many ghosts: the stock is capped at 24 cards in Klondike. */
+const REDEAL_MAX_GHOSTS = 12;
+
+/** The one waste card that is travelling from the stock, in viewport offsets. */
+type DrawAnimation = { cardKey: string; x: number; y: number };
+
+/** A card-sized, identity-free back flying from the waste to the stock. */
+type RedealGhost = {
+  key: number;
+  fromX: number;
+  fromY: number;
+  toX: number;
+  toY: number;
+  width: number;
+  height: number;
+  delayMs: number;
+};
+
+/** A measured card, in viewport coordinates. */
+type CardRect = { x: number; y: number; width: number; height: number };
+
 
 /**
  * Where a held card would come to rest in a slot, in viewport coordinates.
@@ -229,8 +319,8 @@ function EmptySlot({
         highlighted
           ? // An empty pile that will accept the held card: SOLID edge, while
             // the held card itself wears the dashed selection outline.
-            "border-solid border-[color:var(--gr-legal-move)] bg-[#eaf6ff]/10 text-[color:var(--gr-legal-move)] shadow-[0_0_12px_rgba(234,246,255,0.25)]"
-          : "border-dashed border-[color:var(--gr-border)] bg-[#040d24]/70 text-[color:var(--gr-ink-subtle)]"
+            "border-solid border-[color:var(--sol-legal)] bg-[color:var(--sol-slot-active)] text-[color:var(--sol-legal)] shadow-[0_0_12px_var(--sol-legal-glow)]"
+          : "border-dashed border-[color:var(--sol-slot-border)] bg-[color:var(--sol-slot)] text-[color:var(--sol-slot-ink)]"
       } ${interactive ? "cursor-pointer hover:border-white/30" : "cursor-default"}`}
     >
       <span aria-hidden="true" className="text-[clamp(13px,2vw,22px)] leading-none">
@@ -246,21 +336,63 @@ function EmptySlot({
 export default function SolitaireBoard({
   view,
   interactive,
-  pending = false,
+  holdHeight,
+  readOnly = false,
+  reviewAnimate = false,
   onMove,
   onInvalid,
 }: SolitaireBoardProps) {
+  // Review-only chrome is localized with the rest of the review page. Gameplay
+  // keeps its existing copy untouched.
+  const { t } = useTranslation();
+  // The table this board is played on. Every mode renders THIS component, so
+  // reading the shared theme here is what keeps solo, daily, practice and
+  // ranked identical; nothing is passed down per route.
+  const { theme } = useSolitaireBoardTheme();
+  // The card backs and deck skin are site-wide cosmetics, read from the same
+  // local-first store the appearance drawer writes. Painting them from custom
+  // properties on the board root is what repaints 52 cards in place.
+  const { cardBack, deckSkin } = useSolitaireBoardCosmetics();
   const [selection, setSelection] = useState<BoardSelection | null>(null);
   const boardRef = useRef<HTMLDivElement | null>(null);
   const dragRef = useRef<DragSession | null>(null);
-  const suppressClickRef = useRef(0);
+  /**
+   * One gesture, one decision: a press resolved at `pointerdown` — or a drag that
+   * ended — must not also be resolved by the click that follows the release.
+   */
+  const swallowClickRef = useRef(false);
+  const swallowTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const returnTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const settleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const settleMoveRef = useRef<(() => void) | null>(null);
+
+
   const [dragGhost, setDragGhost] = useState<DragGhost | null>(null);
 
   const board = view ?? null;
   const ply = board?.ply ?? 0;
+
+  // ── Card animation state (presentation only) ─────────────────────────
+  // The previous authoritative snapshot is what a reveal/draw/redeal is
+  // detected against; it is never rendered. Keeping it in a ref means a
+  // re-render with the SAME board cannot re-run an animation.
+  const reduceMotion = useReducedMotion();
+  const previousViewRef = useRef<SolitaireView | null>(null);
+  const wasteRectsRef = useRef<CardRect[]>([]);
+  const [drawAnim, setDrawAnim] = useState<DrawAnimation | null>(null);
+  const [redealGhosts, setRedealGhosts] = useState<RedealGhost[] | null>(null);
+
+  const animationPlan = useMemo(() => {
+    // A review position loads without replaying its history by default. Only
+    // the explicit single-step opt-in animates the change from the previous
+    // position; reduced motion always shows the final card immediately.
+    if (!board || reduceMotion) return EMPTY_CARD_ANIMATION_PLAN;
+    if (readOnly && !reviewAnimate) return EMPTY_CARD_ANIMATION_PLAN;
+    return detectCardAnimations(previousViewRef.current, board);
+  }, [board, readOnly, reviewAnimate, reduceMotion]);
+
+  const revealSlots = useMemo(
+    () => new Set(animationPlan.reveals.map((reveal) => reveal.key)),
+    [animationPlan],
+  );
 
   // A new authoritative board invalidates the held card: the server has moved
   // (or the opponent's view changed), so what was selected may no longer be
@@ -278,53 +410,159 @@ export default function SolitaireBoard({
   useEffect(
     () => () => {
       if (returnTimerRef.current !== null) clearTimeout(returnTimerRef.current);
-      if (settleTimerRef.current !== null) clearTimeout(settleTimerRef.current);
+      if (swallowTimerRef.current !== null) clearTimeout(swallowTimerRef.current);
     },
     [],
   );
 
-  // While a move is in flight only the stock stays live (so a rapid stock cycle
-  // can be queued); every card interaction waits for the authoritative state.
-  const cardsInteractive = interactive && !pending;
+  // Remember the snapshot the NEXT one will be compared against. This is a
+  // passive effect: the layout effect below has already read the old value.
+  useEffect(() => {
+    previousViewRef.current = board;
+  }, [board]);
+
+  /**
+   * Measure AFTER the new view is painted into the DOM, BEFORE the browser
+   * paints it: the drawn card starts on the stock slot rather than flashing in
+   * its final waste position, and a redeal flies its backs home from where the
+   * waste cards were one commit ago. The move itself is already in flight —
+   * measuring costs no interaction latency.
+   */
+  useLayoutEffect(() => {
+    const el = boardRef.current;
+    if (!el) return;
+
+    if (animationPlan.draw) {
+      const stock = el.querySelector<HTMLElement>('[data-testid="solitaire-stock"]');
+      const wasteTop = el.querySelector<HTMLElement>('[data-testid="solitaire-waste-top"]');
+      if (stock && wasteTop) {
+        const from = stock.getBoundingClientRect();
+        const to = wasteTop.getBoundingClientRect();
+        setDrawAnim({
+          cardKey: animationPlan.draw.cardKey,
+          x: from.left + from.width / 2 - (to.left + to.width / 2),
+          y: from.top + from.height / 2 - (to.top + to.height / 2),
+        });
+      }
+    }
+
+    if (animationPlan.redeal) {
+      const stock = el.querySelector<HTMLElement>('[data-testid="solitaire-stock"]');
+      const previousWaste = wasteRectsRef.current;
+      if (stock && previousWaste.length > 0) {
+        const to = stock.getBoundingClientRect();
+        const toX = to.left + to.width / 2;
+        const toY = to.top + to.height / 2;
+        setRedealGhosts(
+          previousWaste.slice(-REDEAL_MAX_GHOSTS).map((rect, index) => ({
+            key: index,
+            fromX: rect.x,
+            fromY: rect.y,
+            toX,
+            toY,
+            width: rect.width,
+            height: rect.height,
+            delayMs: index * REDEAL_STAGGER_MS,
+          })),
+        );
+      }
+    }
+
+    // Stored for the NEXT redeal: where the waste cards are right now.
+    wasteRectsRef.current = Array.from(
+      el.querySelectorAll<HTMLElement>('[data-testid="solitaire-waste"] [data-face-up]'),
+    ).map((node) => {
+      const rect = node.getBoundingClientRect();
+      return {
+        x: rect.left + rect.width / 2,
+        y: rect.top + rect.height / 2,
+        width: rect.width,
+        height: rect.height,
+      };
+    });
+  }, [board, animationPlan]);
+
+  // Let the one-shot animations expire. The cards are already painted at their
+  // authoritative positions when these fire; only the visual offset is gone.
+  useEffect(() => {
+    if (!drawAnim) return undefined;
+    const timer = setTimeout(() => setDrawAnim(null), DRAW_MS + 40);
+    return () => clearTimeout(timer);
+  }, [drawAnim]);
+
+  useEffect(() => {
+    if (!redealGhosts) return undefined;
+    const last = redealGhosts[redealGhosts.length - 1];
+    const timer = setTimeout(
+      () => setRedealGhosts(null),
+      REDEAL_MS + (last?.delayMs ?? 0) + 60,
+    );
+    return () => clearTimeout(timer);
+  }, [redealGhosts]);
+
+  /** Ignore the click this gesture is about to produce. */
+  const swallowNextClick = useCallback(() => {
+    swallowClickRef.current = true;
+    if (swallowTimerRef.current !== null) clearTimeout(swallowTimerRef.current);
+    swallowTimerRef.current = setTimeout(() => {
+      swallowTimerRef.current = null;
+      swallowClickRef.current = false;
+    }, CLICK_SWALLOW_MS);
+  }, []);
+
+  // A move in flight never locks the board. The parent draws the player's own
+  // move optimistically, so the next gesture is made against the board the
+  // player can already see; the server's snapshot replaces it when it lands.
+  const cardsInteractive = interactive;
   const stockInteractive = interactive && canDraw(board);
 
   const targets = useMemo(() => dropTargetsFor(board, selection), [board, selection]);
 
-  /** Land a settling drop now: clear the ghost and send its move. */
-  const commitSettle = useCallback(() => {
-    const commit = settleMoveRef.current;
-    settleMoveRef.current = null;
-    if (settleTimerRef.current !== null) {
-      clearTimeout(settleTimerRef.current);
-      settleTimerRef.current = null;
-    }
-    setDragGhost(null);
-    commit?.();
-  }, []);
+  /**
+   * One quiet placement cue when a card actually lands on a pile.
+   *
+   * Presentation only, so it hangs off the same three accepted-move seams as
+   * the drag/click handling and never off a merely proposed move. The global
+   * mute switch silences it centrally (the shared AudioContext returns null),
+   * and reduced motion silences the board's sound along with its animations.
+   * A draw is a different gesture and is deliberately not a "placement".
+   */
+  const announceMove = useCallback(
+    (move: SolitaireMove) => {
+      if (reduceMotion) return;
+      if (move.kind !== "draw") playCardPlace();
+    },
+    [reduceMotion],
+  );
 
   /**
-   * An accepted drop SETTLES: the ghost eases onto the pile the card is going to
-   * and the move is sent only once it has arrived. Committing at the moment of
-   * release would flash two copies of the same card.
+   * An accepted drop is sent the moment it is released. There is deliberately no
+   * settle timer in front of the move: the parent draws it optimistically, so
+   * the ghost is cleared in the same commit and the card is already on the pile
+   * — waiting for a snap animation would only add latency to the click.
    */
   const settleDrop = useCallback(
-    (session: DragSession, at: { x: number; y: number }, move: SolitaireMove) => {
-      setDragGhost({ x: at.x, y: at.y, cards: session.cards, easing: true });
-      settleMoveRef.current = () => onMove(move);
-      if (settleTimerRef.current !== null) clearTimeout(settleTimerRef.current);
-      settleTimerRef.current = setTimeout(() => {
-        settleTimerRef.current = null;
-        commitSettle();
-      }, GHOST_SETTLE_MS);
+    (move: SolitaireMove) => {
+      announceMove(move);
+      setDragGhost(null);
+      onMove(move);
     },
-    [commitSettle, onMove],
+    [onMove, announceMove],
   );
 
   const click = useCallback(
     (target: BoardTarget) => {
       if (!board) return;
-      // The click that ends a drag must not also select the card underneath it.
-      if (Date.now() - suppressClickRef.current < CLICK_AFTER_DRAG_MS) return;
+      // This gesture was already decided at pointerdown (or by the drag it
+      // became) — the trailing click must not decide it a second time.
+      if (swallowClickRef.current) {
+        swallowClickRef.current = false;
+        if (swallowTimerRef.current !== null) {
+          clearTimeout(swallowTimerRef.current);
+          swallowTimerRef.current = null;
+        }
+        return;
+      }
       const result = resolveClick(board, selection, target);
       if (result.type === "select") {
         setSelection(result.selection);
@@ -335,6 +573,7 @@ export default function SolitaireBoard({
         return;
       }
       if (result.type === "move") {
+        announceMove(result.move);
         setSelection(null);
         onMove(result.move);
         return;
@@ -344,72 +583,135 @@ export default function SolitaireBoard({
         onInvalid?.(result.message);
       }
     },
-    [board, selection, onMove, onInvalid],
+    [board, selection, onMove, onInvalid, announceMove],
   );
 
   /**
-   * The selection a pointer press would pick up, read from the card's own
-   * `data-drag-*` markers — so the board needs one handler, not one per card.
-   * A hidden card carries no markers and can never be lifted; a non-head card
-   * inside a run resolves to null through `selectionFor`, exactly as a click
-   * would.
+   * The press a pointerdown would make, read from the card's own `data-drag-*`
+   * markers — so the board needs one handler, not one per card. A hidden card
+   * carries no markers and can never be lifted; a non-head card inside a run
+   * resolves to null through `selectionFor`, exactly as a click would.
+   *
+   * The TARGET follows the same precedence the render uses: the top card of a
+   * lit column IS that column's drop slot, and anything else is the card's own
+   * run head. Keeping the two in step is what lets a press be decided at
+   * pointerdown without ever disagreeing with the click model.
+   *
+   * An EMPTY pile has no card to lift but is still a place to lay one down, so a
+   * press on an empty slot resolves to that slot's target with nothing to drag.
+   * Only the empty-slot BUTTONS qualify: pressing the bare space below a
+   * column's cards is not a placement.
    */
-  const selectionAtPointer = useCallback(
-    (target: EventTarget | null): { selection: BoardSelection; cards: Card[] } | null => {
+  const pressAtPointer = useCallback(
+    (
+      target: EventTarget | null,
+    ): { target: BoardTarget; selection: BoardSelection | null; cards: Card[] } | null => {
       if (!board) return null;
-      const element =
-        target instanceof Element ? target.closest<HTMLElement>("[data-drag-slot]") : null;
+      const element = target instanceof Element ? target : null;
       if (!element) return null;
+      const card = element.closest<HTMLElement>("[data-drag-slot]");
 
-      if (element.dataset.dragSlot === "waste") {
-        const found = selectionFor(board, { kind: "waste" });
-        const card = wasteTopCard(board);
-        return found && card ? { selection: found, cards: [card] } : null;
+      if (!card) {
+        const empty = element.closest<HTMLElement>("button[data-drop-kind]");
+        if (!empty) return null;
+        if (empty.dataset.dropKind === "column") {
+          const column = Number(empty.dataset.dropColumn);
+          return Number.isInteger(column)
+            ? { target: { kind: "column", column }, selection: null, cards: [] }
+            : null;
+        }
+        const suit = empty.dataset.dropSuit as Suit | undefined;
+        return suit
+          ? { target: { kind: "foundation", suit }, selection: null, cards: [] }
+          : null;
       }
 
-      if (element.dataset.dragSlot === "foundation") {
-        const suit = element.dataset.dragSuit as Suit | undefined;
+      if (card.dataset.dragSlot === "waste") {
+        const found = selectionFor(board, { kind: "waste" });
+        const top = wasteTopCard(board);
+        return found && top
+          ? { target: { kind: "waste" }, selection: found, cards: [top] }
+          : null;
+      }
+
+      if (card.dataset.dragSlot === "foundation") {
+        const suit = card.dataset.dragSuit as Suit | undefined;
         if (!suit) return null;
         const found = selectionFor(board, { kind: "foundation", suit });
-        const card = foundationTopCard(board, suit);
-        return found && card ? { selection: found, cards: [card] } : null;
+        const top = foundationTopCard(board, suit);
+        return found && top
+          ? { target: { kind: "foundation", suit }, selection: found, cards: [top] }
+          : null;
       }
 
-      if (element.dataset.dragSlot === "tableau") {
-        const column = Number(element.dataset.dragColumn);
-        const index = Number(element.dataset.dragIndex);
+      if (card.dataset.dragSlot === "tableau") {
+        const column = Number(card.dataset.dragColumn);
+        const index = Number(card.dataset.dragIndex);
         const pile = board.tableau?.[column];
         const slot = Number.isInteger(index) ? pile?.[index] : undefined;
         if (!Number.isInteger(column) || !slot?.faceUp || !slot.card) return null;
         const found = selectionFor(board, { kind: "tableau", column, card: slot.card });
-        return found?.kind === "tableau" ? { selection: found, cards: found.run } : null;
+        if (found?.kind !== "tableau") return null;
+        const isTop = index === pile.length - 1;
+        return {
+          target:
+            isTop && selection && targets.columns.includes(column)
+              ? { kind: "column", column }
+              : { kind: "tableau", column, card: slot.card },
+          selection: found,
+          cards: found.run,
+        };
       }
 
       return null;
     },
-    [board],
+    [board, selection, targets],
   );
 
   const onPointerDown = useCallback(
     (event: ReactPointerEvent<HTMLDivElement>) => {
       if (!cardsInteractive) return;
       if (event.pointerType === "mouse" && event.button !== 0) return;
-      const found = selectionAtPointer(event.target);
+      const found = pressAtPointer(event.target);
       if (!found) return;
-      const source =
-        event.target instanceof Element
-          ? event.target.closest<HTMLElement>("[data-drag-slot]")
-          : null;
+      const source = found.cards.length > 0 && event.target instanceof Element
+        ? event.target.closest<HTMLElement>("[data-drag-slot]")
+        : null;
       const rect = source?.getBoundingClientRect();
 
-      // A new gesture cancels a card still flying home from the last one, and
-      // COMMITS a drop still settling (so its move is never lost).
-      if (settleMoveRef.current !== null) commitSettle();
+      // A new gesture cancels a card still flying home from the last one.
       if (returnTimerRef.current !== null) {
         clearTimeout(returnTimerRef.current);
         returnTimerRef.current = null;
       }
       setDragGhost(null);
+
+      // ── The press IS the decision ───────────────────────────────────────
+      // Picking a card up, putting it back down and LAYING IT ON A PILE are all
+      // resolved HERE, on the press, instead of on the click that only arrives
+      // once the button comes back up. That release can be a full human press
+      // away, and it is the whole difference between a board that answers the
+      // instant it is touched and one that makes the player wait for their own
+      // mouse. A decision this gesture has already made is never made twice: the
+      // click it goes on to produce is swallowed (see `swallowNextClick`).
+      if (board) {
+        const decision = resolveClick(board, selection, found.target);
+        if (decision.type === "select" || decision.type === "clear") {
+          swallowNextClick();
+          setSelection(decision.type === "select" ? decision.selection : null);
+        } else if (decision.type === "move") {
+          // The pile has taken the card: no drag is started from this press,
+          // because the move already owns the gesture.
+          announceMove(decision.move);
+          swallowNextClick();
+          setSelection(null);
+          onMove(decision.move);
+          return;
+        }
+      }
+
+      // An empty pile is a place to lay a card, not a card to lift.
+      if (found.cards.length === 0) return;
 
       dragRef.current = {
         pointerId: event.pointerId,
@@ -422,7 +724,7 @@ export default function SolitaireBoard({
         cards: found.cards,
       };
     },
-    [cardsInteractive, selectionAtPointer, commitSettle],
+    [cardsInteractive, pressAtPointer, board, selection, swallowNextClick, onMove, announceMove],
   );
 
   const onPointerMove = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
@@ -483,7 +785,8 @@ export default function SolitaireBoard({
       // A press that never moved is a click: leave it to the click model.
       if (!session.active) return;
 
-      suppressClickRef.current = Date.now();
+      // The drag has decided this gesture; its release must not also click.
+      swallowNextClick();
       try {
         boardRef.current?.releasePointerCapture(event.pointerId);
       } catch {
@@ -501,7 +804,7 @@ export default function SolitaireBoard({
       setSelection(null);
 
       if (move && slot) {
-        settleDrop(session, slot, move);
+        settleDrop(move);
         return;
       }
       // Refused (or dropped on nothing at all): the card flies back to where it
@@ -509,7 +812,7 @@ export default function SolitaireBoard({
       flyHome(session);
       if (slot) onInvalid?.("That card cannot be placed there");
     },
-    [board, onInvalid, flyHome, settleDrop],
+    [board, onInvalid, flyHome, settleDrop, swallowNextClick],
   );
 
   const onPointerUp = useCallback(
@@ -539,10 +842,10 @@ export default function SolitaireBoard({
   const canRedeal = stockCount === 0 && waste.length > 0;
   const heldLabel = selection
     ? selection.kind === "waste"
-      ? "the waste card"
+      ? t("solitaireBoard.holdWaste")
       : selection.kind === "foundation"
-        ? "that foundation card"
-        : "that run"
+        ? t("solitaireBoard.holdFoundation")
+        : t("solitaireBoard.holdRun")
     : null;
 
   return (
@@ -578,9 +881,43 @@ export default function SolitaireBoard({
       style={
         {
           "--cw": `clamp(34px, min(10.4vw, calc((100vh - ${CHROME_REM}) / ${BOARD_CW})), 92px)`,
+          // ── The table (lib/solitaire-duel/boardThemes) ──────────────────
+          // One set of custom properties on the board root is what the empty
+          // piles and the legend below read. A theme change therefore repaints
+          // in place: no card, no column and no geometry is re-measured.
+          "--sol-slot": theme.slot.fill,
+          "--sol-slot-border": theme.slot.border,
+          "--sol-slot-ink": theme.slot.ink,
+          "--sol-slot-active": theme.slot.activeFill,
+          "--sol-legal": theme.legal.ink,
+          "--sol-legal-glow": theme.legal.glow,
+          "--sol-legend": theme.legend,
+          // ── Card cosmetics (lib/solitaire-duel/boardCosmetics) ──
+          "--sol-card-back-image": cardBack.background,
+          "--sol-card-back-border": cardBack.border,
+          "--sol-card-back-emblem": `"${cardBack.emblem}"`,
+          "--sol-card-back-animation": cardBack.animation ?? "none",
+          "--sol-deck-crest": `"${deckSkin.crest ?? ""}"`,
+          // The felt never collapses below a full table, even after the finish
+          // animation releases its measured pre-finish height. When that
+          // measurement is taller, max() keeps it; there is no maximum, so the
+          // board remains free to expand with its content.
+          minHeight:
+            holdHeight && holdHeight > 0
+              ? `max(${holdHeight}px, ${MIN_BOARD_HEIGHT})`
+              : MIN_BOARD_HEIGHT,
+          backgroundImage: theme.felt,
+          // The felt's edge is an INSET ring, never a border: a border would add
+          // 4px to the height the `--cw` budget above was computed against.
+          boxShadow: `inset 0 0 0 2px ${theme.frame}${
+            theme.frameExtra ? `, ${theme.frameExtra}` : ""
+          }, 0 10px 30px rgba(3, 8, 20, 0.35)`,
         } as CSSProperties
       }
-      className="w-full touch-manipulation select-none"
+      data-solitaire-theme={theme.key}
+      data-card-back={cardBack.key}
+      data-deck={deckSkin.key}
+      className="w-full touch-manipulation select-none rounded-2xl"
     >
       {/* ── Top row: stock · waste · the four foundations ──────────────── */}
       <div className="flex items-start gap-1 sm:gap-2">
@@ -594,7 +931,7 @@ export default function SolitaireBoard({
             data-testid="solitaire-stock"
             data-remaining={stockCount}
             style={slotStyle()}
-            className={`gr-focusable relative flex select-none items-center justify-center overflow-hidden rounded-[6px] border-2 border-[color:var(--gr-outline)] bg-gradient-to-br from-[#1d3a63] via-[#16294a] to-[#0f1d36] shadow-[0_1px_2px_rgba(3,8,20,0.55)] transition ${
+            className={`gr-focusable relative flex select-none items-center justify-center overflow-hidden rounded-[6px] border-2 border-[color:var(--gr-outline)] bg-linear-to-br from-panel via-panel to-panel shadow-[0_1px_2px_rgba(3,8,20,0.55)] transition ${
               stockInteractive ? "cursor-pointer hover:brightness-125" : "cursor-default"
             }`}
           >
@@ -651,6 +988,11 @@ export default function SolitaireBoard({
                       : cardLabel(card)
                   }
                   testId={isTop ? "solitaire-waste-top" : undefined}
+                  drawFrom={
+                    isTop && drawAnim?.cardKey === `${card.suit}-${card.rank}`
+                      ? { x: drawAnim.x, y: drawAnim.y }
+                      : null
+                  }
                   dataAttrs={isTop ? { "data-drag-slot": "waste" } : undefined}
                   style={{
                     width: CARD_W,
@@ -767,7 +1109,9 @@ export default function SolitaireBoard({
 
                 return (
                   <PlayingCard
-                    key={`${index}-${slot.card ? `${slot.card.suit}${slot.card.rank}` : "hidden"}`}
+                    // STABLE SLOT key: a revealed card keeps its element, so it
+                    // can flip in place instead of remounting as a new face.
+                    key={`slot-${column}-${index}`}
                     card={card}
                     faceUp={faceUp}
                     interactive={clickable}
@@ -779,6 +1123,7 @@ export default function SolitaireBoard({
                         : `Face-down card — column ${column + 1}, position ${index + 1}`
                     }
                     testId={`solitaire-card-${column}-${index}`}
+                    reveal={revealSlots.has(tableauSlotKey(column, index))}
                     dataAttrs={
                       faceUp
                         ? {
@@ -809,6 +1154,32 @@ export default function SolitaireBoard({
           accepted move is sent, and eases home when the drop is refused; all
           three are transitions, so the board's layout and its `--cw` fit are
           never touched by a gesture. */}
+      {/* Redeal: identity-free card backs fly from where the waste was back
+          onto the stock, staggered so the pile refills as a riffle rather than
+          one block. The authoritative stock/waste are already correct; this is
+          an overlay that unmounts itself. */}
+      {redealGhosts?.map((ghost) => (
+        <div
+          key={ghost.key}
+          aria-hidden="true"
+          data-testid="solitaire-redeal-ghost"
+          className="pointer-events-none fixed z-40 drop-shadow-xl"
+          style={
+            {
+              left: ghost.toX - ghost.width / 2,
+              top: ghost.toY - ghost.height / 2,
+              width: ghost.width,
+              height: ghost.height,
+              "--gr-redeal-x": `${ghost.fromX - ghost.toX}px`,
+              "--gr-redeal-y": `${ghost.fromY - ghost.toY}px`,
+              animation: `gr-card-redeal ${REDEAL_MS}ms cubic-bezier(0.2, 0.7, 0.3, 1) ${ghost.delayMs}ms both`,
+            } as CSSProperties
+          }
+        >
+          <PlayingCard card={null} faceUp={false} />
+        </div>
+      ))}
+
       {dragGhost ? (
         <div
           aria-hidden="true"
@@ -844,13 +1215,18 @@ export default function SolitaireBoard({
       {/* A one-line legend instead of a tutorial: it states the only rule a
           Klondike player cannot see from the board itself (the automatic flip)
           and the current hold. */}
-      <p className="mt-2 text-center text-[11px] leading-relaxed text-white/45">
-        {selection
-          ? `Holding ${heldLabel} — drop it on a highlighted pile, or click one to place it.`
-          : canRedeal
-            ? "Stock empty — click the \u21bb slot to turn the waste back over."
-            : "Drag a card (or a face-up run) onto a pile — or click it, then click where it should go. A face-down card flips by itself when the card above it leaves."}
+      <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
+      <p className="flex-1 text-center text-[11px] leading-relaxed text-[color:var(--sol-legend)]">
+        {readOnly
+          ? t("solitaireReview.ui.boardNotice")
+          : selection
+            ? t("solitaireBoard.holding", { held: heldLabel })
+            : canRedeal
+              ? t("solitaireBoard.stockEmpty")
+              : t("solitaireBoard.dragOrClick")}
       </p>
+      <BoardAppearanceDrawer label={t("solitaireBoard.appearance")} />
+      </div>
     </div>
   );
 }

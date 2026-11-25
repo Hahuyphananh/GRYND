@@ -58,8 +58,8 @@ const SKIP_REASON = MODULE_MOCKING_AVAILABLE
 test("the base currency is CAD and the catalog amounts are unchanged", () => {
   assert.equal(BASE_CURRENCY, "cad");
   assert.equal(PRO_BILLING_CURRENCY, BASE_CURRENCY);
-  // The approved amounts: same numbers as before, now expressed in CAD.
-  assert.deepEqual(PRO_PRICE_CENTS, { weekly: 349, monthly: 999, yearly: 5999 });
+  // The approved FOUNDER RATE, in CAD. Weekly is retired and never returns.
+  assert.deepEqual(PRO_PRICE_CENTS, { monthly: 499, yearly: 2999 });
   assert.ok(PRESENTMENT_CURRENCIES.includes(BASE_CURRENCY));
 });
 
@@ -145,9 +145,10 @@ test("the billing options are built in one currency, end to end", () => {
     assert.equal(option.currency, "cad");
     assert.equal(option.priceDisplay, `CA$${option.priceFormatted}`);
   }
-  assert.equal(cad.find((o) => o.interval === "monthly").priceDisplay, "CA$9.99");
-  assert.equal(cad.find((o) => o.interval === "weekly").priceDisplay, "CA$3.49");
-  assert.equal(cad.find((o) => o.interval === "yearly").priceDisplay, "CA$59.99");
+  assert.equal(cad.find((o) => o.interval === "monthly").priceDisplay, "CA$4.99");
+  assert.equal(cad.find((o) => o.interval === "yearly").priceDisplay, "CA$29.99");
+  // Weekly was retired: it must not come back as a sellable option.
+  assert.equal(cad.find((o) => o.interval === "weekly"), undefined);
 
   const eur = buildProBillingOptions(undefined, "eur");
   for (const option of eur) {
@@ -160,16 +161,29 @@ test("the billing options are built in one currency, end to end", () => {
   const yearly = eur.find((o) => o.interval === "yearly");
   assert.ok(yearly.savings.length > 0);
   const versusMonthly = yearly.savings.find((s) => s.versus === "monthly");
-  assert.equal(versusMonthly.amountCents, 999 * 12 - 5999);
+  assert.equal(versusMonthly.amountCents, 499 * 12 - 2999);
   assert.equal(
     formatMoney(versusMonthly.amountCents, yearly.currency),
-    "€59.89",
+    "€29.89",
+  );
+});
+
+test("the yearly saving is a rounded percent and the monthly price", () => {
+  // The card reads "Save 50% vs. Monthly (CA$2.50/mo)" — 49.92% rounds to 50,
+  // and the amount is what a year costs per month, never the annual saving.
+  const yearly = buildProBillingOptions().find((o) => o.interval === "yearly");
+  const saving = yearly.savings.find((s) => s.versus === "monthly");
+  assert.equal(Math.round(saving.percent), 50);
+  assert.equal(yearly.monthlyEquivalentCents, 250);
+  assert.equal(
+    formatMoney(yearly.monthlyEquivalentCents, yearly.currency),
+    "CA$2.50",
   );
 });
 
 // ── 4. Localized amounts come from Stripe, and only whole ───────────────────
 
-/** A fake Stripe whose three recurring prices carry `options` per currency. */
+/** A fake Stripe whose bound recurring prices carry `options` per currency. */
 function fakeStripe(pricesById) {
   return {
     prices: {
@@ -183,23 +197,21 @@ function fakeStripe(pricesById) {
   };
 }
 
-/** A bound plan whose three prices are exactly the ids given. */
+/** A bound plan whose sellable prices are exactly the ids given. */
 const plan = {
   id: 1,
   key: "grynd-pro",
   name: "GRYND PRO",
   monthlyTokens: 0,
-  priceCents: 999,
+  priceCents: 499,
   stripeProductId: "prod_1",
   stripePriceId: "price_monthly",
-  stripePriceIdWeekly: "price_weekly",
   stripePriceIdYearly: "price_yearly",
 };
 
 const basePrices = {
-  price_weekly: { id: "price_weekly", currency: "cad", unit_amount: 349, recurring: { interval: "week" } },
-  price_monthly: { id: "price_monthly", currency: "cad", unit_amount: 999, recurring: { interval: "month" } },
-  price_yearly: { id: "price_yearly", currency: "cad", unit_amount: 5999, recurring: { interval: "year" } },
+  price_monthly: { id: "price_monthly", currency: "cad", unit_amount: 499, recurring: { interval: "month" } },
+  price_yearly: { id: "price_yearly", currency: "cad", unit_amount: 2999, recurring: { interval: "year" } },
 };
 
 test("localized amounts are read from the price, and only whole sets are used", { skip: SKIP_REASON }, async (t) => {
@@ -217,36 +229,49 @@ test("localized amounts are read from the price, and only whole sets are used", 
 
   // ── 1. Fully configured: every option has an amount for the currency ─────
   world.prices = {
-    price_weekly: { ...basePrices.price_weekly, currency_options: { eur: { unit_amount: 249 } } },
     price_monthly: { ...basePrices.price_monthly, currency_options: { eur: { unit_amount: 699 } } },
     price_yearly: { ...basePrices.price_yearly, currency_options: { eur: { unit_amount: 4499 } } },
   };
   let resolved = await resolveProBillingAmountsForCurrency(plan, "eur");
   assert.equal(resolved.currency, "eur");
-  assert.deepEqual(resolved.amounts, { weekly: 249, monthly: 699, yearly: 4499 });
+  assert.deepEqual(resolved.amounts, { monthly: 699, yearly: 4499 });
 
   // ── 2. PARTIAL configuration falls back to the base for ALL options ──────
-  // Only weekly + monthly carry a EUR amount. Nothing may be shown in EUR: the
+  // Only monthly carries a EUR amount. Nothing may be shown in EUR: the
   // savings compare the options against each other, so a mixed set would
   // advertise a saving between two different currencies.
   world.prices = {
-    price_weekly: { ...basePrices.price_weekly, currency_options: { eur: { unit_amount: 249 } } },
     price_monthly: { ...basePrices.price_monthly, currency_options: { eur: { unit_amount: 699 } } },
     price_yearly: basePrices.price_yearly,
   };
   resolved = await resolveProBillingAmountsForCurrency(plan, "eur");
   assert.equal(resolved.currency, "cad", "a partial configuration must not localize");
-  assert.deepEqual(resolved.amounts, { weekly: 349, monthly: 999, yearly: 5999 });
+  assert.deepEqual(resolved.amounts, { monthly: 499, yearly: 2999 });
 
   // ── 3. The base amounts come from the bound prices, not the catalog ──────
   world.prices = {
-    price_weekly: { ...basePrices.price_weekly, unit_amount: 400 },
     price_monthly: { ...basePrices.price_monthly, unit_amount: 1000 },
-    price_yearly: { ...basePrices.price_yearly, unit_amount: 6000 },
+    price_yearly: { ...basePrices.price_yearly, unit_amount: 3000 },
   };
   resolved = await resolveProBillingAmountsForCurrency(plan, "cad");
   assert.equal(resolved.currency, "cad");
-  assert.deepEqual(resolved.amounts, { weekly: 400, monthly: 1000, yearly: 6000 });
+  assert.deepEqual(resolved.amounts, { monthly: 1000, yearly: 3000 });
+
+  // ── 3b. A legacy price in another currency is NOT a CAD amount ──────────
+  // The plan rows were bound to USD prices before the catalog moved to CAD.
+  // Reading their unit_amount and labelling it "CA$" would advertise both a
+  // wrong amount and the wrong currency — the card is charged USD.
+  world.prices = {
+    price_monthly: { id: "price_monthly", currency: "usd", unit_amount: 1299, recurring: { interval: "month" } },
+    price_yearly: { id: "price_yearly", currency: "usd", unit_amount: 6999, recurring: { interval: "year" } },
+  };
+  resolved = await resolveProBillingAmountsForCurrency(plan, "cad");
+  assert.equal(resolved.currency, "cad");
+  assert.deepEqual(
+    resolved.amounts,
+    { monthly: 499, yearly: 2999 },
+    "a USD binding must fall back to the CAD catalog, never be shown as CAD",
+  );
 
   // ── 4. What a specific price will actually charge ────────────────────────
   world.prices = {
@@ -268,11 +293,11 @@ test("localized amounts are read from the price, and only whole sets are used", 
   // when no currency is requested).
   assert.deepEqual(await resolvePriceCharge("price_monthly", "usd"), {
     currency: "cad",
-    amountCents: 999,
+    amountCents: 499,
   });
   assert.deepEqual(await resolvePriceCharge("price_monthly", "cad"), {
     currency: "cad",
-    amountCents: 999,
+    amountCents: 499,
   });
   // Unreadable price → null, so the caller falls back instead of guessing.
   assert.equal(await resolvePriceCharge("price_missing", "eur"), null);
@@ -288,6 +313,12 @@ test("the Stripe catalog is created in CAD, with localization left to the price"
   assert.doesNotMatch(subscriptions, /currency: "usd"/);
   // Localized amounts are READ from the price, never converted here.
   assert.match(subscriptions, /price\?\.currency_options/);
+  // A price in another currency can never supply a base-currency amount...
+  assert.match(subscriptions, /priceMatchesBaseCurrency\(boundPrice\)/);
+  assert.match(subscriptions, /priceMatchesBaseCurrency\(candidate\)/);
+  // ...and the Product's own default is reconciled to the monthly CAD price, so
+  // Stripe's product page cannot quote a second currency for the same plan.
+  assert.match(subscriptions, /default_price: priceIds\.monthly/);
   // No exchange-rate machinery: the only way an amount may change currency is
   // Stripe's own configuration. (Comments are stripped first — this file
   // explains the rule in prose.)

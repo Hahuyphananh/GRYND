@@ -69,7 +69,7 @@ export default function EmoteLoadoutStrip({ onChange }) {
                 src={assetUrl}
                 alt=""
                 title={entry.name}
-                className="h-10 w-10 rounded-lg border border-fuchsia-300/30 bg-[#071531] object-contain p-0.5"
+                className="h-10 w-10 rounded-lg border border-fuchsia-300/30 bg-surface object-contain p-0.5"
                 loading="lazy"
                 onError={(event) => {
                   event.currentTarget.style.display = "none";
@@ -78,7 +78,7 @@ export default function EmoteLoadoutStrip({ onChange }) {
             ) : (
               <span
                 key={entry.key}
-                className="flex h-10 w-10 items-center justify-center rounded-lg border border-fuchsia-300/30 bg-[#071531] text-xs font-black text-fuchsia-200/60"
+                className="flex h-10 w-10 items-center justify-center rounded-lg border border-fuchsia-300/30 bg-surface text-xs font-black text-fuchsia-200/60"
                 title={entry.name}
               >
                 {(entry.name || entry.key).slice(0, 1)}

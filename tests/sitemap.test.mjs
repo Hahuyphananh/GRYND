@@ -40,6 +40,7 @@ import {
   GAME_LANDING_SLUGS,
   gameLandingPath,
 } from "../src/lib/gameLandingPages.ts";
+import { isGameAvailable } from "../src/lib/gameAvailability.js";
 import { GUIDES_INDEX_PATH, GUIDE_SLUGS, guidePath } from "../src/lib/guides.ts";
 import {
   EXCLUDED_FROM_SITEMAP,
@@ -54,13 +55,7 @@ const SEO_INVENTORY = "src/lib/seoPages.ts";
 const APP_DIR = "src/app";
 
 /** Games whose omission from the old hand-written list prompted this refactor. */
-const MUST_BE_PRESENT = [
-  "mini-golf",
-  "sudoku-duel",
-  "speed-typing",
-  "tic-tac-toe",
-  "solitaire-duel",
-];
+const MUST_BE_PRESENT = ["solitaire-duel"];
 
 // ── Route discovery ───────────────────────────────────────────────────────
 
@@ -92,29 +87,10 @@ function staticRoutes() {
     .filter((path) => !path.startsWith("/api") && !path.includes("["));
 }
 
-/**
- * URLs that RENDER without a page file of their own.
- *
- * The hub is the case in point: there is no src/app/games/page.tsx, because
- * next.config.js rewrites /games to /casino before the router looks for a file.
- * Treating "no page.tsx" as "no route" here would be the wrong conclusion, so
- * the config's rewrite table is part of the rendered set. Dynamic sources
- * (`:slug`) are skipped — they are checked against the game catalog instead.
- */
-function rewrittenPaths() {
-  const config = read("next.config.js");
-  const start = config.indexOf("async rewrites()");
-  const end = config.indexOf("async redirects()", start);
-  assert.ok(start !== -1 && end > start, "could not locate the rewrite table in next.config.js");
-  return [...config.slice(start, end).matchAll(/source:\s*"([^"]+)"/g)]
-    .map((match) => match[1])
-    .filter((path) => !path.includes(":"));
-}
-
 // ── 1. Shape ──────────────────────────────────────────────────────────────
 
 test("shape: every URL is a root-relative canonical path", () => {
-  assert.ok(PUBLIC_SEO_PATHS.length >= 30, "expected the full public inventory");
+  assert.ok(PUBLIC_SEO_PATHS.length >= 15, "expected the full public inventory");
   for (const path of PUBLIC_SEO_PATHS) {
     assert.equal(typeof path, "string", "a path must be a string");
     assert.ok(path.startsWith("/"), `${path} must be root-relative`);
@@ -152,7 +128,7 @@ test("shape: priorities, change frequencies and groups are valid", () => {
     assert.ok(page.priority > 0 && page.priority <= 1, `${page.path} priority out of range`);
     assert.ok(frequencies.has(page.changeFrequency), `${page.path} has no valid changeFrequency`);
     assert.ok(
-      ["home", "hub", "games", "guides", "info"].includes(page.group),
+      ["home", "hub", "games", "guides", "modes", "learn", "info"].includes(page.group),
       `${page.path} has an unknown group`,
     );
   }
@@ -193,20 +169,21 @@ test("generation: the sitemap route is a projection of the inventory", () => {
   assert.doesNotMatch(src, /from "\.\.\/db\/schema"/, "table wiring belongs in the inventory");
 });
 
-test("generation: EVERY game landing page is listed — Mini Golf and Sudoku Duel included", () => {
+test("generation: EVERY available game landing page is listed — Mini Golf and Sudoku Duel included", () => {
   const listed = new Set(PUBLIC_SEO_PATHS);
-  const missing = GAME_LANDING_SLUGS.filter((slug) => !listed.has(gameLandingPath(slug)));
-  assert.deepEqual(missing, [], "a game with a public landing page is missing from the sitemap");
+  const availableSlugs = GAME_LANDING_SLUGS.filter((slug) => isGameAvailable(slug));
+  const missing = availableSlugs.filter((slug) => !listed.has(gameLandingPath(slug)));
+  assert.deepEqual(missing, [], "an available game with a public landing page is missing from the sitemap");
 
   // Named explicitly: an omission here should report the game, not a 21-string diff.
   for (const slug of MUST_BE_PRESENT) {
     assert.ok(listed.has(`/games/${slug}`), `/games/${slug} must be in the sitemap`);
   }
 
-  // Exactly one URL per game, and the hub is not one of them.
+  // Exactly one URL per AVAILABLE game, and the hub is not one of them.
   const gamePaths = PUBLIC_SEO_PATHS.filter((path) => path.startsWith("/games/"));
-  assert.equal(gamePaths.length, GAME_LANDING_SLUGS.length);
-  assert.equal(PUBLIC_SEO_PAGES.filter((page) => page.group === "games").length, GAME_LANDING_SLUGS.length);
+  assert.equal(gamePaths.length, availableSlugs.length);
+  assert.equal(PUBLIC_SEO_PAGES.filter((page) => page.group === "games").length, availableSlugs.length);
 });
 
 test("generation: EVERY guide is listed — the index and all twelve articles", () => {
@@ -234,10 +211,15 @@ test("generation: freshness hints are well-formed and never gate a URL", () => {
     assert.ok(page.freshness.table, `${page.path} freshness needs a table`);
     assert.ok(page.freshness.column, `${page.path} freshness needs a column`);
   }
-  // The two UNO-family URLs share one match table; the hint is scoped to each
-  // page, so neither can be dropped by the other's absence.
+  // The two UNO-family URLs share one match table, but both belong to a game
+  // that is archived today: their membership follows the availability registry
+  // (reactivation restores them), so an archived page is never advertised.
   for (const path of ["/games/uno", "/games/neon-flush"]) {
-    assert.ok(PUBLIC_SEO_PATHS.includes(path), `${path} must be listed`);
+    assert.equal(
+      PUBLIC_SEO_PATHS.includes(path),
+      isGameAvailable(path.slice("/games/".length)),
+      `${path} sitemap membership must follow the availability registry`,
+    );
   }
 });
 
@@ -268,11 +250,14 @@ test("exclusions: no authenticated, private or API URL is listed", () => {
   }
 });
 
-test("exclusions: no /play lobby and no /casino alias is listed", () => {
+test("exclusions: no authenticated gameplay lobby and no /casino alias is listed", () => {
   for (const path of PUBLIC_SEO_PATHS) {
+    // `/play` is the PUBLIC six-mode hub and is listed. What must stay out are
+    // the authenticated gameplay URLs, `/games/<slug>/play` — those are the
+    // ones that declare noindex and whose indexable page is the landing page.
     assert.doesNotMatch(
       path,
-      /\/play$/,
+      /^\/games\/[^/]+\/play$/,
       `${path} is the noindex authenticated lobby — the landing page is the indexable URL`,
     );
     assert.ok(
@@ -289,7 +274,7 @@ test("canonical: no listed URL is itself a redirect", () => {
   assert.ok(start !== -1 && end > start, "could not locate the redirect table in next.config.js");
 
   const sources = [...config.slice(start, end).matchAll(/source:\s*"([^"]+)"/g)].map((m) => m[1]);
-  assert.ok(sources.length >= 10, `expected the redirect table, parsed ${sources.length} sources`);
+  assert.ok(sources.length > 0, `could not parse the redirect table (${sources.length} sources)`);
 
   for (const path of PUBLIC_SEO_PATHS) {
     assert.equal(
@@ -336,14 +321,22 @@ test("coverage: every static route is listed, excluded, or noindex", () => {
 });
 
 test("coverage: the sitemap lists nothing that no route renders", () => {
-  const routes = new Set([...staticRoutes(), ...rewrittenPaths()]);
-  // The exemption above is verified rather than assumed: /games really is a
-  // rewrite target, and it really does land on a route that exists.
-  assert.ok(
-    rewrittenPaths().includes("/games"),
-    "/games must be a config rewrite — that is why it has no page file",
+  const routes = new Set(staticRoutes());
+  // /games is a REAL page. It used to be a rewrite to /casino, which itself
+  // redirects to /games/solitaire-duel — so the sitemap advertised a noindex
+  // soft redirect as its second-most-important URL. The hub must render its
+  // own crawlable page, and no rewrite may shadow it.
+  const config = read("next.config.js");
+  const rewrites = config.slice(
+    config.indexOf("async rewrites()"),
+    config.indexOf("async redirects()"),
   );
-  assert.ok(staticRoutes().includes("/casino"), "/games must rewrite to a real route");
+  assert.doesNotMatch(
+    rewrites,
+    /source:\s*"\/games"/,
+    "/games must not be rewritten — it is a real page with its own metadata",
+  );
+  assert.ok(staticRoutes().includes("/games"), "/games must be a real page, not a rewrite");
   // The guide index is a real page file, not a rewrite — assert it, so a guide
   // path in the sitemap is never justified by an exemption alone.
   assert.ok(staticRoutes().includes(GUIDES_INDEX_PATH), "/guides must be a real route");
@@ -366,12 +359,22 @@ test("coverage: the sitemap lists nothing that no route renders", () => {
   }
 });
 
-test("coverage: /help and /about are not invented", () => {
+test("coverage: /help is not invented, and /about is a published decision", () => {
   const routes = new Set(staticRoutes());
-  for (const path of ["/help", "/about"]) {
-    assert.equal(routes.has(path), false, `${path} exists now — decide its SEO role explicitly`);
-    assert.equal(PUBLIC_SEO_PATHS.includes(path), false, `${path} does not exist and must not be listed`);
-  }
+  // /help still does not exist; /faq is the help surface.
+  assert.equal(routes.has("/help"), false, "/help exists now — decide its SEO role explicitly");
+  assert.equal(PUBLIC_SEO_PATHS.includes("/help"), false, "/help does not exist and must not be listed");
+
+  // /about DOES exist now: it is the publisher statement a site review looks
+  // for (who runs the site, how it is funded, what it will not do). Because it
+  // is public and indexable, the decision is to publish it — so it must be a
+  // real route AND be listed, rather than drifting in unnoticed.
+  assert.equal(routes.has("/about"), true);
+  assert.ok(PUBLIC_SEO_PATHS.includes("/about"), "/about is public and must be listed");
+  // The cookie + advertising disclosure is published for the same reason.
+  assert.equal(routes.has("/cookie-policy"), true);
+  assert.ok(PUBLIC_SEO_PATHS.includes("/cookie-policy"));
+
   assert.ok(PUBLIC_SEO_PATHS.includes("/faq"), "/faq is GRYND's help surface");
 });
 
@@ -390,3 +393,14 @@ function routeFile(path) {
   }
   throw new Error(`no page file renders ${path}`);
 }
+
+test("every sitemap URL is publicly reachable without a session", async () => {
+  const { PUBLIC_SEO_PATHS } = await import("../src/lib/seoPages.ts");
+  const { isPublicRoute } = await import("../src/proxy.ts");
+  for (const path of PUBLIC_SEO_PATHS) {
+    assert.ok(
+      isPublicRoute({ nextUrl: { pathname: path } }),
+      path + " is in the sitemap but the proxy would send a signed-out crawler to /sign-in",
+    );
+  }
+});

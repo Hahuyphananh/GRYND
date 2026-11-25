@@ -263,7 +263,11 @@ export async function GET(req: NextRequest) {
       ...poolFormatted,
       ...fourInARowFormatted,
       ...memoryGridFormatted,
-    ].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    ]
+      .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+      // The coin economy is retired: history keeps WHAT happened and when,
+      // never a stake, payout or token delta.
+      .map(({ type, date, result }) => ({ type, date, result }));
 
     const hasMore = allBets.length > offset + limit;
     const paginatedBets = allBets.slice(offset, offset + limit);

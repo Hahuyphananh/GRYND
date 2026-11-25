@@ -16,7 +16,7 @@
 // referrer policy, and inserts the tag BEFORE itself:
 //
 //   s.settings = uxjuqz || {};
-//   s.src = "//juvenilechoice.com/bqXMV…/MKwp";
+//   s.src = "//juvenilechoice.com/bDXOVVsud…/wx";
 //   s.async = true;
 //   s.referrerPolicy = 'no-referrer-when-downgrade';
 //   l.parentNode.insertBefore(s, l);
@@ -92,7 +92,7 @@
 
 /** The provider URL exactly as supplied (protocol-relative, as the snippet). */
 export const HILLTOP_PROVIDER_SCRIPT_URL =
-  "//juvenilechoice.com/bqXMV.sXdGGwlp0oYEWCcI/HeAmt9/uXZuUklDkMPBTQcD1DOAD/Qb2ZNYDuk/tXNQzzUv4rNRDTY-1/MKwp";
+  "//juvenilechoice.com/bDXOVVsud.Gulx0/YKWkcI/Fe/mb9/uNZOUgl/koPFTXc/1qOtD/Qg2DNRDzkltzNCzlU/4UNPDwYP1_M/wx";
 
 /** The only host an override may point at. */
 export const HILLTOP_PROVIDER_HOST = "juvenilechoice.com";

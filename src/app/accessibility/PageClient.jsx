@@ -2,7 +2,6 @@
 
 import NavigationBar from "../../components/navigation-bar";
 import Footer from "../../components/Footer";
-import InteractiveCasinoBg from "../../components/InteractiveCasinoBg";
 import { motion } from "framer-motion";
 import Link from "next/link";
 
@@ -52,7 +51,7 @@ const sections = [
   {
     title: "Real-Time & Skill Games",
     content: [
-      "Some of our games are real-time and require fast reactions or rapid input (for example, Precision timing challenges). These games may be difficult or impossible for users with certain motor or cognitive disabilities. Where a game offers one, the free practice (fun/AI) mode can be used without wagering, and no penalty applies for choosing not to play a game that does not suit your abilities. We are working to increase accessibility options across our games.",
+      "Solitaire Duel is turn-based, so there is no reaction-time requirement: you can take as long as you need on your turn. The timed surfaces, such as the daily puzzle, are optional, and free practice against the AI bot lets you learn the game with no opponent waiting on you. Nothing here requires rapid input, and no penalty applies for choosing not to play a mode that does not suit your abilities. We are working to increase accessibility options across the site.",
     ],
   },
   {
@@ -65,8 +64,7 @@ const sections = [
 
 export default function AccessibilityPage() {
   return (
-    <div className="relative min-h-screen">
-      <InteractiveCasinoBg variant="subtle" />
+    <div className="relative min-h-screen bg-page text-white">
 
       <NavigationBar currentPath="/" />
 
@@ -76,14 +74,14 @@ export default function AccessibilityPage() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.5 }}
         >
-          <h1 className="mb-4 text-4xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-[#00e5ff] to-[#f5ff3b]">
+          <h1 className="mb-4 text-4xl font-extrabold text-transparent bg-clip-text bg-linear-to-r from-[#00e5ff] to-[#f5ff3b]">
             Accessibility Policy
           </h1>
           <p className="mb-8 text-lg text-[#9dd8ff]">
             Last updated: September 4, 2026
           </p>
 
-          <div className="mb-8 rounded-lg border border-[#00e5ff]/20 bg-[#040d24]/80 p-6 backdrop-blur-sm">
+          <div className="mb-8 rounded-lg border border-[#00e5ff]/20 bg-surface/90 p-6 backdrop-blur-xs">
             <p className="leading-relaxed text-[#c9f7ff]">
               Accessibility is a core design principle at GRYND. We believe
               everyone should be able to enjoy skill-based gaming, regardless
@@ -101,7 +99,7 @@ export default function AccessibilityPage() {
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.4, delay: index * 0.05 }}
-              className="rounded-lg border border-[#00e5ff]/15 bg-[#040d24]/60 p-6 backdrop-blur-sm transition-all hover:border-[#00e5ff]/30 hover:shadow-[0_0_15px_rgba(0,229,255,0.1)]"
+              className="rounded-lg border border-[#00e5ff]/15 bg-surface/80 p-6 backdrop-blur-xs transition-all hover:border-[#00e5ff]/30 hover:shadow-[0_0_15px_rgba(0,229,255,0.1)]"
             >
               <h2 className="mb-3 text-xl font-bold text-[#00e5ff]">
                 {section.title}

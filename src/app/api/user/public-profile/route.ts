@@ -1,12 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { db } from "../../../../db";
-import { users, userStats } from "../../../../db/schema";
+import { users, userStats, userStreaks } from "../../../../db/schema";
+import { readCompetitiveStreaksForClerkId } from "../../../../lib/competitiveStreak";
 import { eq, sql } from "drizzle-orm";
 import { DEFAULT_ICON_KEY, isIconKey } from "../../../../lib/iconAssets";
 import { getIconByKey } from "../../../../lib/icons";
 import { getCosmeticByKey, resolveEquippedCosmetic } from "../../../../lib/cosmetics";
 import { getTrophiesForUser } from "../../../../lib/trophyStore";
+import { getPlayerProgression } from "../../../../lib/playerLevel";
 import {
   getRatingsForUser,
   overallEloFromRatingsMap,
@@ -47,6 +49,7 @@ export async function GET(req: NextRequest) {
         // resolved + exposed below; other slots stay private to the owner.
         equippedCosmetics: users.equippedCosmetics,
         level: users.level,
+        peakTotalTrophies: users.peakTotalTrophies,
         xp: users.xp,
         gamesWon: users.gamesWon,
         gamesLost: users.gamesLost,
@@ -63,6 +66,9 @@ export async function GET(req: NextRequest) {
         selectedSpecialTitle: users.selectedSpecialTitle,
         dailyStreakCurrent: users.dailyStreakCurrent,
         dailyStreakBest: users.dailyStreakBest,
+        // The authoritative daily play record (UTC `user_streaks`), used by
+        // the public profile's dynamic streak record badge.
+        streakRecordBest: sql<number>`COALESCE(${userStreaks.longestStreak}, 0)::int`,
         // Leaderboard-style record — same columns the /classement boards
         // read, so the public profile's stat tabs match the leaderboard.
         record: {
@@ -89,6 +95,7 @@ export async function GET(req: NextRequest) {
       })
       .from(users)
       .leftJoin(userStats, eq(userStats.userId, users.id))
+      .leftJoin(userStreaks, eq(userStreaks.userId, users.id))
       .where(eq(users.clerkId, clerkId))
       .limit(1);
 
@@ -97,6 +104,15 @@ export async function GET(req: NextRequest) {
         { success: false, error: "User not found" },
         { status: 404 },
       );
+    }
+
+    // Both ranked ladders, read independently. A missing migration/table or a
+    // query failure hides the badges rather than failing the public profile.
+    let competitiveStreaks: Record<string, { current: number; best: number }> = {};
+    try {
+      competitiveStreaks = await readCompetitiveStreaksForClerkId(clerkId);
+    } catch (error) {
+      console.error("Error reading competitive streaks for public profile:", error);
     }
 
     // Official Grynd icon only — never expose a stored/legacy avatar URL.
@@ -150,6 +166,12 @@ export async function GET(req: NextRequest) {
       (sum, entry) => sum + (Number(entry?.trophies) || 0),
       0,
     );
+    // Permanent trophy-derived level/rank. The high-water mark is maintained
+    // server-side (migration 0247); no client value is ever accepted.
+    const playerLevel = getPlayerProgression({
+      totalTrophies,
+      peakTrophies: user.peakTotalTrophies,
+    });
     // Overall Elo — server-derived aggregate of the established ratings
     // above. Null until at least OVERALL_MIN_GAMES different games are
     // established; provisional games never count. Never stored, never
@@ -167,6 +189,14 @@ export async function GET(req: NextRequest) {
         profileGlow,
         trophies,
         totalTrophies,
+        // Per-game ranked win streaks; keys are `solitaire-duel` and
+        // `solitaire-puzzle`, never combined.
+        competitiveStreaks,
+        // The retired stored `level` is overridden for display with the
+        // trophy-derived level; `playerLevel` carries rank + permanent peak.
+        level: playerLevel.level,
+        playerLevel,
+        peakTotalTrophies: playerLevel.peakTrophies,
         // gameKey → { rating, peakRating, gamesRated, wins, losses, draws,
         // lastDelta, lastRatedAt, provisional }. Server-derived only.
         ratings,

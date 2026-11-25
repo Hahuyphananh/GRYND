@@ -1,0 +1,359 @@
+/**
+ * src/lib/solitaire-duel/boardThemes.ts
+ *
+ * THE SOLITAIRE TABLE, in six flavours.
+ *
+ * What a theme paints — and what it deliberately cannot paint:
+ *
+ *   • the TABLE: the felt behind the cards (a gradient, its edge, its shadow),
+ *   • the SLOTS: the empty pile sockets (fill, border, their dim ink),
+ *   • the LEGAL-MOVE colour used by those sockets, and
+ *   • the LEGEND ink under the board.
+ *
+ * It does NOT touch the cards. The sheet a face-up card is printed on, the red
+ * and black of the pips, the patterned back and the selected/legal outlines on
+ * a CARD are all owned by `PlayingCard` and the `--gr-*` token layer. A theme
+ * changes the furniture around the cards, never the cards themselves — which is
+ * also why a preset cannot make the game unreadable: every felt is dark enough
+ * for a white card and every slot/legend colour is checked for contrast in
+ * `tests/solitaire-board-themes.test.mjs`.
+ *
+ * ONE SOURCE OF TRUTH. Solo, Daily, Practice vs AI and Ranked PvP all render
+ * the same `<SolitaireBoard>`, and that component reads this catalog through
+ * `useSolitaireBoardTheme`. There is no per-mode colour, so the four modes
+ * cannot drift apart.
+ *
+ * The values are plain CSS strings (gradients included) because they are set as
+ * custom properties on the board root; `base` mirrors the gradient's mid stop
+ * so contrast can be measured in a test without parsing CSS.
+ */
+
+export const BOARD_THEME_STORAGE_KEY = "grynd.solitaire.boardTheme.v1";
+
+/** Same-tab notification for a theme change (storage events only cross tabs). */
+export const BOARD_THEME_EVENT = "grynd:solitaire-theme";
+
+export type BoardThemeKey =
+  | "classic"
+  | "ocean"
+  | "royal"
+  | "midnight"
+  | "copper"
+  | "sand"
+  // Streak-earned tables (Day 3 → Day 365):
+  | "felt_slate"
+  | "felt_royal_emerald"
+  | "felt_midnight_navy"
+  | "felt_crimson_velvet"
+  | "felt_eternal_obsidian"
+  // The two GRYND PRO tables (migration-era, PRO-only):
+  | "founder"
+  | "supporter";
+
+export type BoardTheme = {
+  key: BoardThemeKey;
+  /**
+   * GRYND PRO-only table. The board itself paints it like any other preset (a
+   * player who already has it selected keeps a readable board), but choosing it
+   * is refused for a non-member by PUT /api/solitaire/board-theme, and the
+   * selector locks the swatch. It is the same table, not a different game.
+   */
+  proOnly?: boolean;
+  /**
+   * Streak day that unlocks this table, or undefined for an always-owned one.
+   * A table with a streak day is refused by the equip route until the player's
+   * UTC streak reaches it; the felt itself always renders (a player who already
+   * has it selected keeps a readable board).
+   */
+  streakDay?: number;
+  /** What the selector shows. */
+  label: string;
+  /** One-line description, used as the radio's title/aria description. */
+  blurb: string;
+  /** Solid mid tone of the felt — what contrast is measured against. */
+  base: string;
+  /** The felt itself (CSS `background-image`). */
+  felt: string;
+  /** The table's own edge, drawn as an inset ring (never a layout border). */
+  frame: string;
+  /**
+   * An extra inset shadow layer: the casino double border, hairline trim and
+   * corner flourishes that CSS can draw without an image asset. Optional, and
+   * appended to the board's own inset ring.
+   */
+  frameExtra?: string;
+  /** Empty pile socket. */
+  slot: {
+    fill: string;
+    border: string;
+    ink: string;
+    /** Filled socket while a held card may be placed there. */
+    activeFill: string;
+  };
+  /** The legal-move cue on an empty pile (and its soft glow). */
+  legal: {
+    ink: string;
+    glow: string;
+  };
+  /** The one-line legend under the tableau. */
+  legend: string;
+};
+
+export const DEFAULT_BOARD_THEME: BoardThemeKey = "classic";
+
+/**
+ * The presets. Order is the selector's order; Classic is first because it is
+ * the default and the reset target.
+ */
+export const BOARD_THEMES: readonly BoardTheme[] = [
+  {
+    key: "classic",
+    label: "Classic Green",
+    blurb: "The traditional card-table green.",
+    base: "#0b3d2e",
+    felt: "radial-gradient(120% 120% at 50% 0%, #15583f 0%, #0b3d2e 46%, #06251b 100%)",
+    frame: "#0a2a20",
+    slot: {
+      fill: "rgba(3, 24, 18, 0.72)",
+      border: "rgba(150, 255, 214, 0.22)",
+      ink: "rgba(214, 255, 236, 0.55)",
+      activeFill: "rgba(217, 255, 233, 0.12)",
+    },
+    legal: { ink: "#d9ffe9", glow: "rgba(217, 255, 233, 0.28)" },
+    legend: "#cfeee0",
+  },
+  {
+    key: "ocean",
+    label: "Ocean Blue",
+    blurb: "Deep water, cool and quiet.",
+    base: "#0a3554",
+    felt: "radial-gradient(120% 120% at 50% 0%, #0f4a72 0%, #0a3554 46%, #061d33 100%)",
+    frame: "#072a44",
+    slot: {
+      fill: "rgba(4, 22, 38, 0.72)",
+      border: "rgba(150, 225, 255, 0.22)",
+      ink: "rgba(206, 240, 255, 0.55)",
+      activeFill: "rgba(205, 239, 255, 0.12)",
+    },
+    legal: { ink: "#cdefff", glow: "rgba(205, 239, 255, 0.3)" },
+    legend: "#cfeeff",
+  },
+  {
+    key: "royal",
+    label: "Royal Purple",
+    blurb: "Court-velvet purple.",
+    base: "#2a1355",
+    felt: "radial-gradient(120% 120% at 50% 0%, #3d1f73 0%, #2a1355 46%, #170a30 100%)",
+    frame: "#210f45",
+    slot: {
+      fill: "rgba(14, 7, 33, 0.72)",
+      border: "rgba(206, 180, 255, 0.24)",
+      ink: "rgba(228, 214, 255, 0.55)",
+      activeFill: "rgba(230, 217, 255, 0.12)",
+    },
+    legal: { ink: "#e6d9ff", glow: "rgba(230, 217, 255, 0.3)" },
+    legend: "#e4dcff",
+  },
+  {
+    key: "midnight",
+    label: "Midnight",
+    blurb: "Almost black, for late-night play.",
+    base: "#0b0d18",
+    felt: "radial-gradient(120% 120% at 50% 0%, #191c2f 0%, #0b0d18 48%, #050609 100%)",
+    frame: "#151827",
+    slot: {
+      fill: "rgba(3, 4, 8, 0.78)",
+      border: "rgba(190, 200, 255, 0.2)",
+      ink: "rgba(214, 220, 255, 0.5)",
+      activeFill: "rgba(223, 228, 255, 0.1)",
+    },
+    legal: { ink: "#dfe4ff", glow: "rgba(223, 228, 255, 0.26)" },
+    legend: "#d9dff8",
+  },
+  {
+    key: "copper",
+    label: "Warm Copper",
+    blurb: "A burnished, autumnal table.",
+    base: "#42200f",
+    felt: "radial-gradient(120% 120% at 50% 0%, #5c2f16 0%, #42200f 46%, #2a1408 100%)",
+    frame: "#35190b",
+    slot: {
+      fill: "rgba(24, 11, 5, 0.72)",
+      border: "rgba(255, 196, 148, 0.24)",
+      ink: "rgba(255, 224, 196, 0.55)",
+      activeFill: "rgba(255, 224, 194, 0.12)",
+    },
+    legal: { ink: "#ffe0c2", glow: "rgba(255, 224, 194, 0.32)" },
+    legend: "#ffdfc4",
+  },
+  {
+    key: "sand",
+    label: "Sand",
+    blurb: "Sun-baked desert table.",
+    base: "#5a472d",
+    felt: "radial-gradient(120% 120% at 50% 0%, #7a6140 0%, #5a472d 46%, #3d2f1c 100%)",
+    frame: "#4a3a24",
+    slot: {
+      fill: "rgba(34, 26, 15, 0.72)",
+      border: "rgba(255, 236, 194, 0.26)",
+      ink: "rgba(255, 240, 210, 0.58)",
+      activeFill: "rgba(255, 240, 206, 0.14)",
+    },
+    legal: { ink: "#fff3d6", glow: "rgba(255, 243, 214, 0.32)" },
+    legend: "#ffefd2",
+  },
+  // ── Streak tables (Day 3 → Day 365) ──────────────────────────────────
+  // Earned by the UTC daily streak and kept forever. Same furniture contract
+  // as every other preset: they paint the table, never the cards.
+  {
+    key: "felt_slate",
+    streakDay: 3,
+    label: "Slate",
+    blurb: "Deep matte charcoal with a woven texture.",
+    base: "#1a2026",
+    felt: "radial-gradient(120% 120% at 50% 0%, #1e242b 0%, #14181d 68%, #101418 100%), repeating-linear-gradient(45deg, rgba(255,255,255,0.022) 0 2px, transparent 2px 4px), repeating-linear-gradient(-45deg, rgba(0,0,0,0.06) 0 2px, transparent 2px 4px)",
+    frame: "#0f1418",
+    slot: {
+      fill: "rgba(6, 9, 12, 0.72)",
+      border: "rgba(206, 214, 224, 0.2)",
+      ink: "rgba(224, 230, 238, 0.52)",
+      activeFill: "rgba(228, 234, 242, 0.11)",
+    },
+    legal: { ink: "#e6ecf4", glow: "rgba(230, 236, 244, 0.26)" },
+    legend: "#dbe2ea",
+  },
+  {
+    key: "felt_royal_emerald",
+    streakDay: 30,
+    label: "Royal Emerald",
+    blurb: "Tournament green with crisp casino border lines.",
+    base: "#0f4c3a",
+    felt: "radial-gradient(120% 120% at 50% 0%, #0f4c3a 0%, #0b3a2c 60%, #082b20 100%)",
+    frame: "#062219",
+    frameExtra:
+      "inset 0 0 0 6px rgba(255,255,255,0.04), inset 0 0 0 7px rgba(214,255,236,0.18)",
+    slot: {
+      fill: "rgba(3, 26, 20, 0.72)",
+      border: "rgba(160, 255, 218, 0.24)",
+      ink: "rgba(214, 255, 236, 0.58)",
+      activeFill: "rgba(217, 255, 233, 0.13)",
+    },
+    legal: { ink: "#d9ffe9", glow: "rgba(217, 255, 233, 0.3)" },
+    legend: "#cfeee0",
+  },
+  {
+    key: "felt_midnight_navy",
+    streakDay: 60,
+    label: "Midnight Navy",
+    blurb: "Deep tournament blue with a diamond weave.",
+    base: "#0e1f38",
+    felt: "radial-gradient(120% 120% at 50% 0%, #10233f 0%, #0c1b31 64%, #091426 100%), repeating-linear-gradient(45deg, rgba(140,180,255,0.05) 0 1px, transparent 1px 12px), repeating-linear-gradient(-45deg, rgba(140,180,255,0.05) 0 1px, transparent 1px 12px)",
+    frame: "#071120",
+    slot: {
+      fill: "rgba(3, 10, 22, 0.72)",
+      border: "rgba(150, 190, 255, 0.22)",
+      ink: "rgba(206, 226, 255, 0.56)",
+      activeFill: "rgba(206, 226, 255, 0.12)",
+    },
+    legal: { ink: "#cfe2ff", glow: "rgba(207, 226, 255, 0.28)" },
+    legend: "#cbdffb",
+  },
+  {
+    key: "felt_crimson_velvet",
+    streakDay: 275,
+    label: "Crimson Velvet",
+    blurb: "Deep burgundy velvet with a warm gold hairline trim.",
+    base: "#3a0f18",
+    felt: "radial-gradient(120% 120% at 50% 0%, #4a121d 0%, #380d17 62%, #26080e 100%), repeating-linear-gradient(0deg, rgba(255,215,150,0.018) 0 2px, transparent 2px 5px)",
+    frame: "#1f070c",
+    frameExtra: "inset 0 0 0 5px rgba(255, 214, 150, 0.1)",
+    slot: {
+      fill: "rgba(22, 5, 9, 0.72)",
+      border: "rgba(255, 214, 170, 0.22)",
+      ink: "rgba(255, 226, 200, 0.56)",
+      activeFill: "rgba(255, 226, 200, 0.12)",
+    },
+    legal: { ink: "#ffe2c8", glow: "rgba(255, 226, 200, 0.3)" },
+    legend: "#ffdcc4",
+  },
+  {
+    key: "felt_eternal_obsidian",
+    streakDay: 365,
+    label: "Eternal Obsidian",
+    blurb: "Pitch obsidian with metallic gold corner flourishes.",
+    base: "#121116",
+    felt: "radial-gradient(circle at 0% 0%, rgba(201,162,74,0.22) 0 8%, transparent 22%), radial-gradient(circle at 100% 0%, rgba(201,162,74,0.22) 0 8%, transparent 22%), radial-gradient(circle at 0% 100%, rgba(201,162,74,0.18) 0 8%, transparent 22%), radial-gradient(circle at 100% 100%, rgba(201,162,74,0.18) 0 8%, transparent 22%), radial-gradient(120% 120% at 50% 45%, #0d0d10 0%, #14131a 58%, #18161c 100%)",
+    frame: "#0a0a0d",
+    frameExtra:
+      "inset 0 0 0 1px rgba(201,162,74,0.55), inset 0 0 24px rgba(201,162,74,0.12)",
+    slot: {
+      fill: "rgba(6, 6, 9, 0.74)",
+      border: "rgba(214, 190, 140, 0.26)",
+      ink: "rgba(240, 228, 200, 0.58)",
+      activeFill: "rgba(240, 228, 200, 0.14)",
+    },
+    legal: { ink: "#f0e4c8", glow: "rgba(240, 228, 200, 0.3)" },
+    legend: "#e9dcbc",
+  },
+  // ── GRYND PRO tables ───────────────────────────────────────────────────
+  // Same furniture, same contrast discipline as the free presets: a PRO table
+  // changes the felt, never the cards, and cannot make the game unreadable.
+  {
+    key: "founder",
+    proOnly: true,
+    label: "Founder's Table",
+    blurb: "GRYND PRO founders — gold felt, torchlight edge.",
+    base: "#3a2a06",
+    felt: "radial-gradient(120% 120% at 50% 0%, #57400a 0%, #3a2a06 46%, #201703 100%)",
+    frame: "#2a1e04",
+    slot: {
+      fill: "rgba(20, 14, 2, 0.74)",
+      border: "rgba(255, 230, 140, 0.3)",
+      ink: "rgba(255, 244, 214, 0.62)",
+      activeFill: "rgba(255, 244, 214, 0.14)",
+    },
+    legal: { ink: "#fff3c4", glow: "rgba(255, 243, 196, 0.34)" },
+    legend: "#ffee98",
+  },
+  {
+    key: "supporter",
+    proOnly: true,
+    label: "Supporter's Table",
+    blurb: "GRYND PRO supporters — deep teal, quiet edge.",
+    base: "#04302a",
+    felt: "radial-gradient(120% 120% at 50% 0%, #075247 0%, #04302a 46%, #021b17 100%)",
+    frame: "#032622",
+    slot: {
+      fill: "rgba(2, 24, 20, 0.74)",
+      border: "rgba(160, 255, 225, 0.26)",
+      ink: "rgba(214, 255, 242, 0.6)",
+      activeFill: "rgba(214, 255, 242, 0.14)",
+    },
+    legal: { ink: "#d6fff2", glow: "rgba(214, 255, 242, 0.32)" },
+    legend: "#bdffe9",
+  },
+] as const;
+
+const BY_KEY = new Map<string, BoardTheme>(BOARD_THEMES.map((theme) => [theme.key, theme]));
+
+export function isBoardThemeKey(value: unknown): value is BoardThemeKey {
+  return typeof value === "string" && BY_KEY.has(value);
+}
+
+/**
+ * A stored preference is only ever a HINT. Anything unknown — a renamed preset,
+ * a corrupted value, a hand-edited localStorage — resolves to Classic Green
+ * rather than leaving the board unstyled.
+ */
+/**
+ * The stored key `felt_default` is the schema's default and means "no choice":
+ * it resolves to Classic Green rather than to a preset that does not exist.
+ */
+export function boardThemeFor(value: unknown): BoardTheme {
+  if (value === "felt_default") return BY_KEY.get(DEFAULT_BOARD_THEME)!;
+  return BY_KEY.get(typeof value === "string" ? value : "") ?? BY_KEY.get(DEFAULT_BOARD_THEME)!;
+}
+
+export function boardThemeLabel(value: unknown): string {
+  return boardThemeFor(value).label;
+}

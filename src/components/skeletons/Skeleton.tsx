@@ -92,7 +92,7 @@ export function SkeletonCards({
         {Array.from({ length: cards }, (_, i) => (
           <div
             key={i}
-            className="rounded-xl border border-[#00e5ff]/15 bg-[#040d24]/70 p-5"
+            className="rounded-xl border border-[#00e5ff]/15 bg-surface/80 p-5"
           >
             {children ?? <SkeletonLines count={3} widths={["w-1/3", "w-full", "w-2/3"]} />}
           </div>

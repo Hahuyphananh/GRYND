@@ -5,8 +5,12 @@
 // workflow both before approval (preflight) and immediately before activation.
 //
 //   node deploy/deployment-guard.mjs \
-//     --event=push --branch=refs/heads/main \
-//     --target-to-main=identical --target-to-active=behind
+//     --event=workflow_dispatch --branch=refs/heads/solitaire-first \
+//     --target-to-head=identical --target-to-active=behind
+//
+// `--target-to-main` is accepted as an alias for `--target-to-head` so an older
+// queued run keeps working; the comparison is always against the selected
+// branch head.
 //
 // Prints { proceed, code, reason } and exits 0; invalid input exits 2.
 
@@ -38,7 +42,7 @@ if (event !== "push" && event !== "workflow_dispatch") {
   const decision = evaluateDeploymentGuard({
     event,
     branch: flags.branch ?? "refs/heads/main",
-    targetToMain: flags["target-to-main"] ?? "",
+    targetToHead: flags["target-to-head"] ?? flags["target-to-main"] ?? "",
     targetToActive: flags["target-to-active"] ?? "",
     allowOutOfOrder: flags["allow-out-of-order"] === "true",
   });

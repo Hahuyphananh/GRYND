@@ -23,6 +23,23 @@ export const ACCENT_COLORS = [
   "#e2e8f0",
 ];
 
+// The chat name-colour palette. These are player data, not chrome: ten
+// selectable values a player picks from, so they are literals by nature and
+// live here beside the other cosmetic palettes rather than in the token
+// layer (a token is a role, not a choice).
+export const CHAT_COLORS = [
+  "#00e5ff",
+  "#f5ff3b",
+  "#f0abfc",
+  "#34d399",
+  "#fb923c",
+  "#a78bfa",
+  "#f43f5e",
+  "#22d3ee",
+  "#facc15",
+  "#e2e8f0",
+];
+
 export const HEX_COLOR_REGEX = /^#[0-9a-fA-F]{6}$/;
 
 /**

@@ -6,8 +6,10 @@
 //
 // The caller's own personalized game ranking, produced by the deterministic
 // engine in src/lib/gameRecommendations.js from their questionnaire answers.
-// `recommendations` always contains EVERY game (ranked, never filtered) —
-// personalization reorders the lobby, it never hides anything from a player.
+// `recommendations` is the ranked catalogue with currently ARCHIVED games
+// removed — personalization still only reorders the available lobby, and the
+// engine itself never hides a game (src/lib/gameAvailability.js owns the
+// archive list).
 // `personalized && complete` is the contract a UI must check before showing a
 // personalized surface: partial answers still rank, but they are not a stated
 // preference (see src/lib/gameRecommendations.js).
@@ -33,7 +35,11 @@ import { eq } from "drizzle-orm";
 import { db } from "../../../../db";
 import { onboardingResponses, users } from "../../../../db/schema";
 import { groupStoredResponses } from "../../../../lib/onboardingQuestionnaire";
-import { recommendGames } from "../../../../lib/gameRecommendations";
+import {
+  PRIMARY_GAME_COUNT,
+  recommendGames,
+} from "../../../../lib/gameRecommendations";
+import { isGameAvailable } from "../../../../lib/gameAvailability";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -42,7 +48,22 @@ type StoredRow = { questionKey: string; answer: string };
 
 /** The engine payload for a set of answers (null → default order). */
 function payload(answers: Parameters<typeof recommendGames>[0]) {
-  return NextResponse.json({ success: true, ...recommendGames(answers) });
+  const result = recommendGames(answers);
+  // The engine ranks the whole catalogue (it never hides a game), but a
+  // recommendation must not surface an archived one. Filtering here keeps the
+  // engine — and its tested ranking order — untouched.
+  const recommendations = result.recommendations.filter((game) =>
+    isGameAvailable(game.id),
+  );
+  const primaryGameIds = recommendations
+    .slice(0, PRIMARY_GAME_COUNT)
+    .map((game) => game.id);
+  return NextResponse.json({
+    success: true,
+    ...result,
+    recommendations,
+    primaryGameIds,
+  });
 }
 
 export async function GET() {

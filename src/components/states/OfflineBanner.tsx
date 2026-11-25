@@ -92,7 +92,7 @@ export default function OfflineBanner() {
           className={`fixed inset-x-0 top-2 z-[70] mx-auto w-fit max-w-[calc(100vw-1.5rem)] rounded-full border px-3.5 py-1.5 text-xs font-semibold shadow-[0_0_24px_rgba(0,0,0,0.4)] backdrop-blur-md ${
             online
               ? "border-emerald-400/50 bg-emerald-500/15 text-emerald-200"
-              : "border-[#f5ff3b]/50 bg-[#08142f]/95 text-[#f5ff3b]"
+              : "border-[#f5ff3b]/50 bg-surface/95 text-[#f5ff3b]"
           }`}
         >
           <span className="inline-flex items-center gap-2">
@@ -116,7 +116,7 @@ export default function OfflineBanner() {
                   }
                 }}
                 aria-label={t("states.retryNow", "Retry now")}
-                className="rounded-full p-0.5 transition hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#f5ff3b]"
+                className="rounded-full p-0.5 transition hover:text-white focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#f5ff3b]"
               >
                 <IconRefresh size={13} aria-hidden="true" />
               </button>

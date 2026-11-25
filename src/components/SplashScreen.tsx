@@ -21,18 +21,26 @@ export default function SplashScreen() {
     } catch {
       // storage unavailable — still show the splash this once
     }
-    if (seen) return;
-    try {
-      window.sessionStorage.setItem(SPLASH_SEEN_KEY, "1");
-    } catch {
-      // ignore
+    if (!seen) {
+      setShow(true);
+      try {
+        window.sessionStorage.setItem(SPLASH_SEEN_KEY, "1");
+      } catch {
+        // ignore
+      }
     }
-    setShow(true);
 
     // Dismiss on a timer once hydration completes. If something throws
     // during hydration the effect never runs, so also dismiss on the
     // window `load` event and on a hard cap — the splash must never be
     // able to trap the app in a permanent "loading" overlay.
+    //
+    // This scheduling runs on EVERY pass of the effect, not only the pass that
+    // showed the overlay. StrictMode runs an effect twice (mount, cleanup,
+    // remount) and the second pass already sees the key the first one wrote, so
+    // gating the timers on `!seen` left the overlay mounted forever in dev — a
+    // full-viewport, pointer-active layer eating every click on the page behind
+    // it. When the splash is not showing, these timers only set `false` again.
     let dismissed = false;
     const dismiss = () => {
       if (dismissed) return;
@@ -55,12 +63,12 @@ export default function SplashScreen() {
     <AnimatePresence>
       {show && (
         <motion.div
-          /* Fixed full-viewport, z-9999; bg-[#030817] matches the layout
+          /* Fixed full-viewport, z-9999; bg-page matches the layout
              body so the skeleton sits on a consistent backdrop. That hex is
-             also the light theme's page ground source — light-theme.css remaps
+             also the light theme's page ground source — the light token block remaps
              `.bg-[#030817]`, so this overlay follows the theme like every other
              surface and needs no theme branch here. */
-          className="fixed inset-0 z-[9999] overflow-hidden bg-[#030817]"
+          className="fixed inset-0 z-[9999] overflow-hidden bg-page"
           initial={{ opacity: 1 }}
           exit={{ opacity: 0 }}
           transition={{ duration: 0.4, ease: "easeInOut" }}

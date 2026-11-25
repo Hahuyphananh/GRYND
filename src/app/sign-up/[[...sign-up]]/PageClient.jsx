@@ -5,7 +5,7 @@ import InteractiveCasinoBg from "../../../components/InteractiveCasinoBg";
 
 export default function Page() {
   return (
-    <div className="relative min-h-screen flex items-center justify-center bg-[#001a33]">
+    <div className="relative min-h-screen flex items-center justify-center bg-[var(--tint-bg--001a33)]">
       <InteractiveCasinoBg variant="subtle" />
       <SignUp
         fallbackRedirectUrl="/sync"
@@ -42,7 +42,7 @@ export default function Page() {
             headerSubtitle: "text-white/80",
 
             socialButtonsBlockButton:
-              "bg-[#071a33] text-white border border-[#00fff7]/30 hover:shadow-[0_0_15px_#00fff7] transition-all",
+              "bg-[var(--tint-bg--071a33)] text-white border border-[#00fff7]/30 hover:shadow-[0_0_15px_#00fff7] transition-all",
 
             formButtonPrimary:
               "bg-[#00fff7] text-black font-bold hover:shadow-[0_0_20px_#00fff7] transition-all",
@@ -50,7 +50,7 @@ export default function Page() {
             formFieldLabel: "text-white/80", // IMPORTANT FIX
 
             formFieldInput:
-              "bg-[#071a33] text-white border border-[#00fff7]/30 focus:border-[#00fff7] focus:shadow-[0_0_10px_#00fff7]",
+              "bg-[var(--tint-bg--071a33)] text-white border border-[#00fff7]/30 focus:border-[#00fff7] focus:shadow-[0_0_10px_#00fff7]",
 
             footerActionLink:
               "text-white/70 hover:text-[#00fff7] underline underline-offset-4",

@@ -66,6 +66,7 @@ export async function sendEmailSafely({
   category = "marketing",
   dedupeKey,
   from,
+  bcc,
 }: {
   user: UserRef;
   subject: string;
@@ -75,6 +76,12 @@ export async function sendEmailSafely({
   dedupeKey?: string;
   /** Override the default sender address. Defaults to getFromAddress(). */
   from?: string;
+  /**
+   * Blind recipients. Used by the Trustpilot invitation channel: the customer
+   * is `to`, and Trustpilot's personal invite address is `bcc` so its own
+   * system can send the review invitation. It is never a visible recipient.
+   */
+  bcc?: string | string[];
 }) {
   if (!user?.email) return { skipped: true, reason: "missing_email" };
 
@@ -125,9 +132,11 @@ export async function sendEmailSafely({
     progression: "progress",
     loss_streak: "progress",
     big_win: "progress",
-    daily_reward: "daily",
     weekly_summary: "summary",
     inactivity_reactivation: "promotions",
+    // A review request is promotional mail like a comeback email; a player who
+    // turned promotions off must not receive one.
+    trustpilot_review_invite: "promotions",
   };
   const prefKey = PREF_BY_TYPE[type];
   if (prefKey && user.clerkId) {
@@ -175,6 +184,7 @@ export async function sendEmailSafely({
       to: user.email,
       subject,
       html: finalHtml,
+      ...(bcc ? { bcc } : {}),
       ...(headers ? { headers } : {}),
     });
     error = result.error;

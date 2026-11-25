@@ -34,6 +34,14 @@ jobs:
       - name: Install Playwright browser
         run: npx playwright install --with-deps chromium
 
+      # Hard gates: no continue-on-error, so a failure stops this job outright.
+      # The release workflow runs the same two commands before it can deploy.
+      - name: Check the app for undefined references
+        run: npm run lint:no-undef
+
+      - name: Run Sentry tunnel tests
+        run: npm run test:sentry-tunnel
+
       - name: Run repository tests
         id: tests
         continue-on-error: true
@@ -43,6 +51,13 @@ jobs:
         id: build
         continue-on-error: true
         run: npm run build
+
+      # After the build, the tunnel test also asserts the generated
+      # .next/routes-manifest.json keeps /monitoring -> /sentry-tunnel (before
+      # the build it can only check the config rewrites).
+      - name: Verify the built Sentry tunnel rewrite
+        if: steps.build.outcome == 'success'
+        run: npm run test:sentry-tunnel
 
       - name: Run browser QA
         id: browser
@@ -123,8 +138,22 @@ jobs:
           GRYND_URL: https://grynd.dedyn.io/
         run: node qa/smoke-test.mjs
 
+      # A proposed fix must not reintroduce either failure class: re-run both
+      # gates and require them to pass before any branch or PR is created.
+      - name: Re-check for undefined references after AI fix
+        if: steps.changes.outputs.changed == 'true'
+        id: relint
+        continue-on-error: true
+        run: npm run lint:no-undef
+
+      - name: Re-run Sentry tunnel tests after AI fix
+        if: steps.changes.outputs.changed == 'true'
+        id: retunnel
+        continue-on-error: true
+        run: npm run test:sentry-tunnel
+
       - name: Create fix branch
-        if: steps.changes.outputs.changed == 'true' && steps.retest.outcome == 'success' && steps.rebuild.outcome == 'success' && steps.rebrowser.outcome == 'success'
+        if: steps.changes.outputs.changed == 'true' && steps.retest.outcome == 'success' && steps.rebuild.outcome == 'success' && steps.rebrowser.outcome == 'success' && steps.relint.outcome == 'success' && steps.retunnel.outcome == 'success'
         shell: bash
         run: |
           git config user.name "Grynd QA Agent"
@@ -140,7 +169,7 @@ jobs:
           echo "BRANCH=$BRANCH" >> "$GITHUB_ENV"
 
       - name: Create pull request
-        if: steps.changes.outputs.changed == 'true' && steps.retest.outcome == 'success' && steps.rebuild.outcome == 'success' && steps.rebrowser.outcome == 'success'
+        if: steps.changes.outputs.changed == 'true' && steps.retest.outcome == 'success' && steps.rebuild.outcome == 'success' && steps.rebrowser.outcome == 'success' && steps.relint.outcome == 'success' && steps.retunnel.outcome == 'success'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |

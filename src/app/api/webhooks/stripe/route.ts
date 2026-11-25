@@ -1,21 +1,17 @@
 // src/app/api/stripe/webhook/route.ts
 //
-// POST — Stripe webhook for GRYND PRO membership AND one-time coin purchases.
+// POST — Stripe webhook for GRYND PRO membership. The coin shop is retired, so
+// a paid one-time Checkout Session (`mode: "payment"`) grants nothing: it only
+// keeps its `stripe_checkout_sessions` ledger row in sync.
 //
 // MEMBERSHIP GRANTS NO COINS. GRYND PRO buys ad-free/perk benefits only; a paid
 // invoice is acknowledged and audited, never credited.
 //
-// ONE-TIME COIN PURCHASES ARE CREDITED HERE, and only here. A paid Checkout
-// Session in `mode: "payment"` is handed to src/lib/tokens/coinFulfillment.ts,
-// which verifies it against our own `stripe_checkout_sessions` ledger row and
-// credits the existing wallet inside one transaction. No success page, client
-// poll or /api/stripe/session-status call can grant coins.
-//
 // Handled events:
 //   * `checkout.session.completed` / `checkout.session.async_payment_succeeded`:
 //     mode=subscription records the new subscription row from our own checkout
-//     metadata; mode=payment fulfils the coin purchase (see above). An unpaid
-//     session only updates the ledger row's status and grants nothing.
+//     metadata; mode=payment only updates the ledger row's status. No Checkout
+//     Session grants coins any more.
 //   * `customer.subscription.created/updated` sync the subscription row's
 //     status + billing period; `customer.subscription.deleted` records the
 //     cancellation (which drops the user back to the `free` state, since
@@ -26,10 +22,8 @@
 //     counts as active while Stripe retries, then `deleted` cancels it.
 //   * `checkout.session.async_payment_failed` keeps the checkout ledger row's
 //     status in sync (and grants nothing).
-//   * `charge.refunded` REVERSES the purchase: the coins are taken back in
-//     proportion to the amount refunded, idempotently per order, and never
-//     below zero (src/lib/tokens/coinRefunds.ts). A wallet that cannot cover
-//     the reversal is left untouched and flagged in the audit entry.
+//   * `charge.refunded` is AUDITED ONLY: the coin reversal it used to perform
+//     was retired with the coin shop, so no balance is moved.
 //   * `charge.dispute.created` is AUDITED ONLY (see the REFUNDS AND DISPUTES
 //     note at the end of this file): a chargeback's outcome is not final when it
 //     opens, so no balance move is made automatically.
@@ -49,8 +43,6 @@ import {
 import { eq } from "drizzle-orm";
 import { getStripe, getStripeWebhookSecret } from "../../../../lib/stripe";
 import { resolveBillingIntervalForPriceId } from "../../../../lib/stripe/subscriptions";
-import { fulfillCoinCheckoutSession } from "../../../../lib/tokens/coinFulfillment";
-import { revokeCoinsForRefund } from "../../../../lib/tokens/coinRefunds";
 import { isProBillingInterval } from "../../../../lib/proBilling";
 import { auditLog } from "../../../../lib/security/auditLog";
 import { logError } from "../../../../lib/logError";
@@ -87,7 +79,11 @@ type StripeSubscriptionObject = {
   items?: {
     data?: Array<{ price?: string | { id?: string } | null }> | null;
   } | null;
-  metadata?: { clerkId?: string; planKey?: string; billingInterval?: string };
+  metadata?: {
+    clerkId?: string;
+    planKey?: string;
+    billingInterval?: string;
+  };
 };
 
 type StripeInvoiceObject = {
@@ -132,35 +128,22 @@ export async function POST(req: Request) {
           // Record the subscription from our own checkout metadata. Nothing is
           // credited — GRYND PRO grants no tokens.
           await recordSubscriptionFromCheckout(session);
+          // Stamp OUR ledger row as paid. The subscribe route writes it as
+          // `open` before redirecting, and a subscription session's payment
+          // status was never updated afterwards — which made a paid
+          // subscription look exactly like an abandoned checkout, so "charged
+          // but not entitled" was undiagnosable.
+          await updateStatus(session.id, session.payment_status ?? "paid");
           break;
         }
 
-        // One-time coin purchase. The ledger row, the paid amount, the
-        // currency, the package and the coin award are all re-verified inside
-        // coinFulfillment — a payload alone never decides a credit. An unpaid
-        // session has already been short-circuited above, and the fulfilment
-        // path independently refuses anything that is not `paid`.
-        const outcome = await fulfillCoinCheckoutSession(session);
-        if (outcome.status === "credited") {
-          auditLog("stripe_coin_purchase_credited", {
-            sessionId: session.id,
-            userId: outcome.clerkId ?? null,
-            packageKey: outcome.packageKey ?? null,
-            coins: outcome.coins ?? 0,
-            amountCents: outcome.amountCents ?? null,
-            currency: outcome.currency ?? null,
-          });
-        } else {
-          // Unknown session, already-fulfilled replay, unpaid/uncertain payment
-          // or a payload/ledger disagreement. Nothing moved; the entry is the
-          // trail an operator needs.
-          auditLog("stripe_coin_purchase_not_credited", {
-            sessionId: session.id,
-            status: outcome.status,
-            reason: outcome.reason ?? null,
-            eventType: event.type,
-          });
-        }
+        // Coin purchases were removed with the coin economy. A one-time
+        // payment session is acknowledged and audited, but nothing is credited
+        // to any wallet.
+        auditLog("stripe_one_time_payment_ignored", {
+          sessionId: session.id,
+          eventType: event.type,
+        });
         break;
       }
       case "checkout.session.async_payment_failed": {
@@ -211,9 +194,8 @@ export async function POST(req: Request) {
         break;
       }
       case "charge.refunded": {
-        // Money went back: take the matching coins back too. The reversal is
-        // proportional to the refunded amount, idempotent per order, and never
-        // drives a wallet negative (see src/lib/tokens/coinRefunds.ts).
+        // Coin purchases are gone, so a refund is audited only: no wallet is
+        // touched and no balance can be reversed.
         const charge = event.data.object as unknown as {
           id?: string;
           payment_intent?: string | null;
@@ -222,21 +204,12 @@ export async function POST(req: Request) {
           currency?: string | null;
           refunded?: boolean | null;
         };
-        const reversal = await revokeCoinsForRefund(charge);
         auditLog("stripe_charge_refunded", {
           chargeId: charge.id ?? null,
           paymentIntentId: charge.payment_intent ?? null,
           amountRefundedCents: charge.amount_refunded ?? null,
           currency: charge.currency ?? null,
-          status: reversal.status,
-          revokedCoins: reversal.coins ?? 0,
-          userId: reversal.clerkId ?? null,
-          packageKey: reversal.packageKey ?? null,
-          reason: reversal.reason ?? null,
-          action:
-            reversal.status === "revoked"
-              ? "coins_revoked"
-              : "manual_coin_reconciliation_required",
+          action: "audit_only",
         });
         break;
       }
@@ -255,7 +228,7 @@ export async function POST(req: Request) {
           amountCents: dispute.amount ?? null,
           currency: dispute.currency ?? null,
           status: dispute.status ?? null,
-          action: "manual_coin_reconciliation_required",
+          action: "manual_review_required",
         });
         break;
       }
@@ -364,14 +337,8 @@ async function recordSubscriptionFromCheckout(session: StripeSession) {
 
 // ── REFUNDS AND DISPUTES ───────────────────────────────────────────────────
 //
-// REFUNDS ARE REVERSED (`charge.refunded` → src/lib/tokens/coinRefunds.ts).
-// The reversal is proportional to the refunded amount, counted from the
-// `refund` rows already written against the order, so it is idempotent and a
-// sequence of partial refunds clears exactly one order. The debit is
-// conditional on the wallet still holding the coins, so `balance >= 0` (the
-// invariant the wager layer depends on) is never broken: a spent wallet keeps
-// what it cannot cover, and the audit entry records the shortfall for manual
-// reconciliation.
+// REFUNDS ARE AUDITED ONLY (`charge.refunded`). The coin reversal was retired
+// with the coin shop, so a refund moves no balance and needs no reconciliation.
 //
 // DISPUTES ARE AUDITED ONLY (`charge.dispute.created`). A chargeback is not
 // final when it opens — the merchant often wins it — so reversing on open would

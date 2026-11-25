@@ -1,8 +1,6 @@
 import Link from "next/link";
 import NavigationBar from "../navigation-bar";
-import Footer from "../Footer";
-import GryndProWidget from "../GryndProWidget";
-import JsonLd from "../seo/JsonLd";
+import Footer from "../Footer";import JsonLd from "../seo/JsonLd";
 import PracticeMatchButton from "./PracticeMatchButton";
 import {
   gameLandingPath,
@@ -54,7 +52,7 @@ export default function GameLanding({
   const gameGuides = guidesForGame(game.slug).slice(0, 3);
 
   return (
-    <div className="relative min-h-screen overflow-x-clip pb-16">
+    <div className="relative min-h-screen overflow-x-clip bg-page pb-16 text-white">
       <NavigationBar currentPath="/games" />
 
       {/* Structured data through the shared component, not a JSON blob copied
@@ -104,7 +102,7 @@ export default function GameLanding({
           <div className="mt-7 flex flex-wrap items-center gap-3">
             <Link
               href={playHref}
-              className="inline-flex items-center justify-center gap-2 rounded-lg border border-[#00e5ff]/60 bg-[#00e5ff] px-6 py-3 text-base font-bold text-black transition-all hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#030817]"
+              className="inline-flex items-center justify-center gap-2 rounded-lg border border-[#00e5ff]/60 bg-[#00e5ff] px-6 py-3 text-base font-bold text-black transition-all hover:brightness-110 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#030817]"
             >
               Play {game.name}
               <svg
@@ -133,7 +131,7 @@ export default function GameLanding({
             ) : null}
             <Link
               href="/games"
-              className="inline-flex items-center justify-center rounded-lg border border-[#00e5ff]/35 px-5 py-3 text-sm font-semibold text-[#9dd8ff] transition hover:bg-[#00e5ff]/10 hover:text-[#d8fbff] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff]"
+              className="inline-flex items-center justify-center rounded-lg border border-[#00e5ff]/35 px-5 py-3 text-sm font-semibold text-[#9dd8ff] transition hover:bg-[#00e5ff]/10 hover:text-[#d8fbff] focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#00e5ff]"
             >
               Browse all games
             </Link>
@@ -193,7 +191,7 @@ export default function GameLanding({
               {game.faq.map((entry) => (
                 <div
                   key={entry.q}
-                  className="rounded-xl border border-[#00e5ff]/25 bg-[#040d24] p-4"
+                  className="rounded-xl border border-[#00e5ff]/25 bg-surface p-4"
                 >
                   <dt className="mb-1.5 font-bold text-[#00e5ff]">{entry.q}</dt>
                   <dd className="text-sm leading-relaxed text-[#d8fbff]">{entry.a}</dd>
@@ -216,7 +214,7 @@ export default function GameLanding({
                   <li key={entry.slug}>
                     <Link
                       href={gameLandingPath(entry.slug)}
-                      className="block h-full rounded-xl border border-[#00e5ff]/30 bg-[#040d24] p-4 transition-all hover:-translate-y-0.5 hover:border-[#00e5ff]/60 hover:shadow-[0_0_24px_rgba(0,229,255,0.25)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff]"
+                      className="block h-full rounded-xl border border-[#00e5ff]/30 bg-surface p-4 transition-all hover:-translate-y-0.5 hover:border-[#00e5ff]/60 hover:shadow-[0_0_24px_rgba(0,229,255,0.25)] focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#00e5ff]"
                     >
                       <span className="block font-bold text-[#f5ff3b]">{entry.name}</span>
                       <span className="mt-1 block text-sm leading-relaxed text-[#9dd8ff]">
@@ -246,7 +244,7 @@ export default function GameLanding({
                   <li key={entry.slug}>
                     <Link
                       href={guidePath(entry.slug)}
-                      className="block rounded-xl border border-[#00e5ff]/25 bg-[#040d24] p-4 transition-all hover:border-[#00e5ff]/55 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff]"
+                      className="block rounded-xl border border-[#00e5ff]/25 bg-surface p-4 transition-all hover:border-[#00e5ff]/55 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#00e5ff]"
                     >
                       <span className="block font-bold text-[#00e5ff]">{entry.title}</span>
                       <span className="mt-1 block text-sm leading-relaxed text-[#9dd8ff]">
@@ -267,7 +265,7 @@ export default function GameLanding({
               click. */}
           <nav
             aria-labelledby="more-info-heading"
-            className="rounded-2xl border border-[#00e5ff]/25 bg-[#040d24] p-6"
+            className="rounded-2xl border border-[#00e5ff]/25 bg-surface p-6"
           >
             <h2 id="more-info-heading" className="text-xl font-black tracking-tight text-[#f5ff3b]">
               More about competitive play
@@ -303,7 +301,7 @@ export default function GameLanding({
           {/* ── Closing CTA ──────────────────────────────────────────────── */}
           <section
             aria-labelledby="cta-heading"
-            className="rounded-2xl border border-[#f5ff3b]/35 bg-gradient-to-r from-[#0a214d]/90 to-[#08142f]/90 p-6"
+            className="rounded-2xl border border-[#f5ff3b]/35 bg-linear-to-r from-[#0a214d]/90 to-[#08142f]/90 p-6"
           >
             <h2
               id="cta-heading"
@@ -317,7 +315,7 @@ export default function GameLanding({
             </p>
             <Link
               href={playHref}
-              className="mt-4 inline-flex items-center justify-center gap-2 rounded-lg border border-[#f5ff3b]/60 bg-[#f5ff3b] px-6 py-3 text-base font-bold text-[#041125] transition-all hover:bg-[#f5ff3b]/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#f5ff3b] focus-visible:ring-offset-2 focus-visible:ring-offset-[#08142f]"
+              className="mt-4 inline-flex items-center justify-center gap-2 rounded-lg border border-[#f5ff3b]/60 bg-[#f5ff3b] px-6 py-3 text-base font-bold text-[#041125] transition-all hover:bg-[#f5ff3b]/90 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#f5ff3b] focus-visible:ring-offset-2 focus-visible:ring-offset-[#08142f]"
             >
               Play {game.name}
             </Link>
@@ -325,12 +323,6 @@ export default function GameLanding({
         </div>
       </div>
 
-      {/* GRYND PRO widget — the same fixed bottom-right card the home page
-          mounts, in the same corner of every game landing page. This page is
-          browsing content, not gameplay: the Play CTA is still the only route
-          into a match, and the widget renders nothing for a signed-out visitor
-          or an active member beyond their status card. */}
-      <GryndProWidget />
 
       <Footer />
     </div>

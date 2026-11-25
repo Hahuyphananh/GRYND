@@ -198,6 +198,124 @@ test("a genuine failure still reaches the caller after the branding fallbacks", 
   assert.equal(stripe.calls[2].branding_settings, undefined);
 });
 
+// ── Stripe's own enums ─────────────────────────────────────────────────────
+//
+// `branding_settings.border_style` and `.font_family` are validated by Stripe
+// at session creation, NOT by the SDK types: both fields type-check as plain
+// strings, so a Tailwind-looking value like `rounded-sm` compiles, passes every
+// other test here, and is only rejected when the real API call is made. That
+// rejection is not harmless — `createBrandedCheckoutSession` retries without
+// the icon, is rejected again, and falls back to Stripe's default page, so
+// every checkout silently loses the GRYND palette.
+//
+// These are the documented enum values
+// (https://docs.stripe.com/api/checkout/sessions/create#create_checkout_session-branding_settings-border_style).
+// They are deliberately duplicated here rather than imported: this is the
+// external contract we are asserting against, so it must not move when our own
+// constants do.
+
+const STRIPE_BORDER_STYLES = ["pill", "rectangular", "rounded"];
+
+const STRIPE_FONT_FAMILIES = [
+  "be_vietnam_pro",
+  "bitter",
+  "chakra_petch",
+  "default",
+  "hahmlet",
+  "inconsolata",
+  "inter",
+  "lato",
+  "lora",
+  "m_plus_1_code",
+  "montserrat",
+  "noto_sans",
+  "noto_sans_jp",
+  "noto_serif",
+  "nunito",
+  "open_sans",
+  "pridi",
+  "pt_sans",
+  "pt_serif",
+  "raleway",
+  "roboto",
+  "roboto_slab",
+  "source_code_pro",
+  "source_sans_pro",
+  "space_grotesk",
+  "titillium_web",
+  "ubuntu_mono",
+  "zen_maru_gothic",
+];
+
+/** Throws unless every enum field in `branding` is a value Stripe accepts. */
+function assertStripeBrandingEnums(branding) {
+  const failures = [];
+
+  if (!STRIPE_BORDER_STYLES.includes(branding.border_style)) {
+    failures.push(
+      `border_style ${JSON.stringify(branding.border_style)} is outside Stripe's enum ` +
+        `(${STRIPE_BORDER_STYLES.join(" | ")})`,
+    );
+  }
+  if (!STRIPE_FONT_FAMILIES.includes(branding.font_family)) {
+    failures.push(
+      `font_family ${JSON.stringify(branding.font_family)} is not one of Stripe's supported fonts`,
+    );
+  }
+
+  // Stripe compares these literally, so padding or capitalisation is a
+  // rejection even when the word itself is valid.
+  for (const field of ["border_style", "font_family"]) {
+    const value = branding[field];
+    if (typeof value === "string" && value !== value.trim().toLowerCase()) {
+      failures.push(`${field} ${JSON.stringify(value)} must be unpadded lower-case snake_case`);
+    }
+  }
+
+  if (failures.length > 0) throw new Error(failures.join("; "));
+  return branding;
+}
+
+test("Checkout branding only ever sends values inside Stripe's enum", () => {
+  // The shipped constants are the source of the session payload...
+  assert.ok(
+    STRIPE_BORDER_STYLES.includes(CHECKOUT_BRAND.borderStyle),
+    `CHECKOUT_BRAND.borderStyle ${JSON.stringify(CHECKOUT_BRAND.borderStyle)} is outside Stripe's enum`,
+  );
+  assert.ok(
+    STRIPE_FONT_FAMILIES.includes(CHECKOUT_BRAND.fontFamily),
+    `CHECKOUT_BRAND.fontFamily ${JSON.stringify(CHECKOUT_BRAND.fontFamily)} is not a supported Stripe font`,
+  );
+
+  // ...and so is every value the helper actually puts on a session, for both
+  // the membership page and the coin shop's override.
+  assertStripeBrandingEnums(getCheckoutBranding("https://www.grynd.dedyn.io"));
+  assertStripeBrandingEnums(getCheckoutBranding("", "GRYND Coins"));
+});
+
+test("the enum guard rejects the values that type-check but Stripe refuses", () => {
+  const branding = getCheckoutBranding("https://www.grynd.dedyn.io");
+
+  // The exact regression this guard exists for: a CSS class, not an enum value.
+  for (const bad of ["rounded-sm", "Rounded", " rounded", "circle", ""]) {
+    assert.throws(
+      () => assertStripeBrandingEnums({ ...branding, border_style: bad }),
+      /border_style/,
+      `border_style ${JSON.stringify(bad)} must be rejected`,
+    );
+  }
+
+  // Orbitron is the app's display face and is NOT in Stripe's font list; the
+  // casing and padding variants are rejected for the same reason.
+  for (const bad of ["orbitron", "Inter", "inter ", ""]) {
+    assert.throws(
+      () => assertStripeBrandingEnums({ ...branding, font_family: bad }),
+      /font_family/,
+      `font_family ${JSON.stringify(bad)} must be rejected`,
+    );
+  }
+});
+
 // ── The way back ───────────────────────────────────────────────────────────
 
 test("the checkout origin wins, so the customer returns to the page they left", () => {

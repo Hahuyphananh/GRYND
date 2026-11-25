@@ -195,6 +195,12 @@ export function cloneState(state: SolitaireState): SolitaireState {
     peakFoundation: state.peakFoundation,
     completed: state.completed,
     completedAtMs: state.completedAtMs,
+    // Server-only practice-bot recovery bookkeeping. Carried through every move
+    // so a clock-sliced plan keeps its line cursor and stall count. Copied only
+    // when present, so an ordinary board keeps exactly its old shape.
+    ...(state.aiLineActive !== undefined ? { aiLineActive: state.aiLineActive } : null),
+    ...(state.aiLineCursor !== undefined ? { aiLineCursor: state.aiLineCursor } : null),
+    ...(state.aiStagnant !== undefined ? { aiStagnant: state.aiStagnant } : null),
   };
 }
 
@@ -690,6 +696,14 @@ export function viewForState(state: SolitaireState): SolitaireView {
     // Count only: the stock's order is a secret the client must not hold, or a
     // player could plan around cards they have never legitimately exposed.
     stockCount: state.stock?.length ?? 0,
+    // The one card a draw would turn over. The ORDER is still the server's
+    // secret, so this exposes exactly the information a single draw needs and
+    // no more — that is what lets the client paint the draw without a round
+    // trip. Both seats carry their own view of the same deal.
+    nextStockCard:
+      (state.stock?.length ?? 0) > 0
+        ? { ...state.stock[state.stock.length - 1] }
+        : null,
     waste: (state.waste ?? []).map((card) => ({ suit: card.suit, rank: card.rank })),
     foundations: {
       spades: (state.foundations?.spades ?? []).map((c) => ({ suit: c.suit, rank: c.rank })),

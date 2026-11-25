@@ -54,7 +54,7 @@ export default function ErrorState({
           onClick={onRetry}
           disabled={retrying}
           aria-busy={retrying || undefined}
-          className="inline-flex items-center justify-center gap-2 rounded-lg border border-red-300/50 bg-red-500/20 px-5 py-2.5 text-sm font-semibold text-red-100 transition-colors hover:bg-red-500/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-300 focus-visible:ring-offset-2 focus-visible:ring-offset-[#1a0b16] active:scale-95 disabled:opacity-60"
+          className="inline-flex items-center justify-center gap-2 rounded-lg border border-red-300/50 bg-red-500/20 px-5 py-2.5 text-sm font-semibold text-red-100 transition-colors hover:bg-red-500/30 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-red-300 focus-visible:ring-offset-2 focus-visible:ring-offset-[#1a0b16] active:scale-95 disabled:opacity-60"
         >
           <IconRefresh
             size={16}

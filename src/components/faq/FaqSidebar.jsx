@@ -106,7 +106,7 @@ export function FaqSidebarRail({ items = [] }) {
   return (
     <nav
       aria-label="Sections of this page"
-      className="sticky top-16 z-30 mb-6 border-y border-[#00e5ff]/15 bg-[#030817]/95 py-2 backdrop-blur-md lg:hidden"
+      className="sticky top-16 z-30 mb-6 border-y border-[#00e5ff]/15 bg-page/95 py-2 backdrop-blur-md lg:hidden"
     >
       <ul className="flex gap-2 overflow-x-auto pb-0.5">
         {items.map((item) => {

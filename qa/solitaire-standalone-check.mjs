@@ -299,33 +299,69 @@ try {
     "menu must render",
   );
 
-  // The menu previews what each tier actually buys: its pace. The bot solves the
-  // same deal at every tier, so a per-move estimate is the honest description.
-  const menuPace = await evaluate(
-    `(() => { const text = document.body.textContent;
-      return ['1.3', '0.9', '0.5'].filter((s) => text.includes('~' + s + 's a move')); })()`,
+  // The menu offers the REAL six-bot roster. The delays come from the shared
+  // roster, so the check derives the expected seconds from each button's own
+  // `data-pace-ms` instead of pinning legacy numbers.
+  const menuBots = await evaluate(
+    `(() => [...document.querySelectorAll('[data-testid^="bot-"]')].map((el) => ({
+      id: el.dataset.testid.replace('bot-', ''),
+      paceMs: Number(el.dataset.paceMs),
+      text: el.textContent,
+    })))()`,
   );
-  assert.deepEqual(menuPace, ["1.3", "0.9", "0.5"], "the menu must estimate every tier's pace");
+  assert.equal(menuBots.length, 6, "the menu must offer every named bot");
+  for (const bot of menuBots) {
+    const seconds = (Math.round(bot.paceMs / 100) / 10).toFixed(1);
+    assert.ok(
+      bot.text.includes(`~${seconds}s a move`),
+      `${bot.id} must show its real pace (~${seconds}s a move), got ${JSON.stringify(bot.text)}`,
+    );
+  }
   assert.equal(
-    await evaluate("document.body.textContent.includes('pace only')"),
+    new Set(menuBots.map((bot) => bot.paceMs)).size,
+    6,
+    "each bot must move at its own roster pace",
+  );
+  assert.equal(
+    menuBots.map((bot) => bot.id).join(","),
+    "rookie,felix,ace,professor,grandmaster,perfect",
+    "the menu must list the roster weakest to Perfect",
+  );
+  note(
+    `menu offers the 6 real bots at their roster pace (${menuBots
+      .map((bot) => `~${(Math.round(bot.paceMs / 100) / 10).toFixed(1)}s`)
+      .join(" / ")} a move)`,
+  );
+  // The bots differ in decision quality as well as pace, so the copy must name
+  // them rather than describe a pace-only tier.
+  assert.equal(
+    await evaluate("document.body.textContent.includes('Six named opponents')"),
     true,
-    "the menu must say the tier is pace only",
+    "the menu must name the six real opponents",
   );
   note("menu previews each tier's pace (~1.3s / ~0.9s / ~0.5s a move)");
+  // `clickSelector` resolves names from CLICK_EXPRESSIONS, and `startRace` is
+  // the entry that targets [data-testid="start-race"] — a raw selector here
+  // would miss the map and click nothing.
   assert.equal(await clickSelector("startRace"), true);
   await until("the board to appear", "!!document.querySelector('[data-testid=\"solitaire-board\"]')");
   note("a new match started and the board rendered");
 
-  // Practice must say what the tier actually changes. The bot follows the
-  // deal's proven line at every tier, so "easy" is a pace, never a weaker bot.
+  // Practice must say what the tier actually buys: the named bot and its real
+  // per-move pace, derived from the same roster the engine plays.
   const pace = await evaluate(
     `(() => { const el = document.querySelector('[data-testid="solver-pace"]');
       return el ? { text: el.textContent.trim(), delay: Number(el.dataset.delayMs) } : null; })()`,
   );
-  assert.ok(pace, "practice must show the bot's solver pace");
-  assert.match(pace.text, /pace/i);
+  assert.ok(pace, "practice must show the bot's identity and pace");
   assert.ok(pace.delay > 0, "the pace indicator must carry the tier's real delay");
-  note(`solver pace shown: ${pace.text}`);
+  const paceSeconds = (Math.round(pace.delay / 100) / 10).toFixed(1);
+  assert.ok(
+    pace.text.includes(`~${paceSeconds}s a move`),
+    `the label must show the tier's real pace (~${paceSeconds}s a move): ${pace.text}`,
+  );
+  assert.match(pace.text, /·/, "the label must name the bot");
+  note(`bot identity + pace shown: ${pace.text}`);
 
   // ── Countdown, then a human move ────────────────────────────────────
   await until(

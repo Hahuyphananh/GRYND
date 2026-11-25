@@ -6,35 +6,13 @@
 
 // Server-backed matches: the pause row is keyed by (game, matchId) and the
 // game's own store is frozen/clock-shifted on resume.
-export const PRACTICE_PAUSE_GAMES = [
-  "chess",
-  "dice-flush",
-  "dots-and-boxes",
-  "hex-duel",
-  "keno-pvp",
-  "lane-rush-duel",
-  "memory-grid",
-  "mines-pvp",
-  "mini-golf",
-  "pool",
-  "precision",
-  "solitaire-duel",
-  "speed-typing",
-  "sudoku-duel",
-  "tic-tac-toe",
-  "uno",
-] as const;
+export const PRACTICE_PAUSE_GAMES = ["solitaire-duel"] as const;
 
 // Client-only practice boards. They have no persisted match row, so the pause
 // is local: the page stops its own AI loop and shows the same chip/overlay.
 // These keys are deliberately NOT accepted by /api/practice/pause — there is
 // nothing on the server to freeze.
-export const LOCAL_PRACTICE_PAUSE_GAMES = [
-  "barrier-blitz",
-  "four-in-a-row",
-  "odds",
-  "rps",
-] as const;
+export const LOCAL_PRACTICE_PAUSE_GAMES = [] as const;
 
 export type ServerPracticePauseGame = (typeof PRACTICE_PAUSE_GAMES)[number];
 export type LocalPracticePauseGame =

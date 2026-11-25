@@ -42,9 +42,14 @@ const code = (path) =>
     .replace(/(^|[^:])\/\/.*$/gm, "$1");
 
 const LOBBY_PAGE = "src/app/casino/solitaire-duel/PageClient.tsx";
+// The lobby UI moved into one shared component that `/` also mounts; the route
+// is now a thin wrapper, so the UI contract is asserted against the component.
+const LOBBY_COMPONENT = "src/components/solitaire-duel/SolitaireLobby.tsx";
 const LOBBY_ROUTE = "src/app/casino/solitaire-duel/page.tsx";
 const MATCH_PAGE = "src/app/casino/solitaire-duel/[matchId]/PageClient.tsx";
 const MATCH_PAGE_ROUTE = "src/app/casino/solitaire-duel/[matchId]/page.tsx";
+const PLAY_AI_PAGE = "src/app/casino/solitaire-duel/play-ai/PageClient.tsx";
+const PLAY_AI_ROUTE = "src/app/casino/solitaire-duel/play-ai/page.tsx";
 const BOARD = "src/components/solitaire-duel/SolitaireBoard.tsx";
 const CARD = "src/components/solitaire-duel/PlayingCard.tsx";
 const INTERACTIONS = "src/lib/solitaire-duel/interactions.ts";
@@ -97,10 +102,10 @@ test("routes: every path exists and is a thin wrapper over the game's store", ()
     create,
     /import \{ createOrJoin \} from "\.\.\/\.\.\/\.\.\/\.\.\/lib\/solitaire-duel\/serverStore"/,
   );
-  // The one field the entry parses is the stake the pair is escrowed at; the
-  // seat identity still comes from the verified session.
-  assert.match(create, /requireStake\(body\?\.stake, "solitaire-duel"\)/);
-  assert.match(create, /await createOrJoin\(\{ userId, stake: required\.stake \}\)/);
+  // Ranked Solitaire is free: the entry names no stake at all, because the
+  // coin economy is gone. The seat identity still comes from the session.
+  assert.doesNotMatch(create, /requireStake|stake/);
+  assert.match(create, /await createOrJoin\(\{ userId \}\)/);
 
   const match = code(ROUTE_FILES.match);
   assert.match(match, /fetchMatch/);
@@ -154,7 +159,7 @@ test("client: the only request body this game sends is a move", () => {
   const src = code(MATCH_PAGE);
 
   // The one POST that carries gameplay.
-  assert.match(src, /body: JSON\.stringify\(\{ move, expectedPly \}\)/);
+  assert.match(src, /body: JSON\.stringify\(\{ move: entry\.move, expectedPly \}\)/);
   // ...and the bare invalidation poke.
   assert.match(src, /SOLITAIRE_DUEL_EVENTS\.READY, \{ matchId \}/);
 
@@ -207,10 +212,17 @@ test("client: gameplay is gated on the server's GO instant, never on mount", () 
   const src = code(MATCH_PAGE);
   assert.match(
     src,
-    /const canPlayNow = phase === "racing" && !expired && !pending/,
+    /const canPlayNow = phase === "racing" && !expired && !paused/,
     "the board is interactive only while the server says the race is live",
   );
-  assert.match(src, /interactive=\{canPlayNow\}/);
+  assert.match(src, /interactive=\{canPlayNow && !finishing\}/);
+  // The move itself is drawn instantly (`applyMoveToView`) and queued, so an
+  // in-flight request must never disable the board.
+  assert.doesNotMatch(src, /pending=\{pending\}/);
+  assert.match(src, /MOVE_QUEUE_LIMIT/);
+  // Auto-finish is applied by the server and only ANIMATED here.
+  assert.match(src, /AutoFinishAnimation/);
+  assert.match(src, /autoFinish/);
   // The move gate repeats the same conditions, including the practice pause:
   // a paused match must not accept a move behind the frozen overlay.
   assert.match(src, /if \(phase !== "racing" \|\| expired \|\| pausedRef\.current\) return;/);
@@ -218,13 +230,23 @@ test("client: gameplay is gated on the server's GO instant, never on mount", () 
   assert.match(src, /Math\.max\(0, goAtMs - serverNowMs\)/);
 });
 
-test("client: a rejected move resyncs rather than keeping a local guess", () => {
+test("client: a rejected move drops its prediction and resyncs", () => {
   const src = code(MATCH_PAGE);
   assert.match(src, /setNotice\(data\?\.error \|\| "That move was refused"\)/);
   assert.match(src, /void load\(\);/, "a refusal must resync from the server");
-  // No optimistic board mutation: the board is only ever set from a snapshot.
-  assert.doesNotMatch(src, /applyMove/, "the page never applies a move locally");
-  assert.doesNotMatch(src, /setView\(/, "there is no local board state to drift");
+  // The move is DRAWN before the server answers (that is what makes it instant),
+  // but the prediction is only ever the viewer's own visible board and is thrown
+  // away — with the whole queue — the moment the server refuses it.
+  assert.match(src, /applyMoveToView/);
+  assert.match(
+    src,
+    /queueRef\.current = \[\];[\s\S]{0,200}setOptimisticView\(null\)/,
+    "a refusal clears the queue and the predicted board",
+  );
+  // The cursor sent is still the server's own, never a locally incremented one.
+  assert.match(src, /expectedPly = Number\(authoritativeViewRef\.current\?\.ply \?\? 0\)/);
+  // The page never invents a finished race.
+  assert.doesNotMatch(src, /completed: true/);
 });
 
 test("client: a rematch asks the server for a brand new match", () => {
@@ -238,11 +260,13 @@ test("client: a rematch asks the server for a brand new match", () => {
   // A new match id resets every per-match value, so nothing is inherited.
   assert.match(src, /loadedRef\.current = false;/);
   assert.match(src, /skewRef\.current = 0;/);
-  assert.match(src, /queuedDrawsRef\.current = 0;/);
+  assert.match(src, /queueRef\.current = \[\];/);
+  assert.match(src, /setOptimisticView\(null\);/);
   assert.match(src, /playAgain=\{\{ label: isPractice \? "NEW DEAL" : "REMATCH", onClick: requeue \}\}/);
   // The shared result screen, and the platform's own exit actions.
   assert.match(src, /PvpResultScreen/);
-  assert.match(src, /href: "\/casino"/);
+  // The losing/exit action goes home, not to the games directory.
+  assert.match(src, /secondaryAction=\{\{ label: "Back to home", href: "\/" \}\}/);
   assert.match(src, /router\.push\("\/casino\/solitaire-duel"\)/);
 });
 
@@ -278,9 +302,10 @@ test("client: a live PRACTICE match polls, because the bot only moves when it is
   assert.match(store, /async function advanceAiIfPractice/, "the read-time advance must exist");
   assert.match(
     store,
-    /match = await advanceAiIfPractice\(match, nowMs\)/,
+    /const advancedRead = await advanceAiIfPractice\(match, nowMs\)/,
     "fetchMatch is what advances the bot — a read IS the bot's clock",
   );
+  assert.match(store, /match = advancedRead\.match;/);
   assert.match(code(REALTIME_SERVER), /solitaire-duel:ready/);
   // …and there is no server-side scheduler that could advance it instead: the
   // realtime server only RELAYS events, it never drives a bot.
@@ -381,7 +406,7 @@ test("board: cards are draggable, and click-to-place is kept as an equal path", 
   assert.match(board, /onMove\(move\)/);
   // The click model still exists, and a finished drag never doubles as a click.
   assert.match(board, /resolveClick\(board, selection, target\)/);
-  assert.match(board, /suppressClickRef/);
+  assert.match(board, /swallowClickRef/);
   // The run under the pointer is the engine's own movable run, never a guess.
   assert.match(board, /cards: found\.run/);
   // A refused drop does not blink out: the card eases back to the pile it came
@@ -389,12 +414,13 @@ test("board: cards are draggable, and click-to-place is kept as an equal path", 
   assert.match(board, /flyHome/);
   assert.match(board, /GHOST_RETURN_MS/);
   assert.match(board, /returnTimerRef/);
-  // An ACCEPTED drop settles onto its pile before the move is sent, and a new
-  // gesture commits a still-settling drop rather than dropping it.
-  assert.match(board, /GHOST_SETTLE_MS/);
+  // An ACCEPTED drop is sent on release: no settle timer stands between the
+  // gesture and the engine, and the board never locks while a move is in flight.
   assert.match(board, /settleDrop/);
-  assert.match(board, /const commitSettle = useCallback/);
-  assert.match(board, /if \(settleMoveRef\.current !== null\) commitSettle\(\)/);
+  assert.match(board, /setDragGhost\(null\);\s*onMove\(move\);/);
+  assert.doesNotMatch(board, /GHOST_SETTLE_MS/);
+  assert.doesNotMatch(board, /commitSettle/);
+  assert.match(board, /const cardsInteractive = interactive;/);
   // The ease is a position transition only, so following the pointer stays exact.
   assert.match(board, /transition: dragGhost\.easing/);
 });
@@ -427,12 +453,57 @@ test("platform: the lobby and match routes mount the shared chrome", () => {
   // ...while a live board must never be framed by an ad.
   assert.doesNotMatch(matchRoute, /AdSenseScript|AdSlot/);
 
-  const lobby = code(LOBBY_PAGE);
-  assert.match(lobby, /import PvpLobbyPage from "\.\.\/\.\.\/\.\.\/components\/lobby\/PvpLobby"/);
+  const lobby = code(LOBBY_COMPONENT);
+  assert.match(lobby, /import PvpLobbyPage[^\n]*from "\.\.\/lobby\/PvpLobby"/);
   assert.match(lobby, /<PvpLobbyPage/);
-  assert.match(lobby, /rulesKey="solitaire-duel"/);
+  assert.match(lobby, /rulesKey: "solitaire-duel",/);
   assert.match(lobby, /\/api\/solitaire-duel\/create-or-join/);
-  assert.match(lobby, /router\.push\(`\/casino\/solitaire-duel\/\$\{data\.data\.matchId\}`\)/);
+  assert.match(lobby, /matchPath\(matchId\)/);
+  assert.match(lobby, /`\/casino\/solitaire-duel\/\$\{matchId\}`/);
+  // Ranked is humans only. The named-bot picker is a separate mode reachable
+  // from /play/ai and its own route; it is not a shortcut in the ranked lobby.
+  assert.doesNotMatch(lobby, /solitaire-play-bots|Play vs Bots/);
+  assert.doesNotMatch(lobby, /\/api\/solitaire-duel\/create-ai/);
+  assert.ok(fs.existsSync(PLAY_AI_ROUTE), "the AI picker route must remain");
+});
+
+test("bots: the picker renders the roster and starts the selected opponent", () => {
+  assert.ok(fs.existsSync(PLAY_AI_ROUTE), "the Play vs Bots route must exist");
+  assert.match(read(PLAY_AI_ROUTE), /title: "Play vs Bots \| Solitaire Duel"/);
+
+  const page = code(PLAY_AI_PAGE);
+  assert.match(page, /SOLITAIRE_BOTS/);
+  assert.match(page, /Play vs Bots/);
+  assert.match(page, /Challenge/);
+  assert.match(page, /bot: bot\.id/);
+  assert.match(page, /solitaire-bot-\$\{bot\.id\}/);
+  assert.match(page, /solitaire-challenge-\$\{bot\.id\}/);
+  // All three player levels and the special final challenge are visible.
+  assert.match(page, /Beginner/);
+  assert.match(page, /Intermediate/);
+  assert.match(page, /Advanced/);
+  assert.match(page, /Final challenge/);
+  assert.match(page, /Difficulty \{bot\.order\} of 6/);
+  // Each card states the two facts the picker is chosen on, both derived from
+  // the bot's own profile rather than hard-coded per card.
+  assert.match(page, /solitaireBotStats/);
+  assert.match(page, /Typical finish/);
+  assert.match(page, /Bad moves/);
+  // Practice is explicitly separate from ranked progression.
+  assert.match(page, /unrated/i);
+  assert.match(page, /never touch\s+ranked/i);
+});
+
+test("bots: the live match states the selected bot and its rating", () => {
+  const src = code(MATCH_PAGE);
+  assert.match(src, /practiceBot\?\.name/);
+  assert.match(src, /practiceBot\.ratingLabel/);
+  assert.match(src, /practiceBot\.difficultyLabel/);
+  assert.match(src, /data-testid="solitaire-bot-rating"/);
+  assert.match(src, /data-testid="solitaire-bot-name"/);
+  assert.match(src, /Practice vs \$\{opponentName\}/);
+  // The old claim that difficulty only changes bot speed is gone.
+  assert.doesNotMatch(src, /solitaire-solver-pace|changes only how fast|AI_MOVE_DELAY_MS/);
 });
 
 test("platform: the match page reports through the shared session host", () => {
@@ -473,12 +544,12 @@ test("platform: no gambling surface exists anywhere in the game", () => {
       );
     }
   }
-  // The stake itself is the platform's shared picker: the lobby names the
-  // amount and the SERVER escrows both seats and pays the pot.
-  const lobby = code(LOBBY_PAGE);
-  assert.match(lobby, /wager=\{\{ value: stake, onChange: setStake \}\}/);
-  assert.match(lobby, /body: JSON\.stringify\(\{ stake \}\)/);
+  // Ranked Solitaire is free: no stake picker and no wager payload.
+  const lobby = code(LOBBY_COMPONENT);
+  assert.doesNotMatch(lobby, /wager=/);
+  assert.doesNotMatch(lobby, /JSON\.stringify\(\{ stake \}\)/);
   assert.doesNotMatch(lobby, /place a bet|bet amount|wager amount/i);
+  assert.match(lobby, /Free ranked play/);
 });
 
 // ── 5. The realtime vocabulary cannot drift ──────────────────────────────
@@ -527,4 +598,27 @@ test("copy: the routes state the format", () => {
   const matchRoute = read(MATCH_PAGE_ROUTE);
   assert.match(matchRoute, /title: "Solitaire Duel Match \| GRYND"/);
   assert.match(matchRoute, /same Klondike deal/i);
+});
+
+// ── 7. Bots play fair ────────────────────────────────────────────────────
+
+test("bots: practice plays the heuristic, then recovers on the proven line", () => {
+  const store = code(STORE);
+  assert.match(store, /planAiMoves\(\{/);
+  // A stalled bot follows the committed deal's proven line so it can always
+  // finish the board; the line is a dead-end recovery, never the first-choice
+  // decision path (normal play is still the visible-information heuristic).
+  assert.match(store, /planAiLine\(\{/);
+  assert.match(store, /solveDealLine\(matchDeal\)/);
+  assert.match(store, /bot: match\.isAi/);
+  assert.match(store, /publicSolitaireBot/);
+
+  const standalone = code("standalone/solitaire-duel/src/match.ts");
+  // The standalone match now re-exports the shared implementation, so the
+  // planner lives in the module it points at rather than in a copy.
+  assert.match(
+    standalone,
+    /export \* from "\.\.\/\.\.\/\.\.\/src\/lib\/solitaire-duel\/localMatch"/,
+  );
+  assert.doesNotMatch(standalone, /planAiSolution|solveDealLine/);
 });

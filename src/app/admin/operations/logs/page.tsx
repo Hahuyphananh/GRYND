@@ -71,7 +71,7 @@ export default async function OperationsLogsPage({
   };
 
   return (
-    <main className="min-h-screen bg-[#0a0f1e] px-4 py-8 text-[#c9f7ff] sm:px-6 lg:px-10">
+    <main className="min-h-screen bg-surface px-4 py-8 text-[#c9f7ff] sm:px-6 lg:px-10">
       <div className="mx-auto max-w-6xl">
         <div className="mb-6 flex flex-wrap items-end justify-between gap-3">
           <div>
@@ -96,7 +96,7 @@ export default async function OperationsLogsPage({
             name="q"
             defaultValue={pick(params.q)}
             placeholder="Filter by event, actor or reason"
-            className="min-w-[220px] flex-1 rounded-lg border border-[#1b2a4a] bg-[#0d1830] px-3 py-1.5 text-sm text-[#e6f7ff] placeholder:text-[#5f7794] focus:border-[#f5ff3b] focus:outline-none"
+            className="min-w-[220px] flex-1 rounded-lg border border-[#1b2a4a] bg-panel px-3 py-1.5 text-sm text-[#e6f7ff] placeholder:text-[#5f7794] focus:border-[#f5ff3b] focus:outline-hidden"
           />
           <input type="hidden" name="source" value={source} />
           <button
@@ -123,7 +123,7 @@ export default async function OperationsLogsPage({
           ))}
         </div>
 
-        <section className="rounded-xl border border-[#1b2a4a] bg-[#0d1830]">
+        <section className="rounded-xl border border-[#1b2a4a] bg-panel">
           {filtered.length === 0 ? (
             <p className="px-5 py-8 text-sm text-[#7f9bbd]">
               {snapshot.configured

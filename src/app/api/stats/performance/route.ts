@@ -36,7 +36,11 @@ import {
   getRatingGameLabel,
   isRatedGame,
 } from "../../../../lib/rating";
-import { getMembershipTier } from "../../../../lib/stripe/subscriptions";
+import {
+  getMembershipTier,
+  type MembershipTier,
+} from "../../../../lib/stripe/subscriptions";
+import { withTimeout } from "../../../../lib/security/withTimeout";
 import {
   RECENT_MAX_LIMIT,
   getPerformanceDashboard,
@@ -45,6 +49,13 @@ import { consumeRateLimit } from "../../../../lib/security/rateLimit";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+
+/**
+ * Bound on the entitlement read. The proxy bounds its own DB lookups the same
+ * way: a hung subscription query must not become an endless skeleton, and it
+ * must not be reported as "free" either — the two look identical to a member.
+ */
+const MEMBERSHIP_LOOKUP_TIMEOUT_MS = 3_000;
 
 /**
  * The rated-game vocabulary WITH display labels, resolved server-side so the
@@ -123,13 +134,41 @@ export async function GET(request: Request) {
   }
 
   let pro = false;
+  let membershipUnavailable = false;
   try {
-    pro = (await getMembershipTier(userId)) === "pro";
+    const tier = await withTimeout<MembershipTier | null>(
+      getMembershipTier(userId),
+      MEMBERSHIP_LOOKUP_TIMEOUT_MS,
+      null,
+    );
+    pro = tier === "pro";
+    membershipUnavailable = tier === null;
+    if (membershipUnavailable) {
+      console.error("[stats/performance] Membership lookup timed out");
+    }
   } catch (error) {
-    // Unreadable subscription state means "not a member", exactly like
-    // /api/membership/status — never the other way round.
+    // Unreadable subscription state still grants nothing, exactly like
+    // /api/membership/status — but it is answered as "the check failed", not as
+    // "you are free", so the dashboard can say so instead of showing the upsell.
     console.error("[stats/performance] Failed to resolve membership:", error);
     pro = false;
+    membershipUnavailable = true;
+  }
+
+  if (membershipUnavailable) {
+    return Response.json(
+      {
+        success: false,
+        error: "Unable to verify your membership right now. Please try again.",
+      },
+      {
+        status: 503,
+        headers: {
+          "Cache-Control": "private, no-store",
+          "Retry-After": "5",
+        },
+      },
+    );
   }
 
   const limit = clampInt(searchParams.get("limit"), 1, RECENT_MAX_LIMIT, 10);

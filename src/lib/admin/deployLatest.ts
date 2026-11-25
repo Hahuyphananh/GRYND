@@ -1,29 +1,40 @@
 // src/lib/admin/deployLatest.ts
 //
-// "Deploy the latest main commit" for the admin operations dashboard.
+// "Deploy the newest commit of an allowlisted branch" for the admin operations
+// dashboard.
 //
 // The dashboard does NOT build on the host and does NOT hold SSH keys. It asks
 // GitHub Actions to run the same release workflow CI already uses:
 //
 //   POST /repos/{repo}/actions/workflows/release.yml/dispatches
-//   { ref: "main", inputs: { deploy: "true", reason } }
+//   { ref: "<allowlisted branch>", inputs: { deploy: "true", reason } }
 //
 // That workflow checks out the commit, runs the test suite and the build, and
 // then installs, activates and verifies the release behind the protected
 // `grynd-production` environment. The app's only job is to request it.
 //
+// The branch is an allowlist, not caller input: `DEPLOY_BRANCHES` is the only
+// set of values this module will ever put in `ref`. Anything else is refused
+// here as well as in the API route and in the workflow guard.
+//
 // The token is read here and never returned: `readDeployConfig` is the only
 // place GITHUB_DEPLOY_TOKEN is touched, and every value that leaves this module
-// is a commit, a short commit, a message, a URL, or an error code.
+// is a commit, a short commit, a message, a URL, a branch name or an error code.
 //
 // Everything is injectable (env + fetch) so the dispatch contract can be tested
 // without a token or a network.
 
 const GITHUB_API = "https://api.github.com";
 
-/** The release workflow and branch the dashboard may deploy. Neither is user input. */
+/** The release workflow the dashboard may dispatch. Not user input. */
 export const DEPLOY_WORKFLOW = "release.yml";
-export const DEPLOY_REF = "main";
+
+/** The only branches that may ever be deployed. Not user input. */
+export const DEPLOY_BRANCHES = ["main", "solitaire-first"] as const;
+export type DeployBranch = (typeof DEPLOY_BRANCHES)[number];
+
+/** The intended production branch: the Solitaire-first release. */
+export const DEFAULT_DEPLOY_BRANCH: DeployBranch = "solitaire-first";
 
 /** The repository this dashboard belongs to; GITHUB_DEPLOY_REPO overrides it. */
 export const DEFAULT_DEPLOY_REPO = "Hahuyphananh/GRYND";
@@ -43,7 +54,8 @@ export type DeployConfig = {
   /** Present only on the server. Never rendered. */
   token: string | null;
   workflow: string;
-  ref: string;
+  /** The allowlisted branch to deploy, or null when the request was not allowed. */
+  branch: DeployBranch | null;
 };
 
 export type CommitInfo = {
@@ -62,12 +74,16 @@ export type DeployTarget = {
   workflowUrl: string;
 };
 
+/** A deploy target plus the branch it describes, as the operations page needs it. */
+export type BranchDeployTarget = DeployTarget & { branch: DeployBranch };
+
 export type DeployOutcome =
   | { status: "not-configured"; message: string }
-  | { status: "already-live"; commit: string; shortCommit: string }
-  | { status: "already-running"; commit: string; shortCommit: string; runUrl: string | null }
+  | { status: "already-live"; branch: DeployBranch; commit: string; shortCommit: string }
+  | { status: "already-running"; branch: DeployBranch; commit: string; shortCommit: string; runUrl: string | null }
   | {
       status: "dispatched";
+      branch: DeployBranch;
       commit: string;
       shortCommit: string;
       workflowUrl: string;
@@ -76,6 +92,7 @@ export type DeployOutcome =
 
 export type DeployFailureCode =
   | "not-configured"
+  | "branch-not-allowed"
   | "github-auth"
   | "github-not-found"
   | "github-unavailable"
@@ -93,7 +110,15 @@ export class DeployError extends Error {
 
 // ── configuration ─────────────────────────────────────────────────────────
 
-export function readDeployConfig(env: NodeJS.ProcessEnv = process.env): DeployConfig {
+/** True only for a branch on the allowlist. The single widening point. */
+export function isDeployBranch(value: unknown): value is DeployBranch {
+  return typeof value === "string" && (DEPLOY_BRANCHES as readonly string[]).includes(value);
+}
+
+export function readDeployConfig(
+  env: NodeJS.ProcessEnv = process.env,
+  requestedBranch: unknown = DEFAULT_DEPLOY_BRANCH,
+): DeployConfig {
   const configuredRepo = env.GITHUB_DEPLOY_REPO?.trim();
   const repo = REPO_RE.test(configuredRepo ?? DEFAULT_DEPLOY_REPO)
     ? (configuredRepo ?? DEFAULT_DEPLOY_REPO)
@@ -103,8 +128,13 @@ export function readDeployConfig(env: NodeJS.ProcessEnv = process.env): DeployCo
     repo,
     token: env.GITHUB_DEPLOY_TOKEN?.trim() || null,
     workflow: DEPLOY_WORKFLOW,
-    ref: DEPLOY_REF,
+    branch: isDeployBranch(requestedBranch) ? requestedBranch : null,
   };
+}
+
+/** The message shown when the request names a branch outside the allowlist. */
+export function branchNotAllowedMessage(): string {
+  return `Only ${DEPLOY_BRANCHES.join(" and ")} can be deployed from this dashboard.`;
 }
 
 /** The message the dashboard shows while the token is absent — no secret names. */
@@ -150,7 +180,7 @@ function githubError(status: number): DeployError {
 // ── reads ─────────────────────────────────────────────────────────────────
 
 /**
- * The newest commit on `main`, as GitHub reports it.
+ * The newest commit on the configured branch, as GitHub reports it.
  *
  * The SHA is validated rather than trusted: only a 40-character hex commit can
  * be displayed or dispatched.
@@ -163,10 +193,14 @@ export async function fetchLatestCommit(
   if (!config.token || !config.repo) {
     throw new DeployError("not-configured", notConfiguredMessage());
   }
+  if (!config.branch) {
+    throw new DeployError("branch-not-allowed", branchNotAllowedMessage());
+  }
+  const branch = config.branch;
 
   let response: Response;
   try {
-    response = await fetchImpl(`${GITHUB_API}/repos/${config.repo}/commits/${config.ref}`, {
+    response = await fetchImpl(`${GITHUB_API}/repos/${config.repo}/commits/${encodeURIComponent(branch)}`, {
       headers: authHeaders(config.token),
       cache: "no-store",
       signal,
@@ -199,7 +233,8 @@ export async function fetchLatestCommit(
 }
 
 /**
- * A workflow_dispatch run already queued or running for this exact commit.
+ * A workflow_dispatch run already queued or running for this exact commit on
+ * this branch.
  *
  * This is what stops a second click (or two admins) from firing two deploys:
  * GitHub's own state answers the question instead of an in-process timer that
@@ -211,12 +246,12 @@ export async function findActiveRun(
   fetchImpl: FetchLike = fetch,
   signal: AbortSignal | undefined = timeoutSignal(5_000),
 ): Promise<{ runUrl: string | null } | null> {
-  if (!config.token || !config.repo) return null;
+  if (!config.token || !config.repo || !config.branch) return null;
 
   try {
     const response = await fetchImpl(
       `${GITHUB_API}/repos/${config.repo}/actions/workflows/${config.workflow}/runs?branch=${encodeURIComponent(
-        config.ref,
+        config.branch,
       )}&event=workflow_dispatch&per_page=10`,
       { headers: authHeaders(config.token), cache: "no-store", signal },
     );
@@ -252,6 +287,9 @@ export async function dispatchDeploy(
   if (!config.token || !config.repo) {
     throw new DeployError("not-configured", notConfiguredMessage());
   }
+  if (!config.branch) {
+    throw new DeployError("branch-not-allowed", branchNotAllowedMessage());
+  }
 
   let response: Response;
   try {
@@ -261,7 +299,7 @@ export async function dispatchDeploy(
       cache: "no-store",
       signal,
       body: JSON.stringify({
-        ref: config.ref,
+        ref: config.branch,
         inputs: {
           deploy: "true",
           reason: reason.replace(/\s+/g, " ").trim().slice(0, MAX_REASON),
@@ -281,44 +319,52 @@ export async function dispatchDeploy(
 
   // No commit is sent: GitHub runs the workflow at the head of `ref`. The
   // dashboard only dispatches when that head IS the commit shown, and the
-  // workflow re-checks the checked-out SHA against the artifact.
+  // workflow re-checks the checked-out SHA against the selected branch head.
 }
 
 // ── orchestration ─────────────────────────────────────────────────────────
 
 /**
- * Request a deploy of the newest `main` commit, unless it is already live or a
- * run for it is already queued.
+ * Request a deploy of the newest commit on an allowlisted branch, unless it is
+ * already live or a run for it is already queued.
  *
- * Returns an outcome instead of throwing for the two states the dashboard
- * should explain calmly; transport failures throw `DeployError`.
+ * Returns an outcome instead of throwing for the states the dashboard should
+ * explain calmly; transport failures throw `DeployError`. A branch outside the
+ * allowlist throws `branch-not-allowed` before any network call.
  */
 export async function deployLatest({
   liveCommit,
+  branch = DEFAULT_DEPLOY_BRANCH,
   reason = "Admin operations dashboard",
   env = process.env,
   fetchImpl = fetch,
 }: {
   liveCommit: string | null;
+  branch?: unknown;
   reason?: string;
   env?: NodeJS.ProcessEnv;
   fetchImpl?: FetchLike;
 }): Promise<DeployOutcome> {
-  const config = readDeployConfig(env);
+  const config = readDeployConfig(env, branch);
   if (!config.token || !config.repo) {
     return { status: "not-configured", message: notConfiguredMessage() };
   }
+  if (!config.branch) {
+    throw new DeployError("branch-not-allowed", branchNotAllowedMessage());
+  }
+  const selected = config.branch;
 
   const latest = await fetchLatestCommit(config, fetchImpl);
 
   if (liveCommit && liveCommit.toLowerCase() === latest.commit) {
-    return { status: "already-live", commit: latest.commit, shortCommit: latest.shortCommit };
+    return { status: "already-live", branch: selected, commit: latest.commit, shortCommit: latest.shortCommit };
   }
 
   const active = await findActiveRun(config, latest.commit, fetchImpl);
   if (active) {
     return {
       status: "already-running",
+      branch: selected,
       commit: latest.commit,
       shortCommit: latest.shortCommit,
       runUrl: active.runUrl,
@@ -329,28 +375,36 @@ export async function deployLatest({
 
   return {
     status: "dispatched",
+    branch: selected,
     commit: latest.commit,
     shortCommit: latest.shortCommit,
     workflowUrl: deployWorkflowUrl(config.repo),
-    message: `Deploy requested for ${latest.shortCommit}. The workflow builds and then activates it behind the production environment.`,
+    message: `Deploy requested for ${selected}@${latest.shortCommit}. The workflow builds and then activates it behind the production environment.`,
   };
 }
 
 /**
- * What the page needs to render the button: whether it can dispatch at all,
- * which commit is newest, and whether that commit is already live.
+ * What the page needs to render one branch's row: whether it can dispatch at
+ * all, which commit is newest, and whether that commit is already live.
  *
  * Never throws — a GitHub outage renders "could not check" beside the live
  * commit rather than a 500 on the operations page.
  */
 export async function getDeployTarget(
   liveCommit: string | null,
-  { env = process.env, fetchImpl = fetch }: { env?: NodeJS.ProcessEnv; fetchImpl?: FetchLike } = {},
+  {
+    branch = DEFAULT_DEPLOY_BRANCH,
+    env = process.env,
+    fetchImpl = fetch,
+  }: { branch?: unknown; env?: NodeJS.ProcessEnv; fetchImpl?: FetchLike } = {},
 ): Promise<DeployTarget> {
-  const config = readDeployConfig(env);
+  const config = readDeployConfig(env, branch);
   const workflowUrl = deployWorkflowUrl(config.repo);
   if (!config.token || !config.repo) {
     return { configured: false, latest: null, upToDate: false, reason: notConfiguredMessage(), workflowUrl };
+  }
+  if (!config.branch) {
+    return { configured: false, latest: null, upToDate: false, reason: branchNotAllowedMessage(), workflowUrl };
   }
 
   try {
@@ -371,4 +425,20 @@ export async function getDeployTarget(
       workflowUrl,
     };
   }
+}
+
+/**
+ * Both allowlisted branches, in allowlist order, for the operations page's
+ * selector. One GitHub read per branch; a failure on one does not hide the other.
+ */
+export async function getDeployTargets(
+  liveCommit: string | null,
+  options: { env?: NodeJS.ProcessEnv; fetchImpl?: FetchLike } = {},
+): Promise<BranchDeployTarget[]> {
+  return Promise.all(
+    DEPLOY_BRANCHES.map(async (branch) => ({
+      branch,
+      ...(await getDeployTarget(liveCommit, { ...options, branch })),
+    })),
+  );
 }

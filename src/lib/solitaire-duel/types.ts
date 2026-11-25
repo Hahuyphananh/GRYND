@@ -75,6 +75,20 @@ export type SolitaireState = {
   completed: boolean;
   /** Server instant the seat completed, or null. */
   completedAtMs: number | null;
+  /**
+   * SERVER-ONLY practice-bot recovery state.
+   *
+   * When the bot's visible-information heuristic dead-ends, the store resets
+   * its seat onto the committed deal's opening and follows that deal's proven
+   * line. `aiLineActive` marks that mode and `aiLineCursor` indexes the line;
+   * the move log still uses `ply`, which is carried forward. `aiStagnant`
+   * counts consecutive non-progressing moves across clock-sliced reads, so a
+   * stall cannot hide between polls. None of these fields is projected by
+   * `viewForState`.
+   */
+  aiLineActive?: boolean;
+  aiLineCursor?: number;
+  aiStagnant?: number;
 };
 
 /**
@@ -179,6 +193,13 @@ export type SolitaireView = {
   tableau: ViewPileCard[][];
   /** Count only — the order and the identities stay on the server. */
   stockCount: number;
+  /**
+   * The identity of the card a `draw` would turn over right now, or null when
+   * the stock is empty. Only the NEXT card is exposed, never the order, so a
+   * stock click can be drawn without a round trip while the rest of the deck
+   * stays the server's secret.
+   */
+  nextStockCard: Card | null;
   waste: Card[];
   foundations: FoundationPiles;
   ply: number;

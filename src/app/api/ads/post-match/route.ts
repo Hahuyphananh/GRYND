@@ -23,14 +23,26 @@
 
 import { NextResponse } from "next/server";
 import { postMatchAdSurface } from "../../../../lib/vast/entitlement";
+import { isNativeShellDocument } from "../../../../lib/native/shellServer";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function GET() {
+  // NATIVE APP — refused before the kill switch and before the membership
+  // lookup. A full-page video creative inside the WebView is not something this
+  // build serves, and Play's listing describes what the app actually does.
+  // Decided from the shell's User-Agent on the server, exactly like the
+  // AdSense and Hilltop gates, so no client flag can skip it. The slot treats
+  // `enabled: false` as "no ad can be offered" and releases whatever exit
+  // action the result screen is holding, so nothing stalls.
+  if (await isNativeShellDocument()) {
+    return NextResponse.json(
+      { enabled: false, adFree: false },
+      { headers: { "Cache-Control": "no-store" } }
+    );
+  }
+
   const { enabled, adFree } = await postMatchAdSurface();
-  return NextResponse.json(
-    { enabled, adFree },
-    { headers: { "Cache-Control": "no-store" } },
-  );
+  return NextResponse.json({ enabled, adFree }, { headers: { "Cache-Control": "no-store" } });
 }

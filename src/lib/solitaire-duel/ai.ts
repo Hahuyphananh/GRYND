@@ -9,85 +9,91 @@
 // simultaneous — so the store paces it from the server clock (one move every
 // `aiMoveDelayMs`) and the store is what guarantees it always plays.
 //
-// WHY A HEURISTIC RATHER THAN A SEARCH: Klondike's state space is far too large
-// for a full search inside a request, and a bot that took minutes per move would
-// be unplayable. The heuristic below is the standard strong-greedy order a good
-// human uses:
+// WHY A HEURISTIC RATHER THAN A FULL SOLVER: Klondike's state space is far too
+// large for a complete search inside a request, and a bot that took minutes per
+// move would be unplayable. Every bot therefore uses this same engine and the
+// same visible-information evaluation; the named profiles change how deeply it
+// searches, how it weighs structural progress, and how often it deliberately
+// takes a worse legal move.
 //
-//   1. put a card on a foundation   (the only move that makes permanent progress)
-//   2. reveal a face-down card      (more information, more legal moves)
-//   3. empty a tableau column       (frees a King slot)
-//   4. otherwise draw / redeal      (surfacing a usable card)
+// FAIRNESS IS STRUCTURAL: the evaluator never reads a face-down card's identity
+// or the order of the stock. It sees the same visible board a human sees, plus
+// the stock/waste COUNTS. A draw is scored as "a card may be revealed", never by
+// inspecting which card it will be, and lookahead stops at a move that would
+// uncover a hidden card (the identity would be new information). This applies to
+// Perfect too — it is the strongest fair profile, not a solver with the deal.
 //
-// THE TIER IS PACE, THE LINE IS THE GUARANTEE. The bot's primary plan is the
-// deal's PROVEN solution (`solveDealLine`), replayed move for move — the deal
-// generator only serves boards whose line it verified through the engine — so
-// the puzzle is always finished. The heuristic below is the fallback for a board
-// that is off that line; when it is used, the tier also changes how often the
-// bot takes its best move (the shared `AI_SKILL` slip). Either way the tier
-// changes how long it waits between moves, which is what makes `easy` beatable:
-// it solves the same deal, just later.
+// THE PROVEN-LINE HELPERS BELOW ARE LEGACY TEST/DEBUG UTILITIES. The server does
+// NOT use `planAiSolution` to drive a practice bot: replaying the deal's known
+// solution would give the bot future information the human cannot have.
 
 import {
   AI_DIFFICULTY_LABELS,
-  chooseAiOption,
   coerceAiDifficulty,
   type AiDifficulty,
 } from "../aiDifficulty";
+import {
+  SOLITAIRE_BOT_BY_ID,
+  solitaireBotFor,
+  type SolitaireBot,
+  type SolitaireBotAiProfile,
+} from "./bots";
 import { SUITS } from "./constants";
 import {
   applyMove,
   canPlaceOnTableau,
   faceUpRunFrom,
   foundationExpects,
+  initialStateFromDeal,
   sameCard,
   tableauTop,
 } from "./rules";
-import type { Card, SolitaireMove, SolitaireState, Suit } from "./types";
+import type {
+  Card,
+  SolitaireDeal,
+  SolitaireMove,
+  SolitaireState,
+  Suit,
+} from "./types";
 
 /**
- * How long the bot "thinks" between moves, per tier.
+ * How long each bot waits between accepted moves.
  *
- * Measured from GO: the bot is allowed `floor(elapsed / delay)` moves, so a
- * slower tier simply solves the same deal later. Chosen against a typical
- * ~150-250 move solve so `hard` finishes well inside the 600 s limit, `normal`
- * usually does, and `easy` often does not (leaving it to the progress
- * tiebreak) — which is exactly the spread a difficulty picker promises.
+ * Pacing is a presentation choice, not the difficulty. The weak bots are slow
+ * AND make weaker decisions; the strong bots think faster AND decide better.
+ * Legacy tier keys stay for old callers/tests.
  */
-export const AI_MOVE_DELAY_MS: Record<AiDifficulty, number> = {
-  easy: 1_300,
-  normal: 850,
-  hard: 480,
-};
+export const AI_MOVE_DELAY_MS = Object.freeze({
+  easy: SOLITAIRE_BOT_BY_ID.rookie.ai.moveDelayMs,
+  normal: SOLITAIRE_BOT_BY_ID.ace.ai.moveDelayMs,
+  hard: SOLITAIRE_BOT_BY_ID.grandmaster.ai.moveDelayMs,
+  rookie: SOLITAIRE_BOT_BY_ID.rookie.ai.moveDelayMs,
+  felix: SOLITAIRE_BOT_BY_ID.felix.ai.moveDelayMs,
+  ace: SOLITAIRE_BOT_BY_ID.ace.ai.moveDelayMs,
+  professor: SOLITAIRE_BOT_BY_ID.professor.ai.moveDelayMs,
+  grandmaster: SOLITAIRE_BOT_BY_ID.grandmaster.ai.moveDelayMs,
+  perfect: SOLITAIRE_BOT_BY_ID.perfect.ai.moveDelayMs,
+});
 
-/** The delay for a tier, defaulting to the shared `normal` tier. */
+/** The delay for a bot (or a legacy tier), resolved through the roster. */
 export function aiMoveDelayMs(difficulty: unknown): number {
-  return AI_MOVE_DELAY_MS[coerceAiDifficulty(difficulty)];
+  return solitaireBotFor(difficulty).ai.moveDelayMs;
 }
 
-/**
- * The tier in words, as PACE — the only thing a tier changes.
- *
- * The bot replays the deal's proven line at every tier, so saying "easy bot"
- * would be a lie about strength; what a player is actually picking is how long
- * it waits between moves. Shared by the arena and the standalone build so the
- * two cannot describe the same tier differently.
- */
-/**
- * The tier's delay in seconds, as a reader rounds it.
- *
- * Rounded to a tenth explicitly: `(850 / 1000).toFixed(1)` is "0.8" because of
- * binary floating point, and the menu's per-tier estimate has to agree with the
- * label shown during the race.
- */
+/** A bot's delay in seconds, rounded the same way the UI prints it. */
 export function aiPaceSeconds(difficulty: unknown): string {
-  const tier = coerceAiDifficulty(difficulty);
-  return (Math.round(AI_MOVE_DELAY_MS[tier] / 100) / 10).toFixed(1);
+  return (Math.round(aiMoveDelayMs(difficulty) / 100) / 10).toFixed(1);
 }
 
+/** A human-readable identity line for a bot. */
 export function aiPaceLabel(difficulty: unknown): string {
-  const tier = coerceAiDifficulty(difficulty);
-  return `${AI_DIFFICULTY_LABELS[tier]} pace · ~${aiPaceSeconds(tier)}s a move`;
+  const bot = solitaireBotFor(difficulty);
+  return `${bot.name} · ${bot.difficultyLabel} · ~${aiPaceSeconds(bot.id)}s a move`;
+}
+
+/** The legacy tier's display label, kept for callers that still use it. */
+export function aiTierLabel(difficulty: unknown): string {
+  return AI_DIFFICULTY_LABELS[coerceAiDifficulty(difficulty)];
 }
 
 /** Every legal move for `state` (never a move `applyMove` would reject). */
@@ -180,107 +186,191 @@ function hiddenCardBelow(state: SolitaireState, column: number, head: Card) {
   return col[index - 1];
 }
 
-/** True when some card can immediately go onto a foundation. */
-function foundationMoveExists(state: SolitaireState): boolean {
-  const tableau = state.tableau ?? [];
-  for (let column = 0; column < tableau.length; column += 1) {
-    const top = tableauTop(state, column);
-    if (top?.faceUp && top.card && top.card.rank === foundationExpects(state, top.card.suit)) {
-      return true;
-    }
+/** True when making `move` would turn over a card the bot cannot currently see. */
+function revealsHiddenCard(state: SolitaireState, move: SolitaireMove): boolean {
+  if (move.kind === "tableau-to-foundation") {
+    const below = hiddenCardBelow(state, move.fromColumn, move.card);
+    return Boolean(below && !below.faceUp);
   }
-  const wasteTop = state.waste?.[state.waste.length - 1];
-  return Boolean(wasteTop && wasteTop.rank === foundationExpects(state, wasteTop.suit));
+  if (move.kind === "tableau-to-tableau") {
+    const column = state.tableau?.[move.fromColumn] ?? [];
+    const index = column.findIndex(
+      (pile) => pile.faceUp && sameCard(pile.card, move.card),
+    );
+    return index > 0 && !column[index - 1].faceUp;
+  }
+  return false;
 }
 
-/** True when some move would turn a face-down tableau card face-up. */
-function revealMoveExists(state: SolitaireState): boolean {
-  const tableau = state.tableau ?? [];
-  for (let from = 0; from < tableau.length; from += 1) {
-    const column = tableau[from];
-    for (let index = 1; index < column.length; index += 1) {
-      const head = column[index];
-      const below = column[index - 1];
-      if (!head.faceUp || !head.card || below.faceUp) continue;
-      const run = faceUpRunFrom(state, from, head.card);
-      if (!run) continue;
-      for (let to = 0; to < tableau.length; to += 1) {
-        if (to === from) continue;
-        const top = tableauTop(state, to);
-        if (top && !top.faceUp) continue;
-        if (canPlaceOnTableau(run[0], top?.card ?? null)) return true;
-      }
-    }
+/** True when the move leaves its source tableau column empty. */
+function emptiesColumn(state: SolitaireState, move: SolitaireMove): boolean {
+  if (move.kind === "tableau-to-foundation") {
+    return (state.tableau?.[move.fromColumn]?.length ?? 0) === 1;
+  }
+  if (move.kind === "tableau-to-tableau") {
+    const column = state.tableau?.[move.fromColumn] ?? [];
+    const index = column.findIndex(
+      (pile) => pile.faceUp && sameCard(pile.card, move.card),
+    );
+    return index === 0;
   }
   return false;
 }
 
 /**
- * Whether a rearrangement actually unlocks something.
+ * The immediate value of a move, using ONLY information a human can see.
  *
- * A tableau-to-tableau move that reveals nothing and frees nothing is only
- * worth making if, AFTER it, some card can go to a foundation or some card can
- * be revealed. This one-ply lookahead is what separates a productive shuffle
- * from the aimless back-and-forth that would otherwise cycle forever.
+ * The profile's weights are what separate the bots: Rookie undervalues
+ * foundations/empty columns and overvalues draws, so it drifts; Perfect values
+ * every structural gain accurately.
  */
-function enablesProgress(state: SolitaireState, move: SolitaireMove): boolean {
-  const applied = applyMove({ state, move });
-  if (!applied.ok) return false;
-  const next = applied.state as SolitaireState;
-  return next.completed || foundationMoveExists(next) || revealMoveExists(next);
-}
-
-/**
- * How good a move is. Higher is better; the scale is arbitrary but the ORDER is
- * the strategy. A move that merely shuffles cards between columns scores below
- * `draw`, so the bot prefers to keep turning the stock rather than oscillate.
- */
-export function scoreMove(state: SolitaireState, move: SolitaireMove): number {
+function immediateScore(
+  state: SolitaireState,
+  move: SolitaireMove,
+  profile: SolitaireBotAiProfile,
+): number {
   switch (move.kind) {
-    case "tableau-to-foundation": {
-      let score = 1_000;
-      const below = hiddenCardBelow(state, move.fromColumn, move.card);
-      if (below && !below.faceUp) score += 200; // flips a hidden card
-      const column = state.tableau?.[move.fromColumn] ?? [];
-      if (column.length === 1) score += 150; // empties the column
-      return score;
-    }
+    case "tableau-to-foundation":
+      return (
+        1_200 * profile.foundationWeight +
+        (revealsHiddenCard(state, move) ? 260 * profile.revealWeight : 0) +
+        (emptiesColumn(state, move) ? 180 * profile.emptyColumnWeight : 0)
+      );
     case "waste-to-foundation":
-      return 950;
+      return 1_080 * profile.foundationWeight;
     case "waste-to-tableau": {
       const top = tableauTop(state, move.toColumn);
-      // A King parked on an empty column is a real, permanent gain.
-      return top ? 700 : 730;
+      const wasteTop = state.waste?.[state.waste.length - 1];
+      // Reserving an empty column for a King is basic Klondike: spending the
+      // last empty column on a low card is how a greedy player walls itself in.
+      // Priced below a draw, so the bot flips cards instead (and comes back to
+      // it if that is genuinely the only option).
+      if (!top && wasteTop && wasteTop.rank !== 13) return 0;
+      return (
+        650 * profile.structureWeight +
+        (top ? 0 : 90 * profile.emptyColumnWeight)
+      );
     }
     case "tableau-to-tableau": {
       const column = state.tableau?.[move.fromColumn] ?? [];
-      const index = column.findIndex((pile) => pile.faceUp && sameCard(pile.card, move.card));
-      if (index < 0) return 40;
-      const below = index > 0 ? column[index - 1] : null;
+      const index = column.findIndex(
+        (pile) => pile.faceUp && sameCard(pile.card, move.card),
+      );
+      if (index < 0) return 0;
       const targetTop = tableauTop(state, move.toColumn);
-      // Moving a whole column onto an empty column changes nothing — refuse to
-      // treat it as progress so the bot cannot loop.
+      // Moving an entire column onto another empty column changes nothing.
       if (index === 0 && !targetTop) return 0;
-      if (below && !below.faceUp) return 600; // reveals a hidden card
-      if (index === 0 && targetTop) return 500; // frees the source column
-      // A shuffle that reveals nothing and frees nothing ranks below drawing,
-      // so the bot keeps turning the stock first — but it is still available
-      // (and promoted) when it unlocks a foundation or a reveal.
-      return enablesProgress(state, move) ? 58 : 52;
+      const reveals = revealsHiddenCard(state, move);
+      const frees = emptiesColumn(state, move);
+      // A shuffle that neither uncovers a card nor frees a column changes
+      // nothing a player can see. It used to score a flat bonus, which made a
+      // bot ping-pong one run between two columns forever and never flip the
+      // stock — the exact loop that left the strong profiles frozen at one
+      // foundation card. A draw is now always worth more than a no-op shuffle.
+      if (!reveals && !frees) return 0;
+      return (
+        (reveals ? 680 * profile.revealWeight : 0) +
+        (frees ? 560 * profile.emptyColumnWeight : 0) +
+        (targetTop ? 40 * profile.structureWeight : 0)
+      );
     }
     case "foundation-to-tableau":
-      // Pulling a card back off a foundation makes no permanent progress.
-      return 5;
+      // Pulling a card back off a foundation GIVES PROGRESS BACK. Priced below
+      // a draw so it is never a neutral choice, and its lookahead is cut (see
+      // `searchScore`): a deeper profile used to see the same card go straight
+      // back up and score the round trip as a huge gain, which is how the
+      // strongest bots ended up gyring an Ace on and off its foundation forever.
+      return -140 * profile.foundationWeight;
     case "draw":
     default: {
-      // Drawing a NEW card is real progress (it may surface a usable card).
-      // Turning an exhausted waste back over is the last resort: it ranks below
-      // every deliberate move, and the planner's stagnation guard bounds it, so
-      // a deal that simply cannot be advanced ends instead of cycling forever.
+      // A draw is valued as an INFORMATION OPPORTUNITY, not by peeking at the
+      // stock. The identity of the next card is never read here.
       const stockLeft = state.stock?.length ?? 0;
-      return stockLeft > 0 ? 60 : 20;
+      return (stockLeft > 0 ? 70 : 12) * profile.drawWeight;
     }
   }
+}
+
+/**
+ * Search visible moves, never through a hidden reveal or a draw.
+ *
+ * A move that flips a face-down card is scored on its immediate reveal value and
+ * then stops: continuing from the resulting board would let the bot choose based
+ * on a card it cannot see yet. A draw likewise stops at its information value.
+ * That is the whole fairness rule, enforced in one place.
+ */
+function searchScore(
+  state: SolitaireState,
+  move: SolitaireMove,
+  profile: SolitaireBotAiProfile,
+  depth: number,
+  budget: { nodes: number; max: number },
+): number {
+  const base = immediateScore(state, move, profile);
+  if (
+    depth <= 0 ||
+    move.kind === "draw" ||
+    move.kind === "foundation-to-tableau" ||
+    revealsHiddenCard(state, move) ||
+    budget.nodes >= budget.max
+  ) {
+    return base;
+  }
+
+  const applied = applyMove({ state, move });
+  if (!applied.ok) return base;
+  const next = applied.state as SolitaireState;
+  if (next.completed) return base + 100_000;
+
+  const children = legalMoves(next)
+    .filter(
+      (candidate) =>
+        candidate.kind !== "draw" && !revealsHiddenCard(next, candidate),
+    )
+    .map((candidate) => ({ move: candidate, score: immediateScore(next, candidate, profile) }))
+    .sort((a, b) => b.score - a.score)
+    .slice(0, Math.max(1, profile.beamWidth));
+
+  let best = 0;
+  for (const child of children) {
+    budget.nodes += 1;
+    if (budget.nodes >= budget.max) break;
+    best = Math.max(
+      best,
+      searchScore(next, child.move, profile, depth - 1, budget),
+    );
+  }
+  return base + profile.planningWeight * best;
+}
+
+/**
+ * How good a move is under the Perfect weights. Exported for tests and for
+ * callers that need a single "objective" score independent of a bot's biases.
+ */
+export function scoreMove(state: SolitaireState, move: SolitaireMove): number {
+  return immediateScore(state, move, SOLITAIRE_BOT_BY_ID.perfect.ai);
+}
+
+/**
+ * Score a move with a bot's OWN search profile, from a fresh node budget.
+ *
+ * This is the full decision value — immediate weights plus the visible
+ * lookahead that profile can afford — not just its first-ply heuristic. Tests
+ * use it with `"perfect"` as the strongest fair objective: Perfect is the bot
+ * that maximises exactly this score, and every weaker choice can be measured
+ * as regret against it. The information rule is the same one `searchScore`
+ * enforces, so evaluating a move here never reveals a hidden card.
+ */
+export function evaluateMoveForBot(
+  state: SolitaireState,
+  move: SolitaireMove,
+  difficulty: unknown = "perfect",
+): number {
+  const profile = solitaireBotFor(difficulty).ai;
+  return searchScore(state, move, profile, profile.searchDepth, {
+    nodes: 0,
+    max: profile.searchBudget,
+  });
 }
 
 /** A monotone "how far along is this board" key, for the stagnation guard. */
@@ -289,7 +379,9 @@ function progressKey(state: SolitaireState): number {
   for (const column of state.tableau ?? []) {
     for (const pile of column) if (!pile.faceUp) faceDown += 1;
   }
-  return foundationCountOf(state) * 1_000 + faceDown;
+  // Revealed cards count as progress: faceDown only ever shrinks in honest play,
+  // so `28 - faceDown` grows as the tableau opens up.
+  return foundationCountOf(state) * 1_000 + (28 - faceDown);
 }
 
 /** Cards on the foundations, locally (keeps this module free of store deps). */
@@ -303,32 +395,131 @@ function foundationCountOf(state: SolitaireState): number {
   );
 }
 
+const clampUnit = (value: number) => Math.min(1, Math.max(0, Number(value) || 0));
+
+/**
+ * A move a beginner would actually make: legal, but it advances nothing.
+ *
+ * The pool is drawn from the engine's own `legalMoves`, never guessed:
+ *
+ *  - DRAWING AGAIN while a productive move is sitting on the table (the classic
+ *    "keep flipping the deck" loop),
+ *  - pushing a card back OFF A FOUNDATION onto the tableau (progress given back),
+ *  - moving a whole column onto an empty column, which changes nothing,
+ *  - any run shuffle that neither reveals a face-down card nor frees a column.
+ *
+ * Returns null when the board offers no such move, so a blunder can never
+ * invent an illegal move — the caller falls back to the normal slip.
+ */
+function pickBlunderMove(
+  state: SolitaireState,
+  moves: SolitaireMove[],
+  bestMove: SolitaireMove,
+  random: () => number,
+): SolitaireMove | null {
+  const hasProductiveMove = moves.some((move) => move.kind !== "draw");
+  const pool: SolitaireMove[] = [];
+
+  for (const move of moves) {
+    // `bestMove` is one of `moves` (the scoring pass keeps the same objects),
+    // so reference equality is the exact "is this the good move" test.
+    if (move === bestMove) continue;
+    if (move.kind === "draw") {
+      if (hasProductiveMove) pool.push(move);
+      continue;
+    }
+    if (move.kind === "foundation-to-tableau") {
+      pool.push(move);
+      continue;
+    }
+    if (move.kind === "tableau-to-tableau") {
+      const column = state.tableau?.[move.fromColumn] ?? [];
+      const index = column.findIndex(
+        (pile) => pile.faceUp && sameCard(pile.card, move.card),
+      );
+      const targetTop = tableauTop(state, move.toColumn);
+      if (index === 0 && !targetTop) {
+        pool.push(move);
+      } else if (
+        !revealsHiddenCard(state, move) &&
+        !emptiesColumn(state, move)
+      ) {
+        pool.push(move);
+      }
+    }
+  }
+
+  if (pool.length === 0) return null;
+  return pool[Math.floor(random() * pool.length) % pool.length];
+}
+
 /**
  * The bot's next move, or null when the board has none.
  *
  * `random` is injectable so the tier behaviour is testable. The result is
  * ALWAYS a member of `legalMoves(state)` — a slip only picks a lower-scoring
  * legal move, never an illegal one.
+ *
+ * ONE roll decides between the profile's two failure modes and the correct
+ * move, so the effective weakness is exactly `blunderRate + mistakeRate`:
+ *
+ *  - BLUNDER (`blunderRate`) — a move that makes no progress at all. This is
+ *    what actually costs a weak bot the race: it burns plies, not just quality.
+ *  - SLIP (`mistakeRate`) — a worse but still productive move, bounded by
+ *    `slipFloor` so it stays believable.
+ *
+ * Perfect has both rates at 0, which makes the roll a no-op for it.
  */
 export function chooseAiMove({
   state,
   difficulty = "normal",
+  botId,
   random = Math.random,
 }: {
   state: SolitaireState;
+  /** Legacy tier (`easy|normal|hard`) or a bot id. */
   difficulty?: unknown;
+  /** Explicit bot id; wins over `difficulty`. */
+  botId?: unknown;
   random?: () => number;
 }): SolitaireMove | null {
   const moves = legalMoves(state);
   if (moves.length === 0) return null;
-  const scored = moves.map((move) => ({ move, score: scoreMove(state, move) }));
-  const chosen = chooseAiOption(
-    coerceAiDifficulty(difficulty),
-    scored,
-    (option) => option.score,
-    random,
-  );
-  return chosen?.move ?? moves[0];
+
+  const bot: SolitaireBot = solitaireBotFor(botId ?? difficulty);
+  const profile = bot.ai;
+  const budget = { nodes: 0, max: profile.searchBudget };
+  const scored = moves
+    .map((move) => ({
+      move,
+      score: searchScore(state, move, profile, profile.searchDepth, budget),
+    }))
+    .sort((a, b) => b.score - a.score);
+
+  const best = scored[0];
+  if (!best) return moves[0];
+
+  const roll = random();
+  const blunderRate = clampUnit(profile.blunderRate);
+  const mistakeRate = clampUnit(profile.mistakeRate);
+
+  // Perfect never rolls: both rates are 0, so the correct move always wins.
+  if (blunderRate > 0 && roll < blunderRate) {
+    const blunder = pickBlunderMove(state, moves, best.move, random);
+    if (blunder) return blunder;
+  }
+  if (mistakeRate <= 0 || roll >= blunderRate + mistakeRate) {
+    return best.move;
+  }
+
+  // Deliberate, believable slip: fall through to a worse legal move, but only
+  // among the profile's top options and never below its quality floor.
+  let worse = scored.slice(1, 1 + Math.max(0, profile.slipPool));
+  const floor = best.score * profile.slipFloor;
+  const usable = worse.filter((option) => option.score >= floor);
+  if (usable.length > 0) worse = usable;
+  if (worse.length === 0) return best.move;
+  return worse[Math.floor(random() * worse.length) % worse.length].move;
 }
 
 /**
@@ -354,7 +545,7 @@ export function planAiMoves({
   state,
   difficulty = "normal",
   maxMoves = 64,
-  random = Math.random,
+  random,
 }: {
   state: SolitaireState;
   difficulty?: unknown;
@@ -365,6 +556,7 @@ export function planAiMoves({
   let current = state;
   let best = progressKey(current);
   let stagnant = 0;
+  const bot = solitaireBotFor(difficulty);
   // `stuck` means the planner stopped because the BOARD has nothing left to
   // give — no legal move at all, or a long run of moves that changed nothing.
   // It deliberately stays false when the loop merely hit `maxMoves`: a bot that
@@ -373,7 +565,16 @@ export function planAiMoves({
   let stuck = false;
 
   while (moves.length < Math.max(1, Math.floor(maxMoves)) && !current.completed) {
-    const move = chooseAiMove({ state: current, difficulty, random });
+    const move = chooseAiMove({
+      state: current,
+      botId: bot.id,
+      // A bot's own dice are derived from the move cursor, so the same board
+      // always produces the same decision. That is what lets a practice deal be
+      // verified as finishable by THIS profile before it is served, and why a
+      // clock-sliced plan plays out exactly as the verified one did. An
+      // injected `random` (tests, benchmarks) always wins.
+      random: random ?? (() => botRoll(current.ply)),
+    });
     if (!move) {
       stuck = true;
       break;
@@ -445,8 +646,110 @@ export function planAiSolution({
   return { moves, state: current, completed: Boolean(current.completed), stuck: false };
 }
 
+/**
+ * Follow a PROVEN solution line from an explicit cursor.
+ *
+ * `planAiSolution` assumes the line cursor equals `state.ply`, which is only
+ * true for a bot that has followed the line from the opening. A RECOVERING bot
+ * carries its `ply` forward across a re-deal (the move log must stay unique),
+ * so its line position is persisted separately as `aiLineCursor` and passed
+ * here. Every move is replayed through `applyMove`; a refused move returns null
+ * so the caller can fall back instead of inventing a move.
+ */
+export function planAiLine({
+  state,
+  line,
+  cursor = 0,
+  maxMoves = 64,
+}: {
+  state: SolitaireState;
+  line: readonly SolitaireMove[] | null | undefined;
+  cursor?: number;
+  maxMoves?: number;
+}): {
+  moves: SolitaireMove[];
+  state: SolitaireState;
+  completed: boolean;
+  cursor: number;
+} | null {
+  if (!state || state.completed || !line || line.length === 0) return null;
+
+  let index = Math.max(0, Math.trunc(Number(cursor) || 0));
+  if (index >= line.length) return null;
+
+  const moves: SolitaireMove[] = [];
+  let current = state;
+  const end = Math.min(index + Math.max(1, Math.floor(maxMoves)), line.length);
+
+  for (; index < end && !current.completed; index += 1) {
+    const applied = applyMove({ state: current, move: line[index] });
+    if (!applied.ok) return null;
+    current = applied.state as SolitaireState;
+    moves.push(line[index]);
+  }
+
+  return {
+    moves,
+    state: current,
+    completed: Boolean(current.completed),
+    cursor: index,
+  };
+}
+
 /** The suit of the top waste card, exposed for tests and diagnostics. */
 export function wasteTopSuit(state: SolitaireState): Suit | null {
   const top = state.waste?.[state.waste.length - 1];
   return top ? top.suit : null;
+}
+
+/**
+ * A bot's own die for one decision, derived from the move cursor.
+ *
+ * Practice play is deterministic ON PURPOSE. The deal generator only serves
+ * boards that defeat naive play, so a fair heuristic finishes a minority of
+ * them; the store therefore verifies a candidate deal with the bot's OWN plan
+ * before serving it. That promise is only meaningful if the plan it verified is
+ * the plan the bot will actually play, which needs rolls that depend on the
+ * board (the ply) rather than on Math.random or on how the clock sliced the
+ * plan into reads.
+ *
+ * The mixer is a 32-bit integer hash (splitmix-style finalizer), so adjacent
+ * plies give well-spread values.
+ */
+export function botRoll(ply: number): number {
+  let x = (Math.trunc(Number(ply) || 0) + 0x9e37_79b9) >>> 0;
+  x = Math.imul(x ^ (x >>> 16), 0x21f0_aaad) >>> 0;
+  x = Math.imul(x ^ (x >>> 15), 0x735a_2d97) >>> 0;
+  x = (x ^ (x >>> 15)) >>> 0;
+  return x / 0x1_0000_0000;
+}
+
+/**
+ * Can THIS bot actually finish `deal` from its opening position?
+ *
+ * The generator's proof (`solvableDealFromSeed`) is about a perfect player; it
+ * says nothing about a named profile's fair, mistake-prone heuristic. A bot
+ * whose own board dead-ends is re-dealt mid-race (see the store), which is
+ * exactly the "it never completes the puzzle" experience. This runs the bot's
+ * real deterministic plan and answers the only question that matters for a
+ * practice opponent: will it reach the foundations?
+ *
+ * It never looks at a solution line and never sees anything a player cannot —
+ * it is the bot's own play, replayed.
+ */
+export function botCanFinishDeal({
+  deal,
+  difficulty,
+  maxMoves = 700,
+}: {
+  deal: SolitaireDeal;
+  difficulty?: unknown;
+  maxMoves?: number;
+}): boolean {
+  if (!deal) return false;
+  return planAiMoves({
+    state: initialStateFromDeal(deal),
+    difficulty,
+    maxMoves,
+  }).completed;
 }

@@ -507,9 +507,9 @@ test("view: face-down identities and the stock order never leave the server", ()
   const viewIds = identitiesIn(view);
 
   // The server knows all 52 cards; the client is told the 7 already face-up
-  // tableau cards and nothing else.
+  // tableau cards plus the ONE card the next draw would turn over.
   assert.equal(stateIds.size, DECK_SIZE);
-  assert.equal(viewIds.size, 7);
+  assert.equal(viewIds.size, 8);
 
   const visible = new Set(
     state.tableau.flat().filter((pile) => pile.faceUp).map((pile) => `${pile.card.suit}-${pile.card.rank}`),
@@ -524,11 +524,18 @@ test("view: face-down identities and the stock order never leave the server", ()
   for (const key of hidden) {
     assert.equal(viewIds.has(key), false, `${key} is face-down and must not be in the view`);
   }
+  // Only the top of the stock is exposed — the one-card draw peek. Every other
+  // position stays a count, so the order cannot be planned around.
+  const topOfStock = state.stock[state.stock.length - 1];
+  assert.deepEqual(view.nextStockCard, { suit: topOfStock.suit, rank: topOfStock.rank });
   for (const cardInStock of state.stock) {
+    const key = `${cardInStock.suit}-${cardInStock.rank}`;
     assert.equal(
-      viewIds.has(`${cardInStock.suit}-${cardInStock.rank}`),
-      false,
-      "the stock is a count only",
+      viewIds.has(key),
+      cardInStock === topOfStock,
+      cardInStock === topOfStock
+        ? "the next card a draw turns over is visible"
+        : "the rest of the stock is a count only",
     );
   }
 

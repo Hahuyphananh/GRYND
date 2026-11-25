@@ -41,7 +41,7 @@ export default function EmoteBubble({
       role="status"
       aria-label={accessibleLabel}
       data-emote-bubble={isMine ? "mine" : "incoming"}
-      className={`inline-flex max-w-[min(16rem,80vw)] items-center gap-2 rounded-2xl border bg-[#071531]/95 px-2.5 py-1.5 shadow-[0_0_18px_rgba(0,0,0,0.45)] backdrop-blur-md ${
+      className={`inline-flex max-w-[min(16rem,80vw)] items-center gap-2 rounded-2xl border bg-surface/95 px-2.5 py-1.5 shadow-[0_0_18px_rgba(0,0,0,0.45)] backdrop-blur-md ${
         isMine
           ? "rounded-br-sm border-cyan-300/60 shadow-[0_0_18px_rgba(0,229,255,.35)]"
           : "rounded-bl-sm border-fuchsia-300/60 shadow-[0_0_18px_rgba(255,60,172,.35)]"

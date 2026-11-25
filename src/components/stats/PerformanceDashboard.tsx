@@ -20,7 +20,9 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import AsyncState from "../states/AsyncState";
+import ErrorState from "../states/ErrorState";
 import LineChart from "./LineChart";
 import ProAnalyticsLocked from "./ProAnalyticsLocked";
 import StatTile from "./StatTile";
@@ -136,12 +138,20 @@ function shortDate(iso: string | null | undefined): string {
 export default function PerformanceDashboard({
   signedIn,
   pro,
+  membershipUnavailable = false,
 }: {
   signedIn: boolean;
   /** Server-resolved membership — the client never decides this. */
   pro: boolean;
+  /**
+   * The server could not READ the membership (timeout or DB failure). That is
+   * not a downgrade: showing the upgrade prompt here would tell a paying member
+   * their subscription is gone. Offer a retry instead.
+   */
+  membershipUnavailable?: boolean;
 }) {
   const { t } = useTranslation();
+  const router = useRouter();
   const [game, setGame] = useState<string>("all");
   const [range, setRange] = useState<RangeKey>("all");
   const [pages, setPages] = useState(1);
@@ -172,6 +182,22 @@ export default function PerformanceDashboard({
 
   const rangeLabel = (key: RangeKey) =>
     key === "all" ? t("stats.range.all") : t(`stats.range.${key}`);
+
+  if (signedIn && membershipUnavailable) {
+    return (
+      <ErrorState
+        title={t(
+          "stats.membership_unverified_title",
+          "We couldn't verify your GRYND PRO membership",
+        )}
+        description={t(
+          "stats.membership_unverified_body",
+          "The membership check didn't answer in time, so the analytics stay hidden for now. Nothing was changed on your account — try again in a moment.",
+        )}
+        onRetry={() => router.refresh()}
+      />
+    );
+  }
 
   if (!signedIn) {
     return (
@@ -227,7 +253,7 @@ export default function PerformanceDashboard({
     >
       <div className="space-y-6">
         {/* Filters — the server does the filtering; these only choose it. */}
-        <div className="flex flex-wrap items-end gap-4 rounded-xl border border-[#00e5ff]/25 bg-[#04122b]/70 p-4">
+        <div className="flex flex-wrap items-end gap-4 rounded-xl border border-[#00e5ff]/25 bg-surface/70 p-4">
           <label className="flex flex-col gap-1 text-xs font-semibold uppercase tracking-wider text-[#9dd8ff]/70">
             {t("stats.filters.game")}
             <select
@@ -236,7 +262,7 @@ export default function PerformanceDashboard({
                 setGame(event.target.value);
                 setPages(1);
               }}
-              className="rounded-lg border border-[#00e5ff]/30 bg-[#04122b] px-3 py-2 text-sm font-medium text-white focus:border-[#00e5ff] focus:outline-none"
+              className="rounded-lg border border-[#00e5ff]/30 bg-surface px-3 py-2 text-sm font-medium text-white focus:border-[#00e5ff] focus:outline-hidden"
             >
               <option value="all">{t("stats.filters.all_games")}</option>
               {gameOptions.map((option) => (
@@ -398,7 +424,7 @@ export default function PerformanceDashboard({
         ) : null}
 
         {/* ── Per-game breakdown ──────────────────────────────────────── */}
-        <section className="rounded-xl border border-[#00e5ff]/25 bg-[#04122b]/70 p-4">
+        <section className="rounded-xl border border-[#00e5ff]/25 bg-surface/70 p-4">
           <h3 className="text-sm font-bold uppercase tracking-wider text-[#00e5ff]">
             {t("stats.pergame.title")}
           </h3>
@@ -460,7 +486,7 @@ export default function PerformanceDashboard({
         </section>
 
         {/* ── Recent results ──────────────────────────────────────────── */}
-        <section className="rounded-xl border border-[#00e5ff]/25 bg-[#04122b]/70 p-4">
+        <section className="rounded-xl border border-[#00e5ff]/25 bg-surface/70 p-4">
           <h3 className="text-sm font-bold uppercase tracking-wider text-[#00e5ff]">
             {t("stats.recent.title")}
           </h3>
@@ -573,7 +599,7 @@ function ChartCard({
   const improving = change === null || change === undefined ? null : changeInverted ? change < 0 : change > 0;
 
   return (
-    <section className="rounded-xl border border-[#00e5ff]/25 bg-[#04122b]/70 p-4">
+    <section className="rounded-xl border border-[#00e5ff]/25 bg-surface/70 p-4">
       <div className="flex items-start justify-between gap-3">
         <div>
           <h3 className="text-sm font-bold uppercase tracking-wider text-[#00e5ff]">{title}</h3>

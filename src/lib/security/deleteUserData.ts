@@ -34,6 +34,10 @@ import {
   precisionMatches,
   rpsGames,
   rpsPvpGames,
+  solitaireAnalysisCache,
+  solitaireDailyResults,
+  solitaireDuelMatches,
+  solitaireSoloResults,
   stripeCheckoutSessions,
   towerArenaMatches,
   towerArenaPlayers,
@@ -137,8 +141,49 @@ export async function deleteUserLocalData(clerkId: string): Promise<boolean> {
     await tx.delete(laneRunnerGames).where(eq(laneRunnerGames.userId, localUserId));
     await tx.delete(keno_games).where(eq(keno_games.user_id, localUserId));
 
+    // ── Game Review analysis cache: erase the analyses of the games below ──
+    // The cache has no user column — its identity is the game + exact log — so
+    // the association is resolved from the game rows BEFORE they are deleted.
+    // Guarded for pre-0249 databases, like every other optional table here.
+    if ((await getExistingTables()).has("solitaire_analysis_cache")) {
+      const soloIds = await tx
+        .select({ id: solitaireSoloResults.id })
+        .from(solitaireSoloResults)
+        .where(eq(solitaireSoloResults.userId, clerkId));
+      const dailyIds = await tx
+        .select({ id: solitaireDailyResults.id })
+        .from(solitaireDailyResults)
+        .where(eq(solitaireDailyResults.userId, clerkId));
+      const duelIds = await tx
+        .select({ id: solitaireDuelMatches.id })
+        .from(solitaireDuelMatches)
+        .where(
+          or(
+            eq(solitaireDuelMatches.player1Id, clerkId),
+            eq(solitaireDuelMatches.player2Id, clerkId)
+          )
+        );
+      const cachedGameIds = [...soloIds, ...dailyIds, ...duelIds].map((row) =>
+        String(row.id)
+      );
+      if (cachedGameIds.length > 0) {
+        await tx
+          .delete(solitaireAnalysisCache)
+          .where(inArray(solitaireAnalysisCache.gameId, cachedGameIds));
+      }
+    }
+
     // ── Solo games: varchar user_id (Clerk id), no FK. ──
     await tx.delete(rpsGames).where(eq(rpsGames.userId, clerkId));
+    // Solo/Daily Solitaire results carry the player's verified move history
+    // (added in 0248). They are keyed by Clerk id with no FK, so account
+    // deletion must erase them explicitly. Guarded for pre-0244 databases.
+    if ((await getExistingTables()).has("solitaire_solo_results")) {
+      await tx.delete(solitaireSoloResults).where(eq(solitaireSoloResults.userId, clerkId));
+    }
+    if ((await getExistingTables()).has("solitaire_daily_results")) {
+      await tx.delete(solitaireDailyResults).where(eq(solitaireDailyResults.userId, clerkId));
+    }
     await tx.delete(hexDuelActions).where(eq(hexDuelActions.userId, clerkId));
     await tx.delete(poolShots).where(eq(poolShots.userId, clerkId));
     // chess_moves stores the player as `played_by` (Clerk id) with a

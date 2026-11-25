@@ -1,0 +1,4 @@
+interface:
+  display_name: "Shipshape Frontend"
+  short_description: "Preflight responsive, a11y, and polish"
+  default_prompt: "Use $shipshape-frontend to run a final frontend readiness pass before release."

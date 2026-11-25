@@ -23,7 +23,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSocket } from "../context/SocketProvider";
-import { ROOM_GAMES } from "../lib/rooms/catalog";
+import { ROOM_DEFAULT_TIMER_SECONDS, ROOM_GAMES } from "../lib/rooms/catalog";
 import type { RoomGameOption, RoomView } from "../lib/rooms/types";
 
 const POLL_INTERVAL_MS = 20_000;
@@ -178,10 +178,14 @@ export function useRooms({ enabled = true }: { enabled?: boolean } = {}) {
   );
 
   const createRoom = useCallback(
-    (gameKey: string, stake: number) =>
+    (
+      gameKey: string,
+      stake: number,
+      timerSeconds: number = ROOM_DEFAULT_TIMER_SECONDS,
+    ) =>
       request("create", "/api/rooms", {
         method: "POST",
-        body: JSON.stringify({ kind: "room", gameKey, stake }),
+        body: JSON.stringify({ kind: "room", gameKey, stake, timerSeconds }),
       }),
     [request],
   );

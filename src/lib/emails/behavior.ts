@@ -1,4 +1,4 @@
-import { renderTemplate, sendEmailSafely } from "./base";
+import { renderTemplate, sendEmailSafely, escapeHtml } from "./base";
 
 export const sendLossStreakEmail = (user: any) =>
   sendEmailSafely({
@@ -18,6 +18,6 @@ export const sendFraudAlertEmail = (user: any, reason: string) =>
     subject: "Account warning notice",
     html: renderTemplate(
       "Potential abuse detected",
-      `<p>Reason: ${reason}</p><p>Your account may be restricted pending review.</p>`,
+      `<p>Reason: ${escapeHtml(reason)}</p><p>Your account may be restricted pending review.</p>`,
     ),
   });

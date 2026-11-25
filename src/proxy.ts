@@ -6,6 +6,7 @@ import {
   type LimitConfig,
 } from "./lib/security/rateLimit";
 import { auditLog } from "./lib/security/auditLog";
+import { buildScriptSrc } from "./lib/security/csp";
 import { isAdmin } from "./lib/auth/isAdmin";
 import { isMaintenanceMode } from "./lib/security/maintenance";
 import { withTimeout } from "./lib/security/withTimeout";
@@ -25,7 +26,8 @@ import { eq } from "drizzle-orm";
 import { cacheGet, cacheSet } from "./lib/redis/cache";
 import { CacheKeys, CacheTTL } from "./lib/redis/keys";
 import { isGameLandingSlug } from "./lib/gameLandingPages";
-import { isGuideSlug } from "./lib/guides";
+import { apexRedirectUrl } from "./lib/siteUrl";
+import { LEGACY_GUIDE_SLUGS, isGuideSlug } from "./lib/guides";
 import { applyEmbedFramePolicy } from "./lib/platform/framing";
 import { applyPortalFramePolicy } from "./lib/portal/framing";
 
@@ -35,6 +37,25 @@ import { applyPortalFramePolicy } from "./lib/portal/framing";
  * `middlewareHandler`). Nothing serves it, which is the point.
  */
 const NOT_FOUND_SENTINEL = "/__unknown-game-slug";
+
+/**
+ * A real 404 for a game URL that no longer has a page.
+ *
+ * Returned directly instead of rewriting to NOT_FOUND_SENTINEL: on a host with
+ * Clerk configured, the rewritten request re-enters the auth pipeline and that
+ * path answered 500 instead of 404. A direct response cannot be re-routed and
+ * never consults a session.
+ */
+function gameNotFoundResponse(): NextResponse {
+  const body = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="robots" content="noindex"><title>Game not found | GRYND</title></head><body style="margin:0;min-height:100vh;display:grid;place-items:center;background:#030817;color:#d8fbff;font-family:system-ui,sans-serif;text-align:center;padding:24px"><main><h1 style="font-size:2rem;margin:0 0 12px">Game not found</h1><p style="margin:0 0 20px;color:#9dd8ff">This game is no longer on GRYND.</p><a href="/games/solitaire-duel" style="display:inline-block;padding:12px 24px;border-radius:12px;background:#FFD700;color:#030817;font-weight:700;text-decoration:none">Play Solitaire Duel</a></main></body></html>`;
+  return new NextResponse(body, {
+    status: 404,
+    headers: {
+      "content-type": "text/html; charset=utf-8",
+      "x-robots-tag": "noindex",
+    },
+  });
+}
 
 /**
  * RETIRED GAMES — real, playable games that have since been removed from the
@@ -54,6 +75,29 @@ const RETIRED_GAME_PATHS: readonly RegExp[] = [
 ];
 
 /**
+ * PRODUCT SURFACES RETIRED WITH THE SOLITAIRE-FIRST TRANSITION.
+ *
+ * The coin shop, token rewards and quests are hidden from the public product,
+ * but their implementations, APIs, tables and history stay in the repository. A
+ * public visit goes to the one game the platform now offers, so an old bookmark
+ * lands somewhere useful instead of on a dead page.
+ *
+ * GRYND PRO is deliberately NOT in this list any more: it is the one paid
+ * product that is still sold. A retired-product redirect for it swallowed the
+ * real /upgrade-pro page (and every link, email and Stripe return URL pointing
+ * at it) and bounced the visitor to the Solitaire Duel page instead of showing
+ * the offer and its Checkout button.
+ */
+const RETIRED_PRODUCT_PATH = /^\/(?:rewards|shop|quests)(?:\/|$)/;
+
+/**
+ * APIs that belong to retired public features. They stay implemented for
+ * historical data and future reactivation, but no public client can reach
+ * them. Game-specific namespaces are handled separately below.
+ */
+const RETIRED_PRODUCT_API = /^\/api\/(?:quick-queue|coins|shop|quests)(?:\/|$)/;
+
+/**
  * Playable casino/game routes — the single source of truth for
  * `isGameRoute()`. These are the exact same patterns the public matcher
  * below has always listed; they live here so the two lists cannot drift.
@@ -63,98 +107,23 @@ const RETIRED_GAME_PATHS: readonly RegExp[] = [
  * /casino/* → /games/*, so a request can arrive with either prefix.
  */
 const GAME_ROUTE_PATTERNS = [
-  "/casino/uno(.*)",
-  "/casino/neon-flush(.*)",
-  // /uno is the top-level alias of the Uno game page.
-  "/uno",
-  "/casino/mines-pvp(.*)",
-  "/casino/chess(.*)",
-  // Keno carries a `(.*)` like every other game so that its play URL
-  // (/games/keno/play, rewritten to /casino/keno) is classified as a game route
-  // too. Without it the bare pattern matched only the lobby itself, so a
-  // signed-out visitor pressing Play on the Keno landing page was bounced to
-  // /sign-in while the same visitor reached the lobby on the other twenty
-  // games — the exact inconsistency this list exists to prevent.
-  "/casino/keno(.*)",
-  "/casino/keno-pvp(.*)",
-  "/casino/rps(.*)",
-  "/casino/four-in-a-row(.*)",
-  "/casino/dots-and-boxes(.*)",
-  "/casino/lane-runner(.*)",
-  "/casino/tower-arena(.*)",
-  "/casino/pool-masters(.*)",
-  "/casino/hex-duel(.*)",
-  "/casino/dice-flush(.*)",
-  "/casino/odds(.*)",
-  "/casino/memory-grid(.*)",
-  "/casino/precision(.*)",
-  // Games added to the hub catalogue after this list was first written
-  // (src/app/casino/PageClient.jsx `games[].href`). They are advertised on the
-  // public hub, so a signed-out visitor must be able to READ their lobby as
-  // well — keep this list in sync with that catalogue.
-  "/casino/mini-golf(.*)",
-  "/casino/speed-typing(.*)",
-  "/casino/tic-tac-toe(.*)",
   "/casino/solitaire-duel(.*)",
-  "/casino/sudoku-duel(.*)",
-  // Barrier Blitz's free-practice route (/casino/barrier-blitz/play-ai). There
-  // is no wager, no rating and no server-side match behind it — the whole game
-  // is played against the local bot — so a signed-out visitor must be able to
-  // read it rather than be bounced to /sign-in.
-  "/casino/barrier-blitz(.*)",
-  // Dominoes' online table (lobby at /casino/dominoes, match at
-  // /casino/dominoes/<id>). The lobby is public to READ — its Play action sends a
-  // signed-out visitor to sign-in — so the whole subtree is classified as a game
-  // route like every other one. There is no free-practice route yet, so nothing
-  // here is playable without an account.
-  "/casino/dominoes(.*)",
-  // Hillstrike's online lobby (/casino/hillstrike), its per-match view
-  // (/casino/hillstrike/<id>) and its free-practice board
-  // (/casino/hillstrike/play-ai). The lobby is public to READ — its Play action
-  // sends a signed-out visitor to sign-in — while the practice board is entirely
-  // client-side and needs no account at all.
-  "/casino/hillstrike(.*)",
-  // Battleship's lobby (/casino/battleship) and its free-practice / match
-  // state live on that one page — the lobby is public to READ, while its Play
-  // action and the practice start still require the gates above (practice mints
-  // a guest through its own API route).
-  "/casino/battleship(.*)",
-  // /games/* mirrors of the /casino/* routes.
-  "/games/uno(.*)",
-  "/games/neon-flush(.*)",
-  "/games/mines-pvp(.*)",
-  "/games/chess(.*)",
-  "/games/keno(.*)",
-  "/games/keno-pvp(.*)",
-  "/games/rps(.*)",
-  "/games/four-in-a-row(.*)",
-  "/games/dots-and-boxes(.*)",
-  "/games/lane-runner(.*)",
-  "/games/tower-arena(.*)",
-  "/games/pool-masters(.*)",
-  "/games/hex-duel(.*)",
-  "/games/dice-flush(.*)",
-  "/games/odds(.*)",
-  "/games/memory-grid(.*)",
-  "/games/precision(.*)",
-  "/games/mini-golf(.*)",
-  "/games/speed-typing(.*)",
-  "/games/tic-tac-toe(.*)",
+  // /games/* mirror of the same route.
   "/games/solitaire-duel(.*)",
-  "/games/sudoku-duel(.*)",
-  "/games/barrier-blitz(.*)",
-  "/games/dominoes(.*)",
-  "/games/hillstrike(.*)",
-  "/games/battleship(.*)",
 ] as const;
 
-const isPublicRoute = createRouteMatcher([
+export const isPublicRoute = createRouteMatcher([
   "/sign-in(.*)",
   "/sign-up(.*)",
   "/api/(.*)",
   "/ingest(.*)",
   "/monitoring",
   "/health",
+  // Google Play's data-deletion policy requires a URL that explains deletion
+  // and is reachable WITHOUT a session — a reviewer or a user who can no longer
+  // sign in has to be able to read it. The deletion itself stays behind the
+  // authenticated POST /api/delete-account.
+  "/account-deletion",
 
   "/",
   "/casino",
@@ -184,6 +153,21 @@ const isPublicRoute = createRouteMatcher([
   // which is matched above.
   "/welcome/questionnaire(.*)",
   "/classement",
+  // Single-player Solitaire surfaces: guests must be able to play without an
+  // account (solo records then stay in their browser). No auth is required to
+  // VIEW them; the record APIs still require a signed-in user.
+  "/solitaire",
+  // The review page is a read-only, noindex shell. It must load for a guest
+  // opening the local game they just finished, and for a signed-in player
+  // returning to an account game. The review APIs still authenticate the
+  // caller and filter every read by owner, so making the page public exposes
+  // no game data on its own.
+  "/solitaire/review(.*)",
+  // The Learn section is a reading/practice surface: a guest must be able to
+  // launch a prepared lesson without an account. Progress stays local, and the
+  // lesson engine has no ranked or matchmaking side effects.
+  "/learn(.*)",
+  "/daily",
   "/profil(.*)",
   // Onboarding / auth / system pages that must stay reachable BEFORE a
   // player has an age record.
@@ -199,12 +183,21 @@ const isPublicRoute = createRouteMatcher([
   // rewritten request falls back into the auth gate, gets 307'd to /sign-in and
   // the response becomes a 500 instead of the 404 the guard exists to emit.
   "/__unknown-game-slug",
+  // The rewrite target for an archived game's URL (see GAME_UNAVAILABLE_PATH
+  // above). Public and noindex, like the not-found sentinel.
+  "/game-unavailable",
 
   // Every playable casino/game route — declared once in GAME_ROUTE_PATTERNS
   // above. Explicitly public today (no behaviour change); the patterns are
   // listed once so isGameRoute() and this matcher can never disagree.
   ...GAME_ROUTE_PATTERNS,
   "/sentry-example-page",
+
+  // Publisher and advertising disclosures: sitemap-listed, footer-linked, and
+  // readable by a signed-out visitor (including a site reviewer). Without
+  // these entries the sitemap advertised two URLs that 307'd to /sign-in.
+  "/about",
+  "/cookie-policy",
 
   // Legal / policy pages
   "/security-policy",
@@ -315,8 +308,7 @@ const MUTATION_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 // is authorised by its HMAC-signed token (never a cookie), so the CSRF and
 // application/json content-type guards deliberately don't apply to it.
 const skipsCsrfGuards = (pathname: string) =>
-  pathname.startsWith("/api/webhooks/") ||
-  pathname === "/api/emails/unsubscribe";
+  pathname.startsWith("/api/webhooks/") || pathname === "/api/emails/unsubscribe";
 
 /**
  * User-level MFA gate (Settings → Account Security). When a signed-in user
@@ -334,7 +326,7 @@ async function userMfaGate(
     userId: string | null;
     factorVerificationAge: [number, number] | null;
   }>,
-  authInfo?: { userId: string | null; factorVerificationAge: [number, number] | null },
+  authInfo?: { userId: string | null; factorVerificationAge: [number, number] | null }
 ) {
   if (
     pathname.startsWith("/api/") ||
@@ -374,7 +366,7 @@ async function userMfaGate(
           })
           .then((row) => row ?? null),
         1500,
-        null,
+        null
       );
       enabled = Boolean(user?.mfaEnabled);
       await cacheSet(CacheKeys.userMfa(userId), enabled, CacheTTL.userMfa).catch(() => {});
@@ -445,10 +437,22 @@ function applySecurityHeaders(response: NextResponse) {
   //     production but not localhost" — production bundles are
   //     pre-compiled and never call eval().
   // Production keeps eval() blocked for security.
-  const scriptSrc =
-    process.env.NODE_ENV === "development"
-      ? "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://*.clerk.com https://*.clerk.accounts.dev https://challenges.cloudflare.com https:; "
-      : "script-src 'self' 'unsafe-inline' https://*.clerk.com https://*.clerk.accounts.dev https://challenges.cloudflare.com https:; ";
+  // The HilltopAds snippet is protocol-relative (`//juvenilechoice.com/...`), so
+  // on a plain-http origin — localhost, or an http staging host — the browser
+  // resolves it to `http://`, which an https-only `script-src` refuses. The
+  // banner then never paints, no matter how its env gates are set. Development
+  // therefore adds the provider's http origin; production does not.
+  const hilltopDevHosts =
+    process.env.NODE_ENV === "development" ? "http://juvenilechoice.com " : "";
+
+  // The origins live in lib/security/csp.ts, one host at a time — the old
+  // trailing `https:` allowed ANY https origin to serve script and made this
+  // directive useless as an injection control. `unsafe-eval` stays
+  // development-only; the http Hilltop origin is added in development only.
+  const scriptSrc = `${buildScriptSrc({
+    development: process.env.NODE_ENV === "development",
+    extraHosts: hilltopDevHosts,
+  })}; `;
 
   response.headers.set(
     "Content-Security-Policy",
@@ -462,7 +466,8 @@ function applySecurityHeaders(response: NextResponse) {
       // — the one directive that is NOT wildcarded above — has to name its
       // hosts explicitly: googleads.g.doubleclick.net and the
       // safeframe/tpc.googlesyndication.com frames the ad units render in.
-      // (script-src, img-src and connect-src already allow all of `https:`.)
+      // (img-src and connect-src already allow all of `https:`; script-src
+      // names its ad hosts explicitly in lib/security/csp.ts.)
       // Without these the loader still downloads and then silently fails to
       // paint a single ad. Only the pages in src/components/AdSenseScript.tsx
       // ever request them (see the page allow-list in tests/adsense.test.mjs).
@@ -482,7 +487,21 @@ function applySecurityHeaders(response: NextResponse) {
       // pages, so it stays an allow-list rather than `https:`. The banner is
       // off by default; without this host a switched-on banner could never
       // paint, and it would collapse instead of showing a blank box.
-      "frame-src 'self' https://challenges.cloudflare.com https://*.clerk.com https://*.clerk.accounts.dev https://js.stripe.com https://checkout.stripe.com https://*.stripe.com https://*.googlesyndication.com https://*.doubleclick.net https://*.google.com https://fundingchoicesmessages.google.com https://juvenilechoice.com; " +
+      //
+      // adtrafficquality.google is AdSense's own traffic-quality check (ep1/
+      // ep2.adtrafficquality.google). Google's ad code frames it on every ad
+      // page, so leaving it out produces a CSP violation on each impression —
+      // the unit still paints, but the console fills with errors and Google
+      // loses the invalid-traffic signal it uses to protect the publisher.
+      //
+      // widget.trustpilot.com (and widgets.trustpilot.com) serve the TrustBox
+      // iframe — the Review Collector strip on the home page and /reviews. The
+      // bootstrap script loads under `https:` in script-src, but frame-src is an
+      // explicit allow-list, so without these two hosts the element is in the
+      // page and the frame is refused: an empty grey box with a broken-document
+      // icon, which is exactly what an unlisted host looks like. Both spellings
+      // are named because Trustpilot has served the bootstrap from each.
+      `frame-src 'self' https://challenges.cloudflare.com https://*.clerk.com https://*.clerk.accounts.dev https://js.stripe.com https://checkout.stripe.com https://*.stripe.com https://*.googlesyndication.com https://*.doubleclick.net https://*.google.com https://fundingchoicesmessages.google.com https://*.adtrafficquality.google https://juvenilechoice.com https://widget.trustpilot.com https://widgets.trustpilot.com ${hilltopDevHosts}; ` +
       // The post-match video ad (components/ads/PostMatchVideoAd.tsx) plays a
       // provider-supplied creative in a native <video>. With no `media-src`,
       // media falls back to `default-src 'self'` and every ad video is blocked
@@ -541,12 +560,8 @@ const middlewareHandler = async (auth: () => Promise<any>, req: NextRequest) => 
   // maintenance page. /admin and /api/admin stay reachable so the admin
   // can flip the flag back off without a redeploy. The check is skipped
   // entirely when the flag is off (cached, one flag lookup per ~10s).
-  if (
-    pathname !== "/maintenance" &&
-    (await withTimeout(isMaintenanceMode(), 1500, false))
-  ) {
-    const isAdminPath =
-      pathname.startsWith("/admin") || pathname.startsWith("/api/admin");
+  if (pathname !== "/maintenance" && (await withTimeout(isMaintenanceMode(), 1500, false))) {
+    const isAdminPath = pathname.startsWith("/admin") || pathname.startsWith("/api/admin");
     let allowed = isAdminPath;
 
     if (!allowed) {
@@ -557,8 +572,7 @@ const middlewareHandler = async (auth: () => Promise<any>, req: NextRequest) => 
             .split(",")
             .map((id) => id.trim())
             .filter(Boolean);
-          allowed =
-            adminIds.length > 0 ? adminIds.includes(userId) : await isAdmin(userId);
+          allowed = adminIds.length > 0 ? adminIds.includes(userId) : await isAdmin(userId);
         }
       } catch {
         allowed = false;
@@ -585,8 +599,8 @@ const middlewareHandler = async (auth: () => Promise<any>, req: NextRequest) => 
   // rendering starts.
   //
   // Two behaviours fall out of it, both intended:
-  //   * the request is REWRITTEN, not redirected, so the URL the visitor typed
-  //     stays in the address bar while the 404 status is returned;
+  //   * the response is a direct 404, so the URL the visitor typed stays in the
+  //     address bar and no session is consulted;
   //   * it applies whatever the session is. Previously an unknown slug that the
   //     game-route patterns did not recognise (/games/typo) was bounced to
   //     /sign-in like any other unknown path, and one that they DID recognise
@@ -599,21 +613,32 @@ const middlewareHandler = async (auth: () => Promise<any>, req: NextRequest) => 
   // A slug that IS a real playable route (GAME_ROUTE_PATTERNS) has a page even
   // when it has no public landing page. Rewriting such a slug away makes a
   // shipped game unreachable with a 500.
-  if (
-    unknownGameSlug &&
-    !isGameLandingSlug(unknownGameSlug[1]) &&
-    !isGameRoute(pathname)
-  ) {
-    return applySecurityHeaders(
-      NextResponse.rewrite(new URL(NOT_FOUND_SENTINEL, req.url)),
-    );
+  if (unknownGameSlug && !isGameLandingSlug(unknownGameSlug[1]) && !isGameRoute(pathname)) {
+    return applySecurityHeaders(gameNotFoundResponse());
   }
 
   // A retired game's URL is gone, not redirected and not a sign-in bounce.
   if (RETIRED_GAME_PATHS.some((pattern) => pattern.test(pathname))) {
+    return applySecurityHeaders(gameNotFoundResponse());
+  }
+
+  if (RETIRED_PRODUCT_API.test(pathname)) {
     return applySecurityHeaders(
-      NextResponse.rewrite(new URL(NOT_FOUND_SENTINEL, req.url)),
+      NextResponse.json(
+        { success: false, error: "This feature is not available right now." },
+        { status: 404 }
+      )
     );
+  }
+
+  // Sentry's wizard-generated example surface is a development diagnostic.
+  // In production the API is an unauthenticated endpoint that deliberately
+  // throws (free error-stream flooding + Sentry quota burn) and the page is a
+  // public button that calls it. Answer before routing so neither is
+  // reachable — and so the 404 is a real status, not a streamed notFound()
+  // that commits 200 first.
+  if (process.env.NODE_ENV === "production" && (pathname === "/sentry-example-page" || pathname === "/api/sentry-example-api")) {
+    return applySecurityHeaders(new NextResponse(null, { status: 404 }));
   }
 
   // Same rule for the guides library: `/guides/<slug>` only exists for the
@@ -623,10 +648,17 @@ const middlewareHandler = async (auth: () => Promise<any>, req: NextRequest) => 
   // 200 before the page can reject the param — so the slug space is declared
   // here in the middleware, before any rendering starts.
   const unknownGuideSlug = /^\/guides\/([^/]+)\/?$/.exec(pathname);
-  if (unknownGuideSlug && !isGuideSlug(unknownGuideSlug[1])) {
+  // A retired guide slug 308s to its replacement BEFORE the 404 guard below.
+  // next.config.js declares the same redirects, but the proxy must not depend
+  // on the router's ordering: an old, indexed URL must never answer 404.
+  const legacyGuide = unknownGuideSlug ? LEGACY_GUIDE_SLUGS[unknownGuideSlug[1]] : undefined;
+  if (legacyGuide) {
     return applySecurityHeaders(
-      NextResponse.rewrite(new URL(NOT_FOUND_SENTINEL, req.url)),
+      NextResponse.redirect(new URL(`/guides/${legacyGuide}`, req.url), 308)
     );
+  }
+  if (unknownGuideSlug && !isGuideSlug(unknownGuideSlug[1])) {
+    return applySecurityHeaders(NextResponse.rewrite(new URL(NOT_FOUND_SENTINEL, req.url)));
   }
 
   if (pathname.startsWith("/api/")) {
@@ -791,7 +823,7 @@ const middlewareHandler = async (auth: () => Promise<any>, req: NextRequest) => 
     // same call protected routes already make.
     const mfaGate = await userMfaGate(req, pathname, auth);
     if (mfaGate) return mfaGate;
-    
+
     // Admin MFA setup endpoints that expose sensitive secrets (TOTP seed)
     // must require completed MFA. The initial MFA flow (send-otp, verify,
     // status) remains accessible without MFA so admins can complete their
@@ -808,7 +840,7 @@ const middlewareHandler = async (auth: () => Promise<any>, req: NextRequest) => 
           NextResponse.json({ success: false, error: "Forbidden" }, { status: 403 })
         );
       }
-      
+
       const adminMfaToken = req.cookies.get(ADMIN_MFA_COOKIE)?.value;
       const userMfaToken = req.cookies.get(USER_MFA_COOKIE)?.value;
       if (
@@ -825,7 +857,7 @@ const middlewareHandler = async (auth: () => Promise<any>, req: NextRequest) => 
         );
       }
     }
-    
+
     return applySecurityHeaders(NextResponse.next());
   }
 
@@ -877,7 +909,7 @@ const middlewareHandler = async (auth: () => Promise<any>, req: NextRequest) => 
             })
             .then((row) => row ?? null),
           1500,
-          null,
+          null
         );
         age = user?.age ?? null;
         if (age !== null && age !== undefined) {
@@ -921,15 +953,10 @@ const middlewareHandler = async (auth: () => Promise<any>, req: NextRequest) => 
         });
         if (pathname.startsWith("/api/admin")) {
           return applySecurityHeaders(
-            NextResponse.json(
-              { success: false, error: "Admin access required." },
-              { status: 403 }
-            )
+            NextResponse.json({ success: false, error: "Admin access required." }, { status: 403 })
           );
         }
-        return applySecurityHeaders(
-          NextResponse.redirect(new URL("/", req.url))
-        );
+        return applySecurityHeaders(NextResponse.redirect(new URL("/", req.url)));
       }
     }
   }
@@ -951,9 +978,7 @@ const middlewareHandler = async (auth: () => Promise<any>, req: NextRequest) => 
       !(await verifyUserMfaToken(userMfaToken, userId))
     ) {
       auditLog("admin_mfa_required_redirect", { userId, ip, path: pathname });
-      return applySecurityHeaders(
-        NextResponse.redirect(new URL("/admin/mfa-required", req.url))
-      );
+      return applySecurityHeaders(NextResponse.redirect(new URL("/admin/mfa-required", req.url)));
     }
     // The step-up was satisfied by our own marker cookie, so slide its expiry
     // forward: one verification per signed-in session. Without this the marker
@@ -975,7 +1000,7 @@ const middlewareHandler = async (auth: () => Promise<any>, req: NextRequest) => 
     response.cookies.set(
       ADMIN_MFA_COOKIE,
       await issueAdminMfaToken(userId),
-      adminMfaCookieOptions(req),
+      adminMfaCookieOptions(req)
     );
   }
   return applySecurityHeaders(response);
@@ -991,6 +1016,21 @@ const hasClerkSecretKey = Boolean(process.env.CLERK_SECRET_KEY);
 // `pg` driver cannot load on the Edge runtime — it crashed every request
 // with MIDDLEWARE_INVOCATION_FAILED after the Neon → Supabase migration.
 export default async function proxy(req: NextRequest, event: NextFetchEvent) {
+  // ── Apex → www ────────────────────────────────────────────────────────
+  // Before auth, maintenance and routing, and before the Clerk/no-Clerk split
+  // below: one hostname per page is a property of the request, not of the
+  // signed-in state. A crawler asking the apex for a page must get a redirect,
+  // never a second copy of the same HTML (see apexRedirectUrl in lib/siteUrl.ts
+  // for why /api is excluded).
+  const apexTarget = apexRedirectUrl(
+    req.headers.get("host") || "",
+    req.nextUrl.pathname,
+    req.nextUrl.search
+  );
+  if (apexTarget) {
+    return applySecurityHeaders(NextResponse.redirect(apexTarget, 308));
+  }
+
   if (!hasClerkSecretKey) {
     const response = applySecurityHeaders(NextResponse.next());
     // Local/dev without Clerk still serves /play, so its framing policy has to
@@ -998,7 +1038,7 @@ export default async function proxy(req: NextRequest, event: NextFetchEvent) {
     // dev than in production.
     applyPortalFramePolicy(
       response as unknown as Parameters<typeof applyPortalFramePolicy>[0],
-      req.nextUrl?.pathname,
+      req.nextUrl?.pathname
     );
     return response;
   }
@@ -1011,7 +1051,7 @@ export default async function proxy(req: NextRequest, event: NextFetchEvent) {
     if (response) {
       applyEmbedFramePolicy(
         response as unknown as Parameters<typeof applyEmbedFramePolicy>[0],
-        req.nextUrl?.pathname,
+        req.nextUrl?.pathname
       );
       // The portal surface gets its OWN allowlist (GRYND_PORTAL_FRAME_ORIGINS),
       // never the platform one: a public game page and a token-authenticated
@@ -1019,7 +1059,7 @@ export default async function proxy(req: NextRequest, event: NextFetchEvent) {
       // no-op for /play unless the env var names at least one origin.
       applyPortalFramePolicy(
         response as unknown as Parameters<typeof applyPortalFramePolicy>[0],
-        req.nextUrl?.pathname,
+        req.nextUrl?.pathname
       );
     }
     // Clerk rewrites to the request's OWN url to hand its `x-clerk-auth-*`

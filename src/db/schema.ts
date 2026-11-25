@@ -325,6 +325,13 @@ export const users = pgTable("users", {
   peakBalance: numeric("peak_balance", { precision: 30, scale: 2 })
     .default("0.00")
     .notNull(),
+  // Highest TOTAL trophy count ever held — the permanent basis of the
+  // player level (src/lib/playerLevel.js). Unlike summing each game's own
+  // peak, this is the peak of the sum, so it is a total the player actually
+  // held at one moment. Maintained server-side by the
+  // `player_trophies_sync_peak_total` trigger (migration 0247); never
+  // client-writable. Backfilled to the current total for existing players.
+  peakTotalTrophies: integer("peak_total_trophies").default(0).notNull(),
   gamesWon: integer("games_won").default(0),
   gamesLost: integer("games_lost").default(0),
   referralCode: varchar("referral_code", { length: 30 }).unique(),
@@ -350,17 +357,13 @@ export const users = pgTable("users", {
   weeklyStreakBest: integer("weekly_streak_best").default(0).notNull(),
   weekKey: varchar("week_key", { length: 8 }),
   lastLoginDate: date("last_login_date"),
-  lastDailyRewardClaimed: date("last_daily_reward_claimed"),
   // The UTC day the player last STARTED a real game session, stamped by
   // /api/game-plays for signed-in players. Retained as a general activity
-  // marker; the daily login reward no longer uses it (it gates on a win).
+  // marker; it never advances the daily streak.
   lastPlayedGameDate: date("last_played_game_date"),
-  // The UTC day the player last WON a match, stamped by the authoritative
-  // settlement writers: the rating writer (src/lib/rating.js) for online wins,
-  // the PvP counter writer for modes outside Elo, and src/lib/dailyRewardWin.ts
-  // for server-settled vs-AI practice wins. The daily login reward is gated on
-  // this being today, so merely starting a match and resigning cannot unlock
-  // it. See src/lib/tokens/dailyReward.ts.
+  // Historical: the UTC day of the player's last recorded win, retained for
+  // existing data. Its writers were retired with the daily token reward, so no
+  // feature gates on it now.
   lastWonGameDate: date("last_won_game_date"),
   pvpWins: integer("pvp_wins").default(0).notNull(),
   weeklyWagered: bigint("weekly_wagered", { mode: "number" }).default(0).notNull(),
@@ -441,9 +444,26 @@ export const users = pgTable("users", {
     .default(
       sql`'{"promotions":true,"daily":true,"summary":true,"progress":true}'::jsonb`,
     ),
-  // Per-game default wager (tokens), keyed by game key. An empty map (or a
-  // missing key) means the game's built-in default. Written through
-  // /api/user/default-wagers; consumed by src/hooks/useDefaultWager.js.
+  // Solitaire table theme: the key of one of BOARD_THEMES in
+  // src/lib/solitaire-duel/boardThemes. NULL = the player has never chosen a
+  // table (which lets a guest's local choice be uploaded on first sign-in);
+  // 'classic' is an explicit choice. Written only through
+  // /api/solitaire/board-theme after validating the key against the catalog,
+  // and cached in localStorage so guests and offline play need no round trip.
+  solitaireBoardTheme: varchar("solitaire_board_theme", { length: 20 }),
+  // Board cosmetics earned by the UTC streak (migration 0262). The title and
+  // frame reuse `selected_title` / `equipped_cosmetics.profile_frame`, so there
+  // is one authority per slot.
+  equippedFelt: varchar("equipped_felt", { length: 40 }).notNull().default("felt_default"),
+  equippedCardBack: varchar("equipped_card_back", { length: 40 })
+    .notNull()
+    .default("card_back_default"),
+  equippedDeckSkin: varchar("equipped_deck_skin", { length: 40 })
+    .notNull()
+    .default("deck_default"),
+  // LEGACY: per-game default wagers from the retired coin economy. Nothing
+  // reads or writes this column any more; it stays so old rows keep their
+  // shape and a migration is not required to deploy.
   defaultWagers: jsonb("default_wagers")
     .$type<Record<string, number>>()
     .notNull()
@@ -478,6 +498,19 @@ export const users = pgTable("users", {
   // invitation). Independent of questionnaireCompletedAt: declining is not
   // answering.
   questionnaireDismissedAt: timestamp("questionnaire_dismissed_at"),
+  // ── Solitaire onboarding progress (migration 0246, additive) ──────────────
+  // Fine-grained progress for the Solitaire-first flow, tracked SEPARATELY
+  // from onboarding_completed_at above. All nullable with no backfill, so
+  // existing accounts keep NULL and are never re-onboarded. Written only by
+  // /api/onboarding/progress, each guarded with IS NULL so the first event
+  // wins and repeated views cannot inflate anything.
+  //
+  // tutorial_completed_at and tutorial_skipped_at are deliberately DISTINCT:
+  // a skipped tutorial must never be readable as a completed one.
+  onboardingStartedAt: timestamp("onboarding_started_at"),
+  tutorialStartedAt: timestamp("tutorial_started_at"),
+  tutorialCompletedAt: timestamp("tutorial_completed_at"),
+  tutorialSkippedAt: timestamp("tutorial_skipped_at"),
   isAdmin: boolean("is_admin").notNull().default(false),
   isBanned: boolean("is_banned").notNull().default(false),
 });
@@ -592,6 +625,24 @@ export const userPresence = pgTable(
   })
 );
 
+// DAILY AUDIENCE SNAPSHOT — one aggregate row per UTC day.
+//
+// `user_presence` is overwritten on every heartbeat and `users`
+// `last_played_game_date` only remembers the latest day, so neither can produce
+// a peak-concurrency or daily-active trend after the fact. The 15-minute job
+// (`/api/jobs/audience-snapshot`) samples the live numbers into this table:
+// `peak_online` is a high-water mark, the rest are the current day's totals.
+// One narrow row per day, no per-user data, written/read only by the server.
+// See migration 0250.
+export const audienceDailySnapshots = pgTable("audience_daily_snapshots", {
+  day: date("day").primaryKey(),
+  peakOnline: integer("peak_online").notNull().default(0),
+  players: integer("players").notNull().default(0),
+  signups: integer("signups").notNull().default(0),
+  proMembers: integer("pro_members").notNull().default(0),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
 export const userLoginRewards = pgTable("user_login_rewards", {
   userId: integer("user_id")
     .primaryKey()
@@ -670,6 +721,15 @@ export const cosmetics = pgTable(
     unlockCondition: varchar("unlock_condition", { length: 40 }),
     enabled: boolean("enabled").notNull().default(true),
     sortOrder: integer("sort_order").notNull().default(0),
+    // PRO-only catalog entry (migration 0257). Never granted by the
+    // account-creation catalog grant and refused by equipCosmetic for a
+    // non-member — see src/lib/cosmetics.ts.
+    proOnly: boolean("pro_only").notNull().default(false),
+    // STREAK-ONLY catalog entry (migration 0265). Never granted by the
+    // account-creation catalog grant; earned at `unlock_streak_day` through the
+    // daily play streak. Ownership is the matching `user_unlocks` row.
+    streakOnly: boolean("streak_only").notNull().default(false),
+    unlockStreakDay: integer("unlock_streak_day"),
     createdAt: timestamp("created_at").notNull().defaultNow(),
     updatedAt: timestamp("updated_at").notNull().defaultNow(),
   },
@@ -680,6 +740,89 @@ export const cosmetics = pgTable(
 
 // Cosmetic ownership. Written only by server-side grants (shop purchase /
 // account-creation catalog grant) — never by the client.
+// THE UTC DAILY STREAK (migration 0262). One row per account, written only by
+// src/lib/streaks/server.ts. Deliberately separate from the local-time LOGIN
+// streak on `users`: this one counts verified completions per UTC day and has
+// no shields.
+export const userStreaks = pgTable("user_streaks", {
+  userId: integer("user_id")
+    .primaryKey()
+    .references(() => users.id, { onDelete: "cascade" }),
+  currentStreak: integer("current_streak").notNull().default(0),
+  longestStreak: integer("longest_streak").notNull().default(0),
+  lastCompletedUtcDate: date("last_completed_utc_date"),
+  initialProTrialClaimed: boolean("initial_pro_trial_claimed").notNull().default(false),
+  proTrialExpiresAt: timestamp("pro_trial_expires_at", { withTimezone: true }),
+  prestigePips: integer("prestige_pips").notNull().default(0),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+// PERMANENT streak-earned cosmetic ownership. Always-owned defaults are absent
+// by design — membership is decided by the catalog, not by a grant row.
+export const userUnlocks = pgTable(
+  "user_unlocks",
+  {
+    userId: integer("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    itemId: varchar("item_id", { length: 64 }).notNull(),
+    unlockedAt: timestamp("unlocked_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    pk: primaryKey({ columns: [table.userId, table.itemId] }),
+    userIdx: index("user_unlocks_user_idx").on(table.userId),
+  }),
+);
+
+// RANKED WIN STREAKS (migration 0265). One row per player per ranked game, plus
+// the per-match journal that makes a replayed settlement count exactly once.
+// Separate from the daily play streak and from the retired wager counters.
+export const competitiveResultEvents = pgTable(
+  "competitive_result_events",
+  {
+    id: serial("id").primaryKey(),
+    matchId: varchar("match_id", { length: 255 }).notNull(),
+    userId: integer("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    gameKey: varchar("game_key", { length: 80 }).notNull(),
+    outcome: varchar("outcome", { length: 10 }).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    uniqResult: unique("competitive_result_events_unique").on(
+      table.matchId,
+      table.userId,
+      table.gameKey,
+    ),
+    userIdx: index("competitive_result_events_user_idx").on(table.userId, table.gameKey),
+  }),
+);
+
+export const userCompetitiveStreaks = pgTable(
+  "user_competitive_streaks",
+  {
+    userId: integer("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    gameKey: varchar("game_key", { length: 80 }).notNull(),
+    currentStreak: integer("current_streak").notNull().default(0),
+    bestStreak: integer("best_streak").notNull().default(0),
+    lastMatchId: varchar("last_match_id", { length: 255 }),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    pk: primaryKey({ columns: [table.userId, table.gameKey] }),
+    // Leaderboard ordering: one game's best streaks, highest first, with a
+    // stable user-id tie-break.
+    bestIdx: index("user_competitive_streaks_game_best_idx").on(
+      table.gameKey,
+      desc(table.bestStreak),
+      table.userId,
+    ),
+  }),
+);
+
 export const userCosmetics = pgTable(
   "user_cosmetics",
   {
@@ -745,14 +888,14 @@ export const userStats = pgTable("user_stats", {
 // authority and is safe whether or not the legacy table survived.
 //
 //   * (user_id, period_type, period_key, slot) is the deterministic identity:
-//     slot+quest come from planQuests() in src/lib/quests/definitions.ts, so a
+//     slot+quest came from the retired quests planner, so a
 //     retry re-derives the SAME slots and inserts nothing new.
 //   * `meta` holds { definitionId, games }: `games` is the set of canonical game
 //     ids already counted for a "different games" quest.
 //   * `reward` is virtual coins only, and `completed_at` freezes completion so a
 //     later definition change can never un-complete a finished quest.
 // Progress is advanced ONLY by a settled, server-verified human-vs-human match
-// (see src/lib/quests/progress.ts) — never by AI, practice, lobbies or cancels.
+// — never by AI, practice, lobbies or cancels.
 export const userQuests = pgTable(
   "user_quests",
   {
@@ -799,7 +942,7 @@ export const userQuests = pgTable(
 // count a match twice. `userId`/`opponentUserId` reference real accounts — an AI
 // or bot seat has no `users` row and therefore cannot be journaled at all,
 // which is what makes "a human opponent" a schema-level fact rather than a
-// client claim. See src/lib/quests/settle.ts.
+// client claim. The quests system is retired; the tables stay for history.
 export const questMatchEvents = pgTable(
   "quest_match_events",
   {
@@ -1179,8 +1322,10 @@ export const ratingIdentities = pgTable(
 // reads as "no trophies yet" instead of a fabricated row. Every player starts
 // at TROPHY_START (0) on their first ranked match in a game.
 //
-// THE RULE (src/lib/trophies.js): win = +30, loss = −30, draw = 0, floored at 0
-// and otherwise UNBOUNDED per game. Together with the per-game Elo rating these
+// THE RULE (src/lib/trophies.js): win = +30, loss = −30 at EQUAL trophy counts,
+// adjusted up to ±20 by the opponent's trophy count (beating a higher player
+// pays more; losing to one costs less), draw = 0, floored at 0 and otherwise
+// UNBOUNDED per game. Together with the per-game Elo rating these
 // are the two matchmaking signals (src/lib/quickQueue.ts).
 //
 // Written ONLY from server-side match settlement via applyTrophyResult under
@@ -4143,6 +4288,38 @@ export const solitaireDuelMatches = pgTable(
     // seat plays its first move, in which case GO is the baseline.
     p1LastActionAt: timestamp("p1_last_action_at"),
     p2LastActionAt: timestamp("p2_last_action_at"),
+    // ── Asynchronous ghost duel (migration 0255) ───────────────────────
+    // A ghost is a RECORDED HUMAN run of the same deal — never the AI seat.
+    // `isGhost` is deliberately separate from `isAi`, because settlement is
+    // rated and no planner is ever consulted during playback.
+    isGhost: boolean("is_ghost").notNull().default(false),
+    // Provenance of the replay: the finished human match it came from.
+    ghostSourceMatchId: uuid("ghost_source_match_id"),
+    // Anonymised handle shown to the player (never the source account's id).
+    ghostName: varchar("ghost_name", { length: 40 }),
+    // The source player's ladder snapshot, so the duel settles against the
+    // strength the opponent actually had rather than an invented number.
+    ghostRating: integer("ghost_rating"),
+    ghostTrophies: integer("ghost_trophies"),
+    // The recorded replay: [{ offsetMs, kind, move }] in ply order, offsets
+    // measured from the SOURCE match's GO instant.
+    ghostTimeline: jsonb("ghost_timeline"),
+    // Offset of the source player's completing move, or null if unfinished.
+    ghostCompletedAtOffsetMs: integer("ghost_completed_at_offset_ms"),
+    // The recording's own pace: [{ atMs, foundationCards }], count-only, so the
+    // opponent panel can show the run unfolding at the pace it really happened.
+    ghostTrail: jsonb("ghost_trail"),
+    // When a still-waiting lobby may fall back to a ghost. NULL everywhere else.
+    ghostFallbackAt: timestamp("ghost_fallback_at"),
+    // ── Friend challenge link (migration 0259) ───────────────────────────
+    // A short shareable code for a PRIVATE waiting lobby. Whoever opens
+    // /duel/<code> takes the second seat. NULL on public lobbies, AI practice
+    // matches, ghost duels and every match that has started; the public
+    // matchmaker filters `invite_code IS NULL`, so it can never hand a private
+    // table to a stranger. Unique while set (partial index in the migration).
+    inviteCode: varchar("invite_code", { length: 12 }),
+    // When the link stops seating a second player. NULL where it does not apply.
+    inviteExpiresAt: timestamp("invite_expires_at"),
     // Absolute server instants — never a per-client delay. The match is
     // untimed, so there is no deadline column.
     goAt: timestamp("go_at"),
@@ -4184,6 +4361,391 @@ export const solitaireDuelMoves = pgTable(
     matchIdx: index("solitaire_duel_moves_match_idx").on(table.matchId, table.seat, table.ply),
     plyIdx: unique("solitaire_duel_moves_ply_unique").on(table.matchId, table.seat, table.ply),
   })
+);
+
+// THE RECORDED GHOST POOL — one verified replay per (finished match, seat).
+//
+// MATERIALIZED on purpose: a run is copied here with its deal, timeline, trail
+// and anonymised handle, so it survives the retention sweep deleting the source
+// match and needs no join to be offered. There is deliberately NO foreign key
+// to `solitaire_duel_matches` — outliving the source row is the point.
+//
+// `source_clerk_id` exists ONLY to exclude a player from racing their own
+// recording; it never leaves the server. `ghost_name` is the one-way handle the
+// player sees. `rating` / `trophies` are the source player's ladder snapshot at
+// record time, so a ghost duel settles against the strength they really had.
+//
+// The pool is filled by /api/jobs/solitaire-ghost-pool, whose backfill reads
+// EXISTING finished ranked matches — which is what keeps it warm from the first
+// tick instead of only after the next human duel finishes.
+export const solitaireGhostRuns = pgTable(
+  "solitaire_ghost_runs",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    sourceMatchId: uuid("source_match_id").notNull(),
+    sourceSeat: varchar("source_seat", { length: 10 }).notNull(),
+    // Exclusion key only (see the note above): never exposed to a client.
+    sourceClerkId: varchar("source_clerk_id", { length: 255 }).notNull(),
+    variant: varchar("variant", { length: 24 }).notNull(),
+    variantVersion: integer("variant_version").notNull(),
+    // The source match's commitment, reused verbatim so the replay's puzzle is
+    // provably the committed one. Still hidden until a ghost match is terminal.
+    serverSeed: varchar("server_seed", { length: 64 }).notNull(),
+    serverSeedHash: varchar("server_seed_hash", { length: 64 }).notNull(),
+    dealSeed: bigint("deal_seed", { mode: "number" }).notNull(),
+    deal: jsonb("deal").notNull(),
+    // [{ offsetMs, kind, move }] in ply order, offsets from the source GO.
+    timeline: jsonb("timeline").notNull(),
+    // [{ atMs, foundationCards }] sampled from the verified replay.
+    trail: jsonb("trail").notNull(),
+    ply: integer("ply").notNull(),
+    completed: boolean("completed").notNull().default(false),
+    completedOffsetMs: integer("completed_offset_ms"),
+    rating: integer("rating"),
+    trophies: integer("trophies"),
+    ghostName: varchar("ghost_name", { length: 40 }).notNull(),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (table) => ({
+    sourceUniq: unique("solitaire_ghost_runs_source_unique").on(
+      table.sourceMatchId,
+      table.sourceSeat,
+    ),
+    poolIdx: index("solitaire_ghost_runs_pool_idx").on(
+      table.variantVersion,
+      table.createdAt,
+    ),
+    clerkIdx: index("solitaire_ghost_runs_clerk_idx").on(table.sourceClerkId),
+  })
+);
+
+// SOLO SOLITAIRE + DAILY CHALLENGE — single-player records.
+// ==============================================================================
+//
+// Deliberately SEPARATE from `solitaire_duel_matches`: a solo or daily result
+// must never be settlable as a ranked PvP match, and the ranked leaderboard,
+// Elo and trophy writers must never see these rows. Each row is one finished
+// attempt; the moves themselves are replayed server-side before the row is
+// written, so `completed` is a verified fact rather than a client claim.
+export const solitaireSoloResults = pgTable(
+  "solitaire_solo_results",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    userId: varchar("user_id", { length: 255 }).notNull(),
+    // The client-generated deal seed; the server re-derives the deal from it.
+    seed: varchar("seed", { length: 20 }).notNull(),
+    completed: boolean("completed").notNull().default(false),
+    moves: integer("moves").notNull().default(0),
+    elapsedMs: integer("elapsed_ms").notNull().default(0),
+    // GAME REVIEW SOURCE: the canonical, server-verified move log for a
+    // COMPLETED attempt. NULL for an abandoned attempt and for legacy rows, so
+    // an incomplete game can never be presented as a complete review.
+    moveLog: jsonb("move_log"),
+    // SHA-256 of the ordered canonical log. The unique index below makes a
+    // retried completed submission idempotent; NULLs (abandoned attempts) are
+    // distinct in Postgres, so they keep recording exactly as before.
+    logDigest: varchar("log_digest", { length: 64 }),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (table) => ({
+    userIdx: index("solitaire_solo_results_user_idx").on(table.userId, table.createdAt),
+    // One row per user + deal + exact move log. A different log for the same
+    // seed is a different attempt, never an update to the existing row.
+    userLogIdx: unique("solitaire_solo_results_user_seed_log_unique").on(
+      table.userId,
+      table.seed,
+      table.logDigest,
+    ),
+  })
+);
+
+// ONE official result per player per UTC calendar date. The unique index is the
+// anti-reroll backstop: a replayed or duplicated submission cannot inflate the
+// completion count or the streak.
+export const solitaireDailyResults = pgTable(
+  "solitaire_daily_results",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    userId: varchar("user_id", { length: 255 }).notNull(),
+    // YYYY-MM-DD in UTC — the day the server dealt the challenge.
+    challengeDate: varchar("challenge_date", { length: 10 }).notNull(),
+    completed: boolean("completed").notNull().default(true),
+    moves: integer("moves").notNull().default(0),
+    elapsedMs: integer("elapsed_ms").notNull().default(0),
+    // GAME REVIEW SOURCE: the canonical log of the one official completion.
+    // The (user_id, challenge_date) unique index above already guarantees one
+    // row per day, and the route never updates it, so a second submission with
+    // different moves cannot attach itself to the recorded result.
+    moveLog: jsonb("move_log"),
+    logDigest: varchar("log_digest", { length: 64 }),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (table) => ({
+    userDateIdx: unique("solitaire_daily_results_user_date_unique").on(
+      table.userId,
+      table.challengeDate
+    ),
+    dateIdx: index("solitaire_daily_results_date_idx").on(table.challengeDate),
+  })
+);
+
+// SOLITAIRE GAME REVIEW — one cached, versioned analysis per game.
+// ==============================================================================
+//
+// The analysis is a pure function of {deal, moves} and ANALYSIS_VERSION, so it
+// is cached once instead of being recomputed in the browser on every review.
+//
+// The identity is (game_kind, game_id, log_digest, engine_version): the digest
+// is SHA-256 of the canonical ordered log and the version is ANALYSIS_VERSION,
+// so changing either makes the old row unreachable. The unique index is the
+// claim key — `onConflictDoUpdate({ target: [...] })` resolves concurrent first
+// views onto one record, exactly like `evaluation_results`.
+//
+// `analysis` holds ONLY the compact analysis (ratings, tags, numeric scores,
+// summary). No deal, no move log, no board snapshot and no commentary prose.
+//
+// There is deliberately no foreign key: `game_id` is polymorphic (a duel match,
+// a solo result or a daily result), so one FK cannot express it. The retention
+// sweep deletes rows whose parent game is gone, and account deletion removes
+// rows for that player's games.
+export const solitaireAnalysisUsage = pgTable(
+  "solitaire_analysis_usage",
+  {
+    // Clerk user id, or the signed guest id — no FK, a guest has no user row.
+    userId: varchar("user_id", { length: 255 }).notNull(),
+    // UTC calendar day (YYYY-MM-DD).
+    dayKey: varchar("day_key", { length: 10 }).notNull(),
+    // Fresh (cache-miss) analyses consumed that day. Never decremented.
+    used: integer("used").notNull().default(0),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (table) => ({
+    key: primaryKey({
+      name: "solitaire_analysis_usage_pk",
+      columns: [table.userId, table.dayKey],
+    }),
+  }),
+);
+
+// SOLITAIRE PUZZLE — one verified answer per identity per puzzle.
+//
+// The daily puzzle is free and one-shot (the unique user+puzzle key is the
+// backstop); an unlimited puzzle is 5/day free and unlimited for PRO. The row
+// stores the ONE answer that was recorded, so a retry can never replace it.
+export const solitairePuzzleAttempts = pgTable(
+  "solitaire_puzzle_attempts",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    // Clerk user id, or the signed guest id — no FK, a guest has no user row.
+    userId: varchar("user_id", { length: 255 }).notNull(),
+    // 'daily' | 'unlimited'.
+    kind: varchar("kind", { length: 16 }).notNull(),
+    // 'daily:YYYY-MM-DD' | 'unlimited:<seed>' — enough to rebuild the puzzle.
+    puzzleKey: varchar("puzzle_key", { length: 80 }).notNull(),
+    // The move the player played, as JSON (the engine's SolitaireMove union).
+    // This mirrors the live production schema, which already carries `move`
+    // (and no `choice`) — see migration 0254, whose statements are guarded so
+    // the file is a no-op there.
+    move: varchar("move", { length: 160 }).notNull(),
+    correct: boolean("correct").notNull().default(false),
+    elapsedMs: integer("elapsed_ms").notNull().default(0),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (table) => ({
+    // THE one-shot guarantee: one answer per identity per puzzle.
+    userPuzzleIdx: unique("solitaire_puzzle_attempts_user_puzzle_unique").on(
+      table.userId,
+      table.puzzleKey,
+    ),
+    userIdx: index("solitaire_puzzle_attempts_user_idx").on(table.userId, table.createdAt),
+  }),
+);
+
+// Per-identity, per-UTC-day count of answered UNLIMITED puzzles. The free daily
+// puzzle is not counted; PRO members never touch this table.
+export const solitairePuzzleUsage = pgTable(
+  "solitaire_puzzle_usage",
+  {
+    userId: varchar("user_id", { length: 255 }).notNull(),
+    dayKey: varchar("day_key", { length: 10 }).notNull(),
+    used: integer("used").notNull().default(0),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (table) => ({
+    key: primaryKey({
+      name: "solitaire_puzzle_usage_pk",
+      columns: [table.userId, table.dayKey],
+    }),
+  }),
+);
+
+// SOLITAIRE PUZZLE SESSIONS — the server-authoritative competitive / practice
+// puzzle race (Puzzle Ranked and Puzzle vs AI).
+//
+// Deliberately SEPARATE from `solitaire_duel_matches`: a puzzle session is a
+// sequence of frozen puzzle specs, not one shared deal, and its scoring is
+// "how many puzzles solved, and how fast", so sharing the duel table would
+// overload columns whose settlement/rating semantics are different.
+//
+// `manifest` is SERVER-ONLY: it holds the frozen start states (face-down
+// identities and stock order included), the objectives and the per-puzzle
+// constraints. It carries NO accepted solution path and NO verification data —
+// see src/lib/solitaire-puzzle/manifest.ts. A route may only ever serialize the
+// sanitized projection from src/lib/solitaire-puzzle/projection.ts.
+//
+// `selection_seed`/`selection_hash` mirror the duel's provably-fair pair: the
+// seed is server-generated, committed at creation, and both seats' manifests
+// are written from that ONE selection, so both players provably race the
+// identical set in the identical order.
+//
+// No rating, trophy, wager or queue column exists here on purpose. Ranked
+// settlement is a later phase; practice must never be settleable at all.
+export const solitairePuzzleSessions = pgTable(
+  "solitaire_puzzle_sessions",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    // The frozen session format, so a future ruleset change cannot reinterpret
+    // an existing session's stored manifest.
+    format: varchar("format", { length: 24 }).notNull().default("puzzle-race-v1"),
+    // 'ranked' | 'ai' — the two session types this foundation supports.
+    mode: varchar("mode", { length: 16 }).notNull().default("ranked"),
+    // waiting | playing | finished | cancelled.
+    status: varchar("status", { length: 16 }).notNull().default("waiting"),
+    player1Id: varchar("player1_id", { length: 255 }).notNull(),
+    // Null while a rated session still waits for its second human seat.
+    player2Id: varchar("player2_id", { length: 255 }),
+    // Marked on a practice session so no later settlement phase can rate it.
+    isAi: boolean("is_ai").notNull().default(false),
+    aiDifficulty: varchar("ai_difficulty", { length: 24 }),
+    // How many puzzles the manifest holds (always the manifest's own length).
+    puzzleCount: integer("puzzle_count").notNull().default(5),
+    // Server-only selection entropy and its pre-session commitment.
+    selectionSeed: varchar("selection_seed", { length: 64 }).notNull(),
+    selectionHash: varchar("selection_hash", { length: 64 }).notNull(),
+    // SERVER-ONLY frozen manifest: [{ slot, id, level, category, objectiveText,
+    // concept, spec: { id, version, objective, startState, constraints } }].
+    manifest: jsonb("manifest").notNull(),
+    // Per-seat authoritative state. `p1_state`/`p2_state` hold the live board,
+    // the puzzle index and the per-puzzle stats; the ply is the monotonic
+    // accepted-move cursor used for staleness and the move log's unique key.
+    p1PuzzleIndex: integer("p1_puzzle_index").notNull().default(0),
+    p1Solved: integer("p1_solved").notNull().default(0),
+    p1Ply: integer("p1_ply").notNull().default(0),
+    p1State: jsonb("p1_state").notNull(),
+    p1Stats: jsonb("p1_stats").notNull(),
+    p1LastSolveAt: timestamp("p1_last_solve_at"),
+    p1FinishedAt: timestamp("p1_finished_at"),
+    p1LastActionAt: timestamp("p1_last_action_at"),
+    p2PuzzleIndex: integer("p2_puzzle_index").notNull().default(0),
+    p2Solved: integer("p2_solved").notNull().default(0),
+    p2Ply: integer("p2_ply").notNull().default(0),
+    p2State: jsonb("p2_state").notNull(),
+    p2Stats: jsonb("p2_stats").notNull(),
+    p2LastSolveAt: timestamp("p2_last_solve_at"),
+    p2FinishedAt: timestamp("p2_finished_at"),
+    p2LastActionAt: timestamp("p2_last_action_at"),
+    // ONE absolute GO instant and ONE absolute deadline, server clock. Both
+    // seats receive the same allowance; a practice session is untimed and
+    // leaves the deadline NULL.
+    goAt: timestamp("go_at"),
+    deadlineAt: timestamp("deadline_at"),
+    endedAt: timestamp("ended_at"),
+    // 'player1' | 'player2' | 'draw'. Null until the server settles the race.
+    result: varchar("result", { length: 16 }),
+    winnerId: varchar("winner_id", { length: 255 }),
+    // finish | deadline | forfeit | draw — the server's own reason.
+    resolutionReason: varchar("resolution_reason", { length: 16 }),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (table) => ({
+    p1Idx: index("solitaire_puzzle_sessions_p1_idx").on(table.player1Id, table.createdAt),
+    p2Idx: index("solitaire_puzzle_sessions_p2_idx").on(table.player2Id, table.createdAt),
+    statusIdx: index("solitaire_puzzle_sessions_status_idx").on(table.status, table.updatedAt),
+  }),
+);
+
+// Append-only log of accepted puzzle moves, one row per (session, seat, ply).
+//
+// The unique key is the concurrency backstop: two racing submissions of the
+// same ply cannot both be recorded, and the store maps a unique violation to a
+// 409 instead of a 500. The row keeps the validated `SolitaireMove` only — no
+// board, no outcome, no score — so the log is a replayable input history rather
+// than a second source of truth.
+export const solitairePuzzleSessionMoves = pgTable(
+  "solitaire_puzzle_session_moves",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    sessionId: uuid("session_id").notNull(),
+    seat: varchar("seat", { length: 16 }).notNull(),
+    ply: integer("ply").notNull(),
+    puzzleIndex: integer("puzzle_index").notNull().default(0),
+    kind: varchar("kind", { length: 32 }).notNull(),
+    move: jsonb("move").notNull(),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (table) => ({
+    seatPlyUnique: unique("solitaire_puzzle_session_moves_seat_ply_unique").on(
+      table.sessionId,
+      table.seat,
+      table.ply,
+    ),
+    sessionIdx: index("solitaire_puzzle_session_moves_session_idx").on(
+      table.sessionId,
+      table.createdAt,
+    ),
+  }),
+);
+
+export const proWeeklyRecapSends = pgTable(
+  "pro_weekly_recap_sends",
+  {
+    // Clerk user id of the PRO member.
+    userId: varchar("user_id", { length: 255 }).notNull(),
+    // ISO week the recap describes (e.g. 2026-W46).
+    periodKey: varchar("period_key", { length: 10 }).notNull(),
+    sentAt: timestamp("sent_at").notNull().defaultNow(),
+  },
+  (table) => ({
+    // The claim key: exactly one recap per member per week.
+    key: primaryKey({
+      name: "pro_weekly_recap_sends_pk",
+      columns: [table.userId, table.periodKey],
+    }),
+  }),
+);
+
+export const solitaireAnalysisCache = pgTable(
+  "solitaire_analysis_cache",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    // duel | solo | daily — the same vocabulary as ReviewGameKind.
+    gameKind: varchar("game_kind", { length: 8 }).notNull(),
+    // The game's own id as text: uuid today, 64 chars leaves headroom.
+    gameId: varchar("game_id", { length: 64 }).notNull(),
+    // SHA-256 of the canonical ordered move log.
+    logDigest: varchar("log_digest", { length: 64 }).notNull(),
+    // ANALYSIS_VERSION that produced this payload.
+    engineVersion: integer("engine_version").notNull(),
+    // Compact GameAnalysis JSON — never the deal, the log or prose.
+    analysis: jsonb("analysis").notNull(),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (table) => ({
+    // THE claim key: one analysis per game + exact log + engine version.
+    identityIdx: uniqueIndex("solitaire_analysis_cache_identity_unique").on(
+      table.gameKind,
+      table.gameId,
+      table.logDigest,
+      table.engineVersion,
+    ),
+    // Retention's orphan lookup and one-game diagnostics.
+    gameIdx: index("solitaire_analysis_cache_game_idx").on(
+      table.gameKind,
+      table.gameId,
+    ),
+    createdIdx: index("solitaire_analysis_cache_created_idx").on(table.createdAt),
+  }),
 );
 
 // SUDOKU DUEL — the 1v1 simultaneous Sudoku race.

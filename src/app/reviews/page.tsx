@@ -1,20 +1,21 @@
 import type { Metadata } from "next";
+import JsonLd from "../../components/seo/JsonLd";
 import Link from "next/link";
 import InteractiveCasinoBg from "../../components/InteractiveCasinoBg";
 import NavigationBar from "../../components/navigation-bar";
 import Footer from "../../components/Footer";
 import ReviewWall from "../../components/reviews/ReviewWall";
+import TrustpilotPanel from "../../components/trustpilot/TrustpilotPanel";
 import { getApprovedReviews, getReviewStats, type PublicReview, type ReviewStats } from "../../lib/reviews";
 import { buildAppJsonLd } from "../../lib/reviewJsonLd";
+import { pageMetadata, DEFAULT_OG_IMAGE } from "../../lib/seo";
 
-export const metadata: Metadata = {
-  title: "Player Reviews | GRYND",
-  description:
-    "See what players say about GRYND. Real reviews from verified players of our skill-based games.",
-  alternates: {
-    canonical: "/reviews",
-  },
-};
+export const metadata = pageMetadata({
+  title: "Player Reviews",
+  description: "See what players say about GRYND. Real reviews from verified players of our competitive Solitaire.",
+  path: "/reviews",
+  image: DEFAULT_OG_IMAGE,
+});
 
 /**
  * The review data is fetched on the SERVER and handed to the wall as initial
@@ -50,13 +51,13 @@ export default async function ReviewsPage() {
         <div className="mb-8">
           <Link
             href="/"
-            className="inline-flex items-center gap-2 rounded-lg border border-[#00e5ff]/30 bg-[#040d24]/70 px-4 py-2 text-sm font-semibold text-[#c9f7ff]/80 transition hover:border-[#00e5ff]/60 hover:bg-[#00e5ff]/10 hover:text-white"
+            className="inline-flex items-center gap-2 rounded-lg border border-[#00e5ff]/30 bg-surface/70 px-4 py-2 text-sm font-semibold text-[#c9f7ff]/80 transition hover:border-[#00e5ff]/60 hover:bg-[#00e5ff]/10 hover:text-white"
           >
             <span aria-hidden="true">←</span>
             Back to Home
           </Link>
         </div>
-        <h1 className="mb-2 text-center text-4xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-[#00e5ff] to-[#f5ff3b]">
+        <h1 className="mb-2 text-center text-4xl font-extrabold text-transparent bg-clip-text bg-linear-to-r from-[#00e5ff] to-[#f5ff3b]">
           Player Reviews
         </h1>
         <p className="mb-12 text-center text-lg text-[#c9f7ff]/80">
@@ -66,18 +67,18 @@ export default async function ReviewsPage() {
         {/* AggregateRating + the published reviews, built from the approved
             rows fetched above — never a hardcoded score. Omitted entirely when
             there is nothing real to report. */}
-        {reviewJsonLd && (
-          <script
-            type="application/ld+json"
-            dangerouslySetInnerHTML={{ __html: JSON.stringify(reviewJsonLd) }}
-          />
-        )}
+        <JsonLd data={reviewJsonLd} />
 
         <ReviewWall
           limit={limit}
           initialReviews={data?.reviews ?? null}
           initialStats={data?.stats ?? null}
         />
+
+        {/* Trustpilot: the TrustBox and the "write a review" link. Renders
+            nothing until the business unit id and template id are configured
+            (src/lib/trustpilot.ts). */}
+        <TrustpilotPanel />
       </div>
       <Footer />
     </div>

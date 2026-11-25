@@ -54,16 +54,23 @@ import { sql } from "drizzle-orm";
 import { db } from "../db";
 import { isGuestPvpMatch } from "./pvp/guestMatch";
 import { identityHashForEmail } from "./rating";
-import { recordSettledMatch } from "./quests/settle";
+import {
+  getPlayerProgression,
+  toPlayerLevelShape,
+} from "./playerLevel";
 import {
   OVERALL_TROPHIES_LABEL,
   OVERALL_TROPHY_MIN_GAMES,
   TROPHY_GAMES,
+  TROPHY_GAIN_PERIODS,
   TROPHY_START,
   applyTrophyChange,
   clampTrophies,
   computePlacementTrophies,
+  duelTrophyDelta,
+  isTrophyGainPeriod,
   trophyDeltaForOutcome,
+  trophyGainPeriodStart,
   getTrophyGameLabel,
   isTrophyGame,
   isValidTrophyOutcome,
@@ -155,6 +162,31 @@ export async function getTotalTrophiesForUser(clerkId) {
   return Number(row?.total) || 0;
 }
 
+/**
+ * The player's trophy-derived progression: current total, permanent peak and
+ * the level/rank computed from `max(current, peak)`.
+ *
+ * The peak column is maintained inside Postgres by the trigger added in
+ * migration 0247, so a ranked loss can never lower the earned level. Reading
+ * 0 for a brand-new player is the documented level 1 / Rookie state.
+ */
+export async function getTotalTrophyProgressForUser(clerkId) {
+  if (!clerkId) return getPlayerProgression();
+  const rows = await getSql().execute(sql`
+    SELECT COALESCE(SUM(t.trophies), 0)::int AS total,
+           COALESCE(u.peak_total_trophies, 0)::int AS peak
+      FROM users u
+      LEFT JOIN player_trophies t ON t.user_id = u.id
+     WHERE u.clerk_id = ${clerkId}
+     GROUP BY u.id, u.peak_total_trophies
+  `);
+  const row = rows.rows?.[0] ?? rows[0];
+  return getPlayerProgression({
+    totalTrophies: row?.total ?? 0,
+    peakTrophies: row?.peak ?? 0,
+  });
+}
+
 // ── Bulk read (matchmaking) ───────────────────────────────────────────────
 
 /**
@@ -227,6 +259,7 @@ export async function fetchTrophyLeaderboard({
         u.selected_icon AS icon_key,
         t.trophies,
         t.peak_trophies AS peak_trophies,
+        u.peak_total_trophies AS peak_total_trophies,
         t.games_rated AS games_rated,
         t.wins,
         t.losses,
@@ -272,11 +305,16 @@ export async function fetchTrophyLeaderboard({
   // Same shape as a profile trophy row, plus the normalised Overall badge.
   // Raw snake_case aggregate columns never leave the server.
   const shape = (item) => {
-    const { overall_trophies, overall_games, ...rest } = item;
+    const { overall_trophies, overall_games, peak_total_trophies, ...rest } =
+      item;
     const overall = Number(overall_trophies);
     return {
       ...rest,
       ...toTrophyShape(gameKey, item),
+      // Permanent level/rank for the board row, derived from the trophy
+      // high-water mark (never from a client value).
+      peakTotalTrophies: Number(peak_total_trophies) || 0,
+      playerLevel: toPlayerLevelShape(peak_total_trophies, item.trophies),
       ...(Number.isFinite(overall) && overall > 0
         ? { overallTrophies: overall, overallGames: Number(overall_games) || 0 }
         : {}),
@@ -302,6 +340,10 @@ export async function fetchOverallTrophyLeaderboard({
   limit = 50,
   offset = 0,
   clerkId = null,
+  // "current" ranks the sum of CURRENT counts; "peak" ranks the sum of each
+  // player's all-time high-water mark. Both values travel on every row so a
+  // board can show the other number without a second query.
+  metric = "current",
 } = {}) {
   const lim = Math.min(100, Math.max(1, Number(limit) || 20));
   const off = Math.max(0, Number(offset) || 0);
@@ -311,6 +353,7 @@ export async function fetchOverallTrophyLeaderboard({
       SELECT
         t.user_id,
         SUM(t.trophies)::int AS overall_trophies,
+        SUM(t.peak_trophies)::int AS overall_peak_trophies,
         COUNT(*)::int AS games_played
       FROM player_trophies t
       GROUP BY t.user_id
@@ -319,13 +362,15 @@ export async function fetchOverallTrophyLeaderboard({
     ranked AS (
       SELECT
         ROW_NUMBER() OVER (
-          ORDER BY e.overall_trophies DESC, u.id ASC
+          ORDER BY ${metric === "peak" ? sql`e.overall_peak_trophies` : sql`e.overall_trophies`} DESC, u.id ASC
         )::int AS rank,
         u.clerk_id AS clerk_id,
         u.name AS name,
         u.selected_icon AS icon_key,
         e.overall_trophies AS overall_trophies,
+        e.overall_peak_trophies AS overall_peak_trophies,
         e.games_played AS games_played,
+        u.peak_total_trophies AS peak_total_trophies,
         json_build_object('name', u.name, 'icon_key', u.selected_icon) AS "user"
       FROM eligible e
       INNER JOIN users u ON u.id = e.user_id
@@ -352,13 +397,106 @@ export async function fetchOverallTrophyLeaderboard({
  * `gamesPlayed` are server-computed; the client can never supply them.
  */
 export function toOverallTrophyShape(row) {
+  const overallTrophies = Number(
+    row.overallTrophies ?? row.overall_trophies ?? 0,
+  );
+  const peakTotalTrophies = Number(
+    row.peakTotalTrophies ?? row.peak_total_trophies ?? 0,
+  );
   return {
     ...row,
     label: OVERALL_TROPHIES_LABEL,
-    overallTrophies: Number(row.overallTrophies ?? row.overall_trophies ?? 0),
+    // Permanent level/rank, based on the peak of the TOTAL — not a sum of
+    // per-game peaks. Present on every overall/trophy board row.
+    peakTotalTrophies,
+    playerLevel: toPlayerLevelShape(peakTotalTrophies, overallTrophies),
+    overallTrophies,
+    // The all-time high-water mark, summed across games. Monotonic on each
+    // `player_trophies` row, so it can never fall after a bad run.
+    peakTrophies: Number(
+      row.peakTrophies ?? row.overallPeakTrophies ?? row.overall_peak_trophies ??
+        row.overallTrophies ?? row.overall_trophies ?? 0,
+    ),
     gamesPlayed: Number(row.gamesPlayed ?? row.games_played ?? 0),
   };
 }
+
+/**
+ * The TROPHY-GAIN board for the CURRENT UTC calendar week, month or year.
+ *
+ * Ranks the SUM OF POSITIVE deltas each player earned inside the window, read
+ * from `trophy_events` (the same journal that makes settlement idempotent), so
+ * a gain board can never be fabricated or edited by a client. Losses are
+ * deliberately not netted here: the board answers "who climbed the most this
+ * week/month/year", not "who has the best net". Peak trophies and current
+ * trophies have their own boards.
+ *
+ * `{ items, me, period, since }` mirrors the other trophy readers.
+ */
+export async function fetchTrophyGainLeaderboard({
+  period = "week",
+  limit = 50,
+  offset = 0,
+  clerkId = null,
+} = {}) {
+  const chosenPeriod = isTrophyGainPeriod(period) ? String(period) : "week";
+  const sinceMs = trophyGainPeriodStart(chosenPeriod);
+  if (sinceMs == null) return { items: [], me: null, period: chosenPeriod, since: null };
+
+  const lim = Math.min(100, Math.max(1, Number(limit) || 20));
+  const off = Math.max(0, Number(offset) || 0);
+  const since = new Date(sinceMs);
+
+  const rows = await getSql().execute(sql`
+    WITH gains AS (
+      SELECT
+        e.user_id,
+        SUM(GREATEST(e.delta, 0))::int AS trophy_gain,
+        COUNT(*)::int AS matches
+      FROM trophy_events e
+      WHERE e.created_at >= ${since}
+      GROUP BY e.user_id
+    ),
+    ranked AS (
+      SELECT
+        ROW_NUMBER() OVER (
+          ORDER BY g.trophy_gain DESC, u.id ASC
+        )::int AS rank,
+        u.clerk_id AS clerk_id,
+        u.name AS name,
+        u.selected_icon AS icon_key,
+        g.trophy_gain AS trophy_gain,
+        g.matches AS matches,
+        json_build_object('name', u.name, 'icon_key', u.selected_icon) AS "user"
+      FROM gains g
+      INNER JOIN users u ON u.id = g.user_id
+    ),
+    paged AS (
+      SELECT * FROM ranked ORDER BY rank ASC LIMIT ${lim} OFFSET ${off}
+    )
+    SELECT
+      COALESCE(json_agg(paged ORDER BY rank ASC), '[]'::json) AS items,
+      (SELECT row_to_json(ranked) FROM ranked WHERE clerk_id = ${clerkId} LIMIT 1) AS me
+    FROM paged
+  `);
+
+  const row = rows.rows?.[0] ?? rows[0] ?? {};
+  const items = Array.isArray(row.items) ? row.items : [];
+  const shape = (item) => ({
+    ...item,
+    trophyGain: Number(item.trophyGain ?? item.trophy_gain ?? 0),
+    matches: Number(item.matches ?? 0),
+  });
+  return {
+    items: items.map(shape),
+    me: row.me ? shape(row.me) : null,
+    period: chosenPeriod,
+    since: since.toISOString(),
+  };
+}
+
+/** Re-exported so routes/tests read one period list. */
+export { TROPHY_GAIN_PERIODS, isTrophyGainPeriod };
 
 /**
  * The full set of trophy games as `{ key, label }`, so the UI never hardcodes
@@ -801,6 +939,28 @@ export async function applyTrophyResult({
       userIds[String(clerkId) === String(winnerClerkId)
         ? String(loserClerkId)
         : String(winnerClerkId)] ?? null,
+    // ±30 at equal trophy counts, adjusted by the OTHER seat's count. Computed
+    // HERE, from the rows locked inside the transaction, so a stale read can
+    // never decide a match's trophy swing.
+    nominalDeltasFor: (lockedSeats) => {
+      const byClerkId = new Map(
+        lockedSeats.map((seat) => [String(seat.clerkId), seat]),
+      );
+      return lockedSeats.map((seat) => {
+        if (seat.outcome === "draw") return 0;
+        const opponentClerkId =
+          String(seat.clerkId) === String(winnerClerkId)
+            ? String(loserClerkId)
+            : String(winnerClerkId);
+        const opponent = byClerkId.get(opponentClerkId);
+        if (!opponent) return trophyDeltaForOutcome(seat.outcome);
+        return duelTrophyDelta({
+          playerTrophies: seat.trophies,
+          opponentTrophies: opponent.trophies,
+          outcome: seat.outcome,
+        });
+      });
+    },
   });
   if (!settled.applied) return settled;
 
@@ -872,6 +1032,91 @@ export async function applyTrophyResult({
  *   places?: object[],
  * }>}
  */
+/**
+ * Apply ONE authoritative ranked result to ONE player's game-specific trophies.
+ *
+ * The asynchronous ("ghost") duel writer. Its opponent is a RECORDED run of
+ * another real player, who is not in the match and whose trophies must not
+ * move — so this calls the shared `settleTrophies` with a SINGLE seat instead of
+ * a pair. Everything else is the platform's existing settlement:
+ *
+ *   * the same row lock / ledger seeding / identity mirror,
+ *   * the same `trophy_events` (user, game, match) idempotency journal,
+ *   * the same `duelTrophyDelta` ladder, scaled here by the recording's own
+ *     recorded trophy count rather than an invented opponent,
+ *   * the journal's `opponent_id` is NULL, because no app user is on that side.
+ *
+ * `result` is from the HUMAN's point of view: "win" | "loss" | "draw".
+ *
+ * @param {object} params
+ * @param {string} params.gameKey
+ * @param {string} params.matchId
+ * @param {string} params.clerkId
+ * @param {number} [params.opponentTrophies] the recording's recorded count
+ * @param {"win"|"loss"|"draw"} [params.result]
+ * @param {any} [params.tx]
+ */
+export async function applyGhostTrophyResult({
+  tx,
+  gameKey,
+  matchId,
+  clerkId,
+  opponentTrophies,
+  result = "win",
+}) {
+  const key = String(gameKey ?? "");
+  const eventId = String(matchId ?? "");
+  const outcome =
+    result === "draw" ? "draw" : result === "loss" ? "loss" : "win";
+
+  if (!isTrophyGame(key)) return { applied: false, reason: "game-not-rated" };
+  if (!GAME_KEY_RE.test(key)) return { applied: false, reason: "invalid-game-key" };
+  if (!eventId || eventId.length > MAX_MATCH_ID_LENGTH) {
+    return { applied: false, reason: "invalid-match-id" };
+  }
+  if (!clerkId) return { applied: false, reason: "missing-player" };
+  if (!isValidTrophyOutcome(outcome)) {
+    return { applied: false, reason: "invalid-outcome" };
+  }
+  if (isGuestPvpMatch([clerkId])) {
+    return { applied: false, reason: "guest-unrated" };
+  }
+
+  const rivalTrophies = Number.isFinite(Number(opponentTrophies))
+    ? Number(opponentTrophies)
+    : TROPHY_START;
+
+  const settled = await settleTrophies({
+    tx,
+    gameKey: key,
+    matchId: eventId,
+    seats: [{ clerkId: String(clerkId), outcome }],
+    // No second seat exists: there is no opponent user to journal.
+    opponentIdFor: () => null,
+    nominalDeltasFor: (locked) =>
+      locked.map((seat) =>
+        seat.outcome === "draw"
+          ? 0
+          : duelTrophyDelta({
+              playerTrophies: seat.trophies,
+              opponentTrophies: rivalTrophies,
+              outcome: seat.outcome,
+            }),
+      ),
+  });
+  if (!settled.applied) return settled;
+
+  const entry = settled.results[0];
+  return {
+    applied: true,
+    result: outcome,
+    gameKey: key,
+    matchId: eventId,
+    label: getTrophyGameLabel(key),
+    player: toSettledSeatShape(entry),
+  };
+}
+
 export async function applyPlacementTrophies({
   tx,
   gameKey,
@@ -957,39 +1202,6 @@ export async function applyPlacementTrophies({
         : userIds[String(winnerClerkId)] ?? null,
   });
   if (!settled.applied) return settled;
-
-  // ── Quest progress (multi-seat tables) ───────────────────────────
-  // This is the shared settlement doorway for tables that have no Elo —
-  // Tower Arena settles here — so the quest seats are built from the SAME
-  // authoritative finishing order the trophies were just applied from, inside
-  // the same transaction. Only seats that resolved to a real `users` row are in
-  // `results`, so a bot / AI seat can never count; a seat whose opponent cannot
-  // be named is dropped by the quest bridge rather than guessed at.
-  const userIdByClerk = new Map(
-    settled.results.map((result) => [String(result.clerkId), Number(result.userId)]),
-  );
-  const opponentClerkFor = (clerkId) => {
-    if (String(clerkId) === String(winnerClerkId)) {
-      // The seat this player beat, as recorded by the shared journal.
-      return order.slice(1).find((other) => String(other) !== String(clerkId)) ?? null;
-    }
-    return winnerClerkId;
-  };
-  await recordSettledMatch({
-    tx,
-    gameKey: key,
-    matchId: eventId,
-    seats: settled.results.map((result) => ({
-      userId: Number(result.userId),
-      opponentUserId:
-        userIdByClerk.get(String(opponentClerkFor(result.clerkId))) ?? null,
-      outcome: result.isWin
-        ? "win"
-        : result.outcome === "draw"
-          ? "draw"
-          : "loss",
-    })),
-  });
 
   const byClerk = new Map(settled.results.map((r) => [String(r.clerkId), r]));
   const winnerResult = byClerk.get(String(winnerClerkId));

@@ -1,0 +1,77 @@
+# .github/workflows/android-version-guard.yml
+#
+# Fails a pull request that changes the Android project without incrementing
+# `versionCode`.
+#
+# WHY A PR CHECK AND NOT JUST THE RELEASE JOB
+# Google Play refuses a versionCode that was already used, or that is lower than
+# the highest one uploaded — on every track, permanently, including codes burned
+# by a rejected or rolled-back release. Discovering that while uploading to
+# production means the release has to be rebuilt and re-reviewed. By then the
+# commit is usually already merged, so the cheapest place to catch it is review.
+#
+# SCOPE
+# This runs only when the PR touches android/** (or the guard itself). A pull
+# request that does not touch the Android project has nothing to bump, so it is
+# not failed — the check exists to catch "edited Android, forgot the counter",
+# not to demand a bump on every commit.
+#
+# FIRST RELEASE
+# A PR is compared against its base branch, which also carries versionCode 1
+# until something is released — so before the first `android-v*` tag exists the
+# comparison is skipped (nothing has been uploaded, no code is spent). Without
+# that exemption the release that creates the tag could not merge.
+#
+# `versionName` is deliberately NOT checked: it is cosmetic, and "1.4.0" vs
+# "1.4.0-rc2" vs "banana" are all legal values.
+#
+# The base branch is passed through the environment rather than interpolated
+# into the shell, matching the release workflow's rule that no
+# PR-derived value reaches a command line.
+
+name: android-version-guard
+
+on:
+  pull_request:
+    paths:
+      - "android/**"
+      - "scripts/check-android-version.mjs"
+      - ".github/workflows/android-version-guard.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  version-code:
+    name: versionCode was incremented
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          # The guard reads the BASE branch's build.gradle, which a shallow
+          # clone cannot resolve.
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Compare the committed versionCode against the base branch
+        shell: bash
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          set -euo pipefail
+          if [ -z "${BASE_REF:-}" ]; then
+            echo "::error::no base ref on a pull_request event"
+            exit 1
+          fi
+          if ! git rev-parse --verify "origin/$BASE_REF" >/dev/null 2>&1; then
+            echo "::error::origin/$BASE_REF is not in the clone"
+            exit 1
+          fi
+          node scripts/check-android-version.mjs --base "origin/$BASE_REF"

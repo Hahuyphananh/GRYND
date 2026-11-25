@@ -12,7 +12,7 @@
 // EVERYTHING IS ENVIRONMENT-BASED, AND NOTHING IS FAKED
 //   * NEXT_PUBLIC_ADSENSE_CLIENT      — the publisher id (`ca-pub-…`).
 //   * NEXT_PUBLIC_ADSENSE_SLOT_<PLACEMENT> — the numeric ad-unit id for each
-//     placement (HOME, HUB, LEADERBOARD, PROFILE).
+//     placement (HOME, HUB, LEADERBOARD, PROFILE, GUIDES).
 //   * NEXT_PUBLIC_ADSENSE_ENABLED     — set to "false" to switch ads off
 //     entirely without removing any code.
 //
@@ -71,8 +71,13 @@ export function adsensePublisherId(): string {
  * Every place an ad may appear. Deliberately NON-GAME surfaces only — the ad
  * model is "monetise browsing, never wagering in progress", so a placement key
  * existing at all is a decision that the page is not gameplay.
+ *
+ * `guides` is the EDITORIAL placement: the guide index and each guide article
+ * are the site's original long-form content, so they are both the safest
+ * inventory a review can look at and the inventory a reader is actually
+ * engaged with. It is still not a game surface — no board, no lobby, no match.
  */
-export type AdPlacement = "home" | "hub" | "leaderboard" | "profile";
+export type AdPlacement = "home" | "hub" | "leaderboard" | "profile" | "guides";
 
 /** Placement → the env var that carries its ad-unit id (documented, not faked). */
 export const AD_PLACEMENT_ENV: Record<AdPlacement, string> = {
@@ -80,6 +85,7 @@ export const AD_PLACEMENT_ENV: Record<AdPlacement, string> = {
   hub: "NEXT_PUBLIC_ADSENSE_SLOT_HUB",
   leaderboard: "NEXT_PUBLIC_ADSENSE_SLOT_LEADERBOARD",
   profile: "NEXT_PUBLIC_ADSENSE_SLOT_PROFILE",
+  guides: "NEXT_PUBLIC_ADSENSE_SLOT_GUIDES",
 };
 
 function rawSlotValue(placement: AdPlacement): string | undefined {
@@ -92,6 +98,8 @@ function rawSlotValue(placement: AdPlacement): string | undefined {
       return process.env.NEXT_PUBLIC_ADSENSE_SLOT_LEADERBOARD;
     case "profile":
       return process.env.NEXT_PUBLIC_ADSENSE_SLOT_PROFILE;
+    case "guides":
+      return process.env.NEXT_PUBLIC_ADSENSE_SLOT_GUIDES;
     default:
       return undefined;
   }

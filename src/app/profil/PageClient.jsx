@@ -1,10 +1,13 @@
 "use client";
 
+import ShareProBadgeButton from "../../components/share/ShareProBadgeButton";
+
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useUser, useClerk } from "@clerk/nextjs";
 import NavigationBar from "../../components/navigation-bar";
 import Footer from "../../components/Footer";
+import SolitaireModesPanel from "../../components/solitaire-duel/SolitaireModesPanel";
 import ContactMessageHistory from "../../components/ContactMessageHistory";
 import {
   DEFAULT_PROFILE_ACCENT,
@@ -14,35 +17,25 @@ import {
   cosmeticEffectClass,
 } from "../../lib/profileCosmetics";
 import IconAvatar from "../../components/IconAvatar";
-import ChooseIconModal from "../../components/ChooseIconModal";
-import ChooseGlowModal from "../../components/ChooseGlowModal";
-import ChooseFrameModal from "../../components/ChooseFrameModal";
-import ChooseEmotesModal from "../../components/ChooseEmotesModal";
-import UpgradeProButton from "../../components/UpgradeProButton";
+import ProfilePickerModals from "../../components/profil/ProfilePickerModals";
+import ProfileEmotesPanel from "../../components/profil/ProfileEmotesPanel";
+import ProfileChatColorPanel from "../../components/profil/ProfileChatColorPanel";
+import BetHistoryPanel from "../../components/profil/BetHistoryPanel";
 import EmoteLoadoutStrip from "../../components/EmoteLoadoutStrip";
 import UserStatsTabs from "../../components/UserStatsTabs";
 import GuestProgressPanel from "../../components/guest/GuestProgressPanel";
 import GuestClaimPanel from "../../components/guest/GuestClaimPanel";
-import RoomsPanel, { ChallengeFriendDialog } from "../../components/rooms/RoomsPanel";
+import RoomsPanel from "../../components/rooms/RoomsPanel";
 import { clearSessionArtifacts } from "../../lib/security/sessionCleanup";
 import { fetchDeduped } from "../../lib/dedupeFetch";
 import { runOptimistically } from "../../lib/optimistic";
 import { useTranslation } from "../../hooks/useTranslation";
+import PlayerLevelBadge from "../../components/player-level/PlayerLevelBadge";
+import PlayerLevelProgressCard from "../../components/player-level/PlayerLevelProgressCard";
+import DailyStreakRecordBadge from "../../components/profil/DailyStreakRecordBadge";
+import CompetitiveStreakBadge from "../../components/profil/CompetitiveStreakBadge";
 
 // GRYND PRO chat color palette (matches the neon casino aesthetic).
-const CHAT_COLORS = [
-  "#00e5ff",
-  "#f5ff3b",
-  "#f0abfc",
-  "#34d399",
-  "#fb923c",
-  "#a78bfa",
-  "#f43f5e",
-  "#22d3ee",
-  "#facc15",
-  "#e2e8f0",
-];
-
 // `adSlot` is the server-rendered <AdSlot placement="profile" /> from
 // app/profil/page.jsx — above the footer, never over a control.
 export default function ProfilePage({ adSlot = null, hilltopSlot = null }) {
@@ -88,6 +81,11 @@ export default function ProfilePage({ adSlot = null, hilltopSlot = null }) {
     dailyStreakBest: 0,
     allStreakTitles: [],
   });
+  // Authoritative all-time daily play record (`user_streaks.longest_streak`).
+  // Kept separate from the legacy login streak in `streakState` above.
+  const [streakRecordBest, setStreakRecordBest] = useState(0);
+  // `user_competitive_streaks`, keyed independently by game. Never merged.
+  const [competitiveStreaks, setCompetitiveStreaks] = useState({});
 
   const [membership, setMembership] = useState(null);
   const [chatColor, setChatColor] = useState("#00e5ff");
@@ -105,7 +103,6 @@ export default function ProfilePage({ adSlot = null, hilltopSlot = null }) {
       console.error("[LOAD_MEMBERSHIP_ERROR]", err);
     }
   };
-
 
   const [titlesView, setTitlesView] = useState("special");
   const [titlesOpen, setTitlesOpen] = useState(false); // collapsed by default so the profile stays compact
@@ -164,10 +161,6 @@ export default function ProfilePage({ adSlot = null, hilltopSlot = null }) {
   const [receivedInvites, setReceivedInvites] = useState([]);
   const [activeFriendsTab, setActiveFriendsTab] = useState("friends");
   const [friendsStatus, setFriendsStatus] = useState("");
-  // The friend a Challenge dialog is open for (null = closed), and the result
-  // message of the last challenge the player sent.
-  const [challengeTarget, setChallengeTarget] = useState(null);
-  const [challengeStatus, setChallengeStatus] = useState("");
   const [friendPresenceByFriend, setFriendPresenceByFriend] = useState({});
   const [spectateOverlayUrl, setSpectateOverlayUrl] = useState("");
   const [spectateLoadError, setSpectateLoadError] = useState("");
@@ -350,10 +343,10 @@ export default function ProfilePage({ adSlot = null, hilltopSlot = null }) {
 
   const cyberButton =
     "relative overflow-hidden rounded-lg px-4 py-2 font-semibold text-white " +
-    "bg-gradient-to-r from-[#00e5ff] via-[#00ffcc] to-[#8a2be2] " +
-    "shadow-[0_0_10px_rgba(0,229,255,0.6)] " +
-    "hover:shadow-[0_0_20px_rgba(138,43,226,0.9)] " +
-    "hover:scale-105 active:scale-95 transition-all duration-300";
+    "bg-linear-to-r from-[color:var(--accent)] via-[color:var(--accent)] to-[color:var(--accent-strong)] " +
+    "shadow-[0_8px_24px_rgba(0,0,0,0.3)] " +
+    "hover:shadow-[0_10px_28px_rgba(0,0,0,0.4)] " +
+    "hover:scale-[1.02] active:scale-95 transition-all duration-300";
 
   const loadProfileData = async () => {
     // The nav bar reads this same endpoint when it mounts, so a cold page
@@ -375,6 +368,8 @@ export default function ProfilePage({ adSlot = null, hilltopSlot = null }) {
       const profileAccent = tokensData.data.profileAccent || null;
       setProfileInfo({ name, email, selectedIcon, profileAccent });
       setEquippedCosmetics(tokensData.data.equippedCosmetics || {});
+      setStreakRecordBest(Math.max(0, Number(tokensData.data.streakRecordBest) || 0));
+      setCompetitiveStreaks(tokensData.data.competitiveStreaks || {});
       setEditForm((prev) => ({ ...prev, name, email }));
       // Sync the customization picker with the saved value.
       setCosmetics({
@@ -478,7 +473,6 @@ export default function ProfilePage({ adSlot = null, hilltopSlot = null }) {
         setFriendSearchResults([]);
         setFriendsStatus(
           data?.error ||
-            data?.debug?.error ||
             t(
               "profile.friends.searchFailed",
               "Could not search users. Please try again.",
@@ -623,10 +617,7 @@ export default function ProfilePage({ adSlot = null, hilltopSlot = null }) {
     if (!url || typeof url !== "string") return false;
     if (!url.startsWith("/")) return false;
 
-    const allowedPrefixes = [
-      "/casino/chess-game/",
-      "/casino/four-in-a-row/game/",
-    ];
+    const allowedPrefixes = ["/casino/solitaire-duel/"];
 
     return allowedPrefixes.some((prefix) => url.startsWith(prefix));
   };
@@ -638,10 +629,8 @@ export default function ProfilePage({ adSlot = null, hilltopSlot = null }) {
       .trim();
     if (!presence?.gameId || !gameKey) return null;
 
-    if (gameKey === "chess")
-      return `/casino/chess-game/${presence.gameId}?spectator=1&focusTarget=${encodeURIComponent(friendId)}`;
-    if (gameKey === "four-in-a-row")
-      return `/casino/four-in-a-row/game/${presence.gameId}?spectator=1&focusTarget=${encodeURIComponent(friendId)}`;
+    if (gameKey === "solitaire-duel")
+      return `/casino/solitaire-duel/${presence.gameId}?spectator=1&focusTarget=${encodeURIComponent(friendId)}`;
     return null;
   };
 
@@ -1178,8 +1167,8 @@ export default function ProfilePage({ adSlot = null, hilltopSlot = null }) {
 
   if (!isLoaded) {
     return (
-      <div className="flex h-screen items-center justify-center bg-[#003366]">
-        <div className="text-2xl text-[#00e5ff]">
+      <div className="flex h-screen items-center justify-center bg-[color:var(--bg-page)]">
+        <div className="text-2xl text-cyan-200/80">
           {t("profile.loading", "Loading…")}
         </div>
       </div>
@@ -1193,21 +1182,18 @@ export default function ProfilePage({ adSlot = null, hilltopSlot = null }) {
     // account profile below is untouched (Phase 2F).
     return (
       <div
-        className="min-h-screen text-white"
-        style={{
-          backgroundImage: "linear-gradient(135deg, #001933 0%, #000d1a 100%)",
-        }}
+        className="relative min-h-screen bg-[color:var(--bg-page)] text-[color:var(--text-primary)]"
       >
         <div className="mx-auto max-w-6xl px-4 pb-20 pt-24 sm:px-6">
           <NavigationBar currentPath="/profil" />
           <header className="mb-6">
-            <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-[#00e5ff]">
+            <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-cyan-200/80">
               {t("guestProgress.eyebrow", "Guest profile")}
             </p>
             <h1 className="mt-1 text-3xl font-black text-white sm:text-4xl">
               {t("guestProgress.title", "Your guest progress")}
             </h1>
-            <p className="mt-2 max-w-2xl text-sm text-[#9dd8ff]/80">
+            <p className="mt-2 max-w-2xl text-sm text-slate-300/80">
               {t(
                 "guestProgress.subtitle",
                 "Your free practice record. No account needed, and nothing here is ranked.",
@@ -1229,53 +1215,38 @@ export default function ProfilePage({ adSlot = null, hilltopSlot = null }) {
 
   return (
     <div
-      className="min-h-screen text-white"
-      style={{
-        backgroundImage: "linear-gradient(135deg, #001933 0%, #000d1a 100%)",
-      }}
+      className="relative min-h-screen bg-[color:var(--bg-page)] text-[color:var(--text-primary)]"
     >
       <div className="max-w-6xl mx-auto px-6 pt-24 pb-20">
         <NavigationBar currentPath="/profil" />
-        <h1
-          className="text-4xl font-extrabold text-center mb-8 
-  bg-gradient-to-r from-purple-400 to-pink-500 
-  bg-clip-text text-transparent"
-        >
+        <h1 className="mb-8 text-4xl font-black tracking-tight text-white sm:text-5xl">
           {t("profile.title", "Your Profile")}
         </h1>
-
-        {/* Guest→account conversion (Phase 4): renders only while this
-            browser has an unclaimed guest practice record, or to confirm a
-            claim already made. Nothing changes for accounts without one. */}
-        <GuestClaimPanel />
-
-        {/* GRYND PRO — shows "Manage Subscription" for subscribers and the
-            upgrade CTA for everyone else; the status is read from the server
-            (/api/membership/status), so the client can't claim PRO. */}
-        <div className="mb-6 flex justify-center">
-          <UpgradeProButton variant="compact" />
-        </div>
-
-        <div className="grid gap-8 md:grid-cols-2">
+        <div className="grid gap-8">
           <div
-            className={`relative overflow-hidden bg-[#0b224f]/85 border border-[#00e5ff]/30 rounded-xl p-6 shadow-[0_0_24px_rgba(0,229,255,0.15)] ${profileGlowClass || ""}`}
+            className={`relative overflow-hidden bg-[color:var(--bg-surface)] border border-white/10 rounded-xl p-6 shadow-[var(--shadow-raise)] ${profileGlowClass || ""}`}
             style={
               profileInfo.profileAccent
                 ? {
                     borderColor: profileInfo.profileAccent,
-                    boxShadow: `0 0 24px ${profileInfo.profileAccent}33`,
+                    // An equipped profile glow owns the shadow. The accent is
+                    // still the border colour, but its fallback shadow must
+                    // not erase the streak reward's CSS class.
+                    boxShadow: profileGlowClass
+                      ? undefined
+                      : `0 0 24px ${profileInfo.profileAccent}33`,
                   }
                 : undefined
             }
           >
             <div className="flex items-center justify-between mb-2">
-              <h2 className="text-xl text-[#00e5ff]">
+              <h2 className="text-xl text-cyan-200/80">
                 {t("profile.info.title", "Personal info")}
               </h2>
               <div className="flex items-center gap-3">
                 <Link
                   href="/settings"
-                  className="inline-flex items-center gap-1.5 rounded-lg border border-[#00e5ff]/40 bg-[#00e5ff]/10 px-3 py-1 text-sm font-medium text-[#9dd8ff] hover:bg-[#00e5ff]/25 hover:text-[#00e5ff]"
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-white/15 bg-cyan-500/10 px-3 py-1 text-sm font-medium text-slate-300 hover:bg-cyan-500/25 hover:text-cyan-200/80"
                 >
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
                   {t("profile.info.settings", "Settings")}
@@ -1287,7 +1258,7 @@ export default function ProfilePage({ adSlot = null, hilltopSlot = null }) {
                   }}
                 className={
                   cyberButton +
-                  " text-sm px-3 py-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#0b224f]"
+                  " text-sm px-3 py-1 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[color:var(--focus-ring)] focus-visible:ring-offset-2 focus-visible:ring-offset-[color:var(--bg-page)]"
                 }
               >
                 {t("profile.info.edit", "Edit Profile")}
@@ -1303,21 +1274,21 @@ export default function ProfilePage({ adSlot = null, hilltopSlot = null }) {
                 aria-label={t("profile.info.changeIcon", "Change your Grynd icon")}
                 title={t("profile.info.changeIcon", "Change your Grynd icon")}
                 style={equippedFrame.style}
-                className={`group relative rounded-full ${equippedFrame.cssClass || ""} ${avatarEffectClass || ""} focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#0b224f]`}
+                className={`group relative rounded-full ${equippedFrame.cssClass || ""} ${avatarEffectClass || ""} focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[color:var(--focus-ring)] focus-visible:ring-offset-2 focus-visible:ring-offset-[color:var(--bg-page)]`}
               >
                 <IconAvatar
                   iconKey={profileInfo.selectedIcon}
                   name={profileInfo.name || user.fullName}
                   size="h-14 w-14"
-                  className="border border-[#FFD700] transition group-hover:scale-105"
+                  className="border border-[color:var(--state-gold)] transition group-hover:scale-105"
                 />
                 {/* Subtle "change" affordance so players know it's clickable */}
-                <span className="absolute -bottom-1 -right-1 flex h-6 w-6 items-center justify-center rounded-full border border-[#00e5ff]/50 bg-[#001933] text-[#00e5ff] shadow-[0_0_10px_rgba(0,229,255,0.5)] transition group-hover:scale-110">
+                <span className="absolute -bottom-1 -right-1 flex h-6 w-6 items-center justify-center rounded-full border border-white/20 bg-[color:var(--bg-page)] text-cyan-200/80 shadow-[var(--shadow-raise)] transition group-hover:scale-110">
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-3.5 w-3.5"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
                 </span>
               </button>
               <div>
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
                   <p
                     style={
                       selectedGlowColor
@@ -1332,6 +1303,15 @@ export default function ProfilePage({ adSlot = null, hilltopSlot = null }) {
                         t("profile.info.unknownUser", "Unknown user")}
                     </span>
                   </p>
+                  {stats?.playerLevel && (
+                    <PlayerLevelBadge
+                      level={stats.playerLevel.level}
+                      rankKey={stats.playerLevel.rankKey}
+                      size="compact"
+                      showLabel
+                    />
+                  )}
+                  <DailyStreakRecordBadge bestStreak={streakRecordBest} />
                   {membership?.active && (
                     <span className="rounded-full border border-emerald-400/60 bg-emerald-500/10 px-2 py-0.5 text-xs font-semibold text-emerald-300">
                       {membership.title ||
@@ -1352,7 +1332,7 @@ export default function ProfilePage({ adSlot = null, hilltopSlot = null }) {
                   )}
                   {(specialTitles.selectedSpecialTitleName ||
                     titleMeta.selectedTitle) && (
-                    <span className="rounded-full border border-[#f5ff3b]/60 bg-[#f5ff3b]/10 px-2 py-0.5 text-xs text-[#f5ff3b]">
+                    <span className="rounded-full border border-[color:var(--state-gold)] bg-[color:var(--bg-panel)] px-2 py-0.5 text-xs text-[color:var(--state-gold)]">
                       {specialTitles.selectedSpecialTitleName ||
                         titleMeta.selectedTitle}
                     </span>
@@ -1362,7 +1342,7 @@ export default function ProfilePage({ adSlot = null, hilltopSlot = null }) {
                       established rating in enough different games). */}
                   {Number(stats?.overallElo) > 0 && (
                     <span
-                      className="rounded-full border border-[#f5ff3b]/50 bg-[#f5ff3b]/10 px-2 py-0.5 text-xs font-semibold text-[#f5ff3b]"
+                      className="rounded-full border border-[color:var(--state-gold)] bg-[color:var(--bg-panel)] px-2 py-0.5 text-xs font-semibold text-[color:var(--state-gold)]"
                       title={`Overall Elo across ${Number(stats?.overallEligibleGames || 0)} games`}
                     >
                       Overall {Number(stats.overallElo).toLocaleString()} Elo
@@ -1391,6 +1371,21 @@ export default function ProfilePage({ adSlot = null, hilltopSlot = null }) {
                     best: streakState.dailyStreakBest,
                   })}
                 </p>
+                <div
+                  data-testid="competitive-streak-badges"
+                  className="mt-2 flex flex-wrap items-center gap-2"
+                >
+                  <CompetitiveStreakBadge
+                    gameKey="solitaire-duel"
+                    current={Number(competitiveStreaks?.["solitaire-duel"]?.current) || 0}
+                    best={Number(competitiveStreaks?.["solitaire-duel"]?.best) || 0}
+                  />
+                  <CompetitiveStreakBadge
+                    gameKey="solitaire-puzzle"
+                    current={Number(competitiveStreaks?.["solitaire-puzzle"]?.current) || 0}
+                    best={Number(competitiveStreaks?.["solitaire-puzzle"]?.best) || 0}
+                  />
+                </div>
                 {/* Competitive identity strip — real leaderboard record data
                     (same source as /classement). Only rows with data render. */}
                 {stats?.record && (
@@ -1409,7 +1404,7 @@ export default function ProfilePage({ adSlot = null, hilltopSlot = null }) {
                       })}
                     </span>
                     {Number(stats.record.currentStreak || 0) > 0 && (
-                      <span className="inline-flex items-center gap-1 text-[#f5ff3b]">
+                      <span className="inline-flex items-center gap-1 text-[color:var(--state-gold)]">
                         <svg className="h-3 w-3" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
                           <path d="M12 23c-1.4 0-2.5-1.1-2.5-2.5 0-.5.1-.9.4-1.3-1.9-1-4.1-2.3-4.1-4.7 0-2.2 1.5-4 3.5-5.5C10 8.4 10.5 7.5 12 2c1.5 5.5 2 6.4 2.7 7 2 1.5 3.5 3.3 3.5 5.5 0 2.4-2.2 3.7-4.1 4.7.3.4.4.8.4 1.3 0 1.4-1.1 2.5-2.5 2.5z" />
                         </svg>
@@ -1431,106 +1426,84 @@ export default function ProfilePage({ adSlot = null, hilltopSlot = null }) {
 
         </div>
 
-        <div className="mt-8 rounded-xl border border-emerald-400/35 bg-[#052e1f]/85 p-6 shadow-[0_0_24px_rgba(52,211,153,0.15)]">
-          <div className="flex items-center justify-between gap-4 mb-4">
-            <h2 className="text-xl text-emerald-300">
-              {t("profile.chatcolor.title", "Chat name color")}
-            </h2>
-            {!membership?.active && (
-              <a
-                href="/upgrade-pro"
-                className="rounded-full border border-emerald-400/40 bg-emerald-500/10 px-3 py-1 text-sm font-semibold text-emerald-300 transition hover:bg-emerald-500/20"
-              >
-                {t("profile.membership.seePro", "See GRYND PRO")}
-              </a>
-            )}
+        <SolitaireModesPanel />
+
+        {/* Permanent trophy-derived level + rank. Every number is the server's
+            `/api/user-stats` progression payload (peak-protected). */}
+        {stats?.playerLevel && (
+          <PlayerLevelProgressCard
+            progression={stats.playerLevel}
+            className="mt-8 mb-8"
+          />
+        )}
+
+        <div
+          className="mt-8 bg-[color:var(--bg-surface)] border border-white/10 
+rounded-xl p-6 
+shadow-[var(--shadow-raise)]"
+        >
+          <h2 className="text-xl text-cyan-200/80 mb-4">
+            {t("profile.stats.title", "User Statistics")}
+          </h2>
+          {statsError && <p className="text-red-400 mb-4">{statsError}</p>}
+          {/* Tabbed stat panel — mirrors the /classement leaderboard
+              (record / weekly / streaks) instead of a flat grid. */}
+          {/* Per-game Elo ratings come from /api/user-stats (read fresh on
+              every request, outside its stats cache) and render as the
+              "Game Ratings" tab. */}
+          <UserStatsTabs
+            record={stats?.record}
+            ratings={stats?.ratings}
+            overall={stats}
+          />
+
+          {/* Pointer to the GRYND PRO performance dashboard. It is a LINK, not
+              an embedded dashboard: the advanced analytics are gated on the
+              server (/api/stats/performance), so a free player sees the upsell
+              there rather than a second empty panel here. */}
+          <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-white/10 bg-white/[0.02] px-4 py-3">
+            <div>
+              <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-cyan-200/80">
+                {t("profile.stats.advanced_badge", "GRYND PRO")}
+              </p>
+              <p className="mt-0.5 text-sm text-white/50">
+                {t(
+                  "profile.stats.advanced",
+                  "Performance dashboard — win rates, Elo and trophy graphs, and your overall ranking over time.",
+                )}
+              </p>
+            </div>
+            <Link
+              href="/stats"
+              className="shrink-0 text-sm font-semibold text-cyan-300 underline-offset-4 transition hover:text-cyan-200 hover:underline"
+            >
+              {t("profile.stats.advanced_open", "Open dashboard")}
+            </Link>
           </div>
-
-          <>
-            <p className="mb-3 text-sm text-gray-300">
-              {t(
-                "profile.chatcolor.note",
-                "Your name shows in this color in chat and on your game seats. Free for everyone.",
-              )}
-            </p>
-
-              <div className="mb-3 flex flex-wrap gap-2">
-                {CHAT_COLORS.map((color) => (
-                  <button
-                    key={color}
-                    type="button"
-                    onClick={() => setChatColor(color)}
-                    aria-label={t("profile.membership.setChatColor", {
-                      color,
-                    })}
-                    title={color}
-                    className={`h-8 w-8 rounded-full border-2 transition ${
-                      chatColor.toLowerCase() === color.toLowerCase()
-                        ? "scale-110 border-white"
-                        : "border-white/20 hover:border-white/60"
-                    }`}
-                    style={{ backgroundColor: color }}
-                  />
-                ))}
-              </div>
-
-              <div className="mb-3 flex items-center gap-2">
-                <input
-                  type="color"
-                  value={chatColor}
-                  onChange={(e) => setChatColor(e.target.value)}
-                  aria-label={t(
-                    "profile.membership.chatColorLabel",
-                    "Custom chat color",
-                  )}
-                  className="h-8 w-10 cursor-pointer rounded border border-white/20 bg-transparent"
-                />
-                <input
-                  type="text"
-                  value={chatColor}
-                  onChange={(e) => setChatColor(e.target.value.trim())}
-                  maxLength={7}
-                  aria-label={t(
-                    "profile.membership.chatColorHexLabel",
-                    "Custom chat color hex value",
-                  )}
-                  className="w-28 rounded border border-white/20 bg-[#0b224f]/60 px-2 py-1 text-sm text-white focus:border-emerald-400 focus:outline-none"
-                />
-              </div>
-
-              <div className="mb-4 flex items-center gap-2 rounded bg-black/30 px-3 py-2 text-sm">
-                <span className="text-gray-400">
-                  {t("profile.membership.preview", "Preview:")}
-                </span>
-                <span className="font-bold" style={{ color: chatColor }}>
-                  {profileInfo.name ||
-                    user.fullName ||
-                    t("profile.membership.yourName", "Your name")}
-                </span>
-              </div>
-
-              <div className="flex gap-2">
-                <button
-                  type="button"
-                  onClick={handleSaveChatColor}
-                  className="rounded-lg bg-emerald-500 px-4 py-2 text-sm font-semibold text-[#001a0e] transition hover:bg-emerald-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300 focus-visible:ring-offset-2 focus-visible:ring-offset-[#052e1f]"
-                >
-                  {t("profile.membership.save", "Save color")}
-                </button>
-                <button
-                  type="button"
-                  onClick={handleResetChatColor}
-                  className="rounded-lg border border-white/20 px-4 py-2 text-sm text-gray-300 transition hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300 focus-visible:ring-offset-2 focus-visible:ring-offset-[#052e1f]"
-                >
-                  {t("profile.membership.reset", "Reset")}
-                </button>
-              </div>
-
-              {chatColorMsg && (
-                <p className="mt-3 text-sm text-emerald-300">{chatColorMsg}</p>
-              )}
-          </>
         </div>
+
+        {/* Guest→account conversion (Phase 4): renders only while this
+            browser has an unclaimed guest practice record, or to confirm a
+            claim already made. Nothing changes for accounts without one. */}
+        <GuestClaimPanel />
+
+        {/* Members can show the mark. Fetches the badge from the server and
+            renders nothing at all for a free account or a guest. */}
+        <ShareProBadgeButton />
+
+        <ProfileChatColorPanel
+          chatColor={chatColor}
+          onChatColorChange={setChatColor}
+          onSave={handleSaveChatColor}
+          onReset={handleResetChatColor}
+          message={chatColorMsg}
+          isMember={Boolean(membership?.active)}
+          previewName={
+            profileInfo.name ||
+            user.fullName ||
+            t("profile.membership.yourName", "Your name")
+          }
+        />
 
         {/* Advertising — a SECONDARY area between profile sections, not the
             identity card. It is a card of its own: nothing under it is a
@@ -1538,123 +1511,28 @@ export default function ProfilePage({ adSlot = null, hilltopSlot = null }) {
             a long way below so the two providers never stack. */}
         {hilltopSlot}
 
-        {/* Profile accent — free for everyone (previously advertised as a
-            GRYND PRO perk; the membership check is gone from the API too). */}
-        <div className="mt-8 rounded-xl border border-sky-400/35 bg-[#03203a]/85 p-6 shadow-[0_0_24px_rgba(56,189,248,0.15)]">
-          <div className="mb-4 flex items-center justify-between gap-4">
-            <h2 className="text-xl text-sky-300">
-              {t("profile.customization.title", "Profile Customization")}
-            </h2>
-          </div>
+        <ProfileAccentPanel
+          accent={cosmetics.accent}
+          onAccentChange={(accent) => setCosmetics((c) => ({ ...c, accent }))}
+          onSave={handleSaveCosmetics}
+          message={cosmeticsMsg}
+        />
 
-          <>
-            <p className="mb-4 text-sm text-gray-300">
-              {t(
-                "profile.customization.note",
-                "Accent color — the ring around your profile card. Free for everyone.",
-              )}
-            </p>
+        <ProfileEmotesPanel onManage={setIsEmotesManagerOpen} />
 
-              <p className="mb-2 text-sm font-semibold text-sky-300">
-                {t("profile.customization.accent", "Accent color")}
-              </p>
-              <div className="mb-2 flex flex-wrap gap-2">
-                {ACCENT_COLORS.map((color) => (
-                  <button
-                    key={color}
-                    type="button"
-                    onClick={() => setCosmetics((c) => ({ ...c, accent: color }))}
-                    aria-label={t("profile.customization.setAccent", {
-                      color,
-                    })}
-                    title={color}
-                    className={`h-8 w-8 rounded-full border-2 transition ${
-                      cosmetics.accent.toLowerCase() === color.toLowerCase()
-                        ? "scale-110 border-white"
-                        : "border-white/20 hover:border-white/60"
-                    }`}
-                    style={{ backgroundColor: color }}
-                  />
-                ))}
-              </div>
-              <div className="mb-4 flex items-center gap-2">
-                <input
-                  type="color"
-                  value={cosmetics.accent}
-                  onChange={(e) => setCosmetics((c) => ({ ...c, accent: e.target.value }))}
-                  aria-label={t(
-                    "profile.customization.accentLabel",
-                    "Custom accent color",
-                  )}
-                  className="h-8 w-10 cursor-pointer rounded border border-white/20 bg-transparent"
-                />
-                <input
-                  type="text"
-                  value={cosmetics.accent}
-                  onChange={(e) => setCosmetics((c) => ({ ...c, accent: e.target.value.trim() }))}
-                  maxLength={7}
-                  aria-label={t(
-                    "profile.customization.accentHexLabel",
-                    "Custom accent hex value",
-                  )}
-                  className="w-28 rounded border border-white/20 bg-[#0b224f]/60 px-2 py-1 text-sm text-white focus:border-sky-400 focus:outline-none"
-                />
-              </div>
-
-              <div className="flex gap-2">
-                <button
-                  type="button"
-                  onClick={handleSaveCosmetics}
-                  className="rounded-lg bg-sky-500 px-4 py-2 text-sm font-semibold text-[#001a2e] transition hover:bg-sky-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-300 focus-visible:ring-offset-2 focus-visible:ring-offset-[#03203a]"
-                >
-                  {t("profile.customization.save", "Save customization")}
-                </button>
-              </div>
-
-              {cosmeticsMsg && <p className="mt-3 text-sm text-sky-300">{cosmeticsMsg}</p>}
-          </>
-        </div>
-
-        {/* Emotes — in-game animated emote loadout (up to 9 equipped).
-            GG + NICE MOVE stay permanently available in games and are never
-            part of this loadout. Managed through ChooseEmotesModal. */}
-        <div className="mt-8 rounded-xl border border-fuchsia-400/35 bg-[#18071f]/85 p-6 shadow-[0_0_24px_rgba(217,70,239,0.12)]">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <h2 className="text-xl text-fuchsia-300">
-                {t("profile.emotes.title", "Emotes")}
-              </h2>
-              <p className="mt-1 text-sm text-gray-300">
-                {t(
-                  "profile.emotes.description",
-                  "Choose up to 9 animated emotes to use in games. GG and NICE MOVE are always available.",
-                )}
-              </p>
-            </div>
-            <button
-              type="button"
-              onClick={() => setIsEmotesManagerOpen(true)}
-              className="rounded-lg bg-fuchsia-400 px-4 py-2 text-sm font-semibold text-[#001a2e] transition hover:bg-fuchsia-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fuchsia-200 focus-visible:ring-offset-2 focus-visible:ring-offset-[#18071f]"
-            >
-              {t("profile.emotes.manage", "Manage emotes")}
-            </button>
-          </div>
-          <EmoteLoadoutStrip onChange={setIsEmotesManagerOpen} />
-        </div>
-
-        <div className="mt-8 rounded-xl border border-fuchsia-400/35 bg-[#0d0a28]/85 p-6 shadow-[0_0_24px_rgba(217,70,239,0.2)]">
+        <div className="mt-8 rounded-xl border border-white/10 bg-[color:var(--bg-surface)] p-6 shadow-[var(--shadow-raise)]">
           <button
             type="button"
             onClick={() => setTitlesOpen((o) => !o)}
-            className="flex w-full items-center justify-between text-left focus-visible:outline-none"
+            className="flex w-full items-center justify-between text-left focus-visible:outline-hidden"
             aria-expanded={titlesOpen}
             aria-controls="titles-section-body"
           >
-            <h2 className="text-xl text-fuchsia-300">
+            <h2 className="text-xl text-slate-200">
               {t("profile.titles.title", "Titles")}
             </h2>
             <svg
-              className={`w-5 h-5 text-fuchsia-300 transition-transform duration-200 ${titlesOpen ? "rotate-180" : ""}`}
+              className={`w-5 h-5 text-slate-200 transition-transform duration-200 ${titlesOpen ? "rotate-180" : ""}`}
               viewBox="0 0 24 24"
               fill="none"
               stroke="currentColor"
@@ -1669,9 +1547,9 @@ export default function ProfilePage({ adSlot = null, hilltopSlot = null }) {
               <div className="flex gap-2 mb-4">
                 <button
                   onClick={() => setTitlesView("special")}
-                  className={`rounded px-3 py-1 text-sm transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fuchsia-400 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0d0a28] ${
+                  className={`rounded-sm px-3 py-1 text-sm transition focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-cyan-500/60 focus-visible:ring-offset-2 focus-visible:ring-offset-[color:var(--bg-page)] ${
                     titlesView === "special"
-                      ? "bg-fuchsia-500 text-white"
+                      ? "bg-cyan-600/70 text-white"
                       : "bg-white/10 text-gray-300"
                   }`}
                 >
@@ -1680,7 +1558,7 @@ export default function ProfilePage({ adSlot = null, hilltopSlot = null }) {
 
                 <button
                   onClick={() => setTitlesView("vip")}
-                  className={`rounded px-3 py-1 text-sm transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0d0a28] ${
+                  className={`rounded-sm px-3 py-1 text-sm transition focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-cyan-400 focus-visible:ring-offset-2 focus-visible:ring-offset-[color:var(--bg-page)] ${
                     titlesView === "vip" ? "bg-cyan-500 text-white" : "bg-white/10 text-gray-300"
                   }`}
                 >
@@ -1688,7 +1566,7 @@ export default function ProfilePage({ adSlot = null, hilltopSlot = null }) {
                 </button>
                 <button
                   onClick={() => setTitlesView("streak")}
-                  className={`rounded px-3 py-1 text-sm transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0d0a28] ${
+                  className={`rounded-sm px-3 py-1 text-sm transition focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-amber-400 focus-visible:ring-offset-2 focus-visible:ring-offset-[color:var(--bg-page)] ${
                     titlesView === "streak"
                       ? "bg-amber-500 text-black"
                       : "bg-white/10 text-gray-300"
@@ -1719,8 +1597,8 @@ export default function ProfilePage({ adSlot = null, hilltopSlot = null }) {
                         className={[
                           "rounded-lg border p-3 text-left transition",
                           isUnlocked
-                            ? "border-fuchsia-300/45 bg-fuchsia-500/10 hover:bg-fuchsia-500/20"
-                            : "cursor-not-allowed border-slate-700 bg-slate-900/60 opacity-50",
+                            ? "border-white/15 bg-cyan-600/70/10 hover:bg-cyan-600/70/20"
+                            : "cursor-not-allowed border-slate-700 bg-page/60 opacity-50",
                           isEquipped ? "ring-2 ring-yellow-300" : "",
                         ].join(" ")}
                       >
@@ -1858,7 +1736,7 @@ export default function ProfilePage({ adSlot = null, hilltopSlot = null }) {
                             className={`rounded-lg border p-2 text-sm ${
                               reached
                                 ? "border-amber-400/40 bg-amber-500/10"
-                                : "border-slate-700 bg-slate-900/60 opacity-50"
+                                : "border-slate-700 bg-page/60 opacity-50"
                             }`}
                           >
                             <span className="text-slate-400">
@@ -1925,7 +1803,7 @@ export default function ProfilePage({ adSlot = null, hilltopSlot = null }) {
                           "rounded-lg border p-3 text-left transition",
                           unlocked
                             ? "border-cyan-300/45 bg-cyan-500/10 hover:bg-cyan-500/20"
-                            : "cursor-not-allowed border-slate-700 bg-slate-900/60 opacity-50",
+                            : "cursor-not-allowed border-slate-700 bg-page/60 opacity-50",
                           equipped ? "ring-2 ring-yellow-300" : "",
                         ].join(" ")}
                       >
@@ -1958,32 +1836,32 @@ export default function ProfilePage({ adSlot = null, hilltopSlot = null }) {
         </div>
 
         <div
-          className="mt-8 bg-[#0b224f]/85 border border-[#00e5ff]/30 
+          className="mt-8 bg-[color:var(--bg-surface)] border border-white/10 
 rounded-xl p-6 
-shadow-[0_0_24px_rgba(0,229,255,0.15)]"
+shadow-[var(--shadow-raise)]"
         >
-          <h2 className="text-xl text-[#00e5ff] mb-4">
+          <h2 className="text-xl text-cyan-200/80 mb-4">
             {t("profile.referral.title", "Referral System")}
           </h2>
 
           <div className="grid gap-4 md:grid-cols-3 mb-4">
-            <div className="rounded-lg border border-[#FFD700]/40 p-4">
+            <div className="rounded-lg border border-[color:var(--state-gold)] p-4">
               <p className="text-sm text-gray-300">
                 {t("profile.referral.code", "Your Referral Code")}
               </p>
-              <p className="text-2xl font-bold text-[#00e5ff]">
+              <p className="text-2xl font-bold text-cyan-200/80">
                 {stats?.referralCode
                   ? stats.referralCode
                   : t("profile.referral.noCode", "No code yet")}
               </p>
             </div>
-            <div className="rounded-lg border border-[#FFD700]/40 p-4">
+            <div className="rounded-lg border border-[color:var(--state-gold)] p-4">
               <p className="text-sm text-gray-300">
                 {t("profile.referral.total", "Total Referrals")}
               </p>
               <p className="text-2xl font-bold">{stats?.referrals ?? 0}</p>
             </div>
-            <div className="rounded-lg border border-[#FFD700]/40 p-4">
+            <div className="rounded-lg border border-[color:var(--state-gold)] p-4">
               <p className="text-sm text-gray-300">
                 {t("profile.referral.earnings", "Referral Earnings")}
               </p>
@@ -1996,8 +1874,8 @@ shadow-[0_0_24px_rgba(0,229,255,0.15)]"
           <input
             readOnly
             value={stats?.referralCode || ""}
-            className="w-full mb-4 rounded bg-[#08142f] border border-[#00e5ff]/30 
-focus:ring-2 focus:ring-[#00e5ff] px-4 py-2 text-[#00e5ff]"
+            className="w-full mb-4 rounded-sm bg-[color:var(--bg-panel)] border border-white/10 
+focus:ring-2 focus:ring-[color:var(--focus-ring)] px-4 py-2 text-cyan-200/80"
           />
 
           <div className="flex flex-wrap gap-3 mb-4">
@@ -2005,7 +1883,7 @@ focus:ring-2 focus:ring-[#00e5ff] px-4 py-2 text-[#00e5ff]"
               onClick={handleCopyReferralCode}
               className={
                 cyberButton +
-                " focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#0b224f]"
+                " focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[color:var(--focus-ring)] focus-visible:ring-offset-2 focus-visible:ring-offset-[color:var(--bg-page)]"
               }
             >
               {t("profile.referral.copy", "Copy Code")}
@@ -2014,9 +1892,9 @@ focus:ring-2 focus:ring-[#00e5ff] px-4 py-2 text-[#00e5ff]"
             <button
               onClick={handleShareReferralCode}
               className="rounded-lg px-4 py-2 font-semibold text-white 
-  border border-[#00e5ff] 
-  hover:bg-[#00e5ff]/10 
-  shadow-[0_0_10px_rgba(0,229,255,0.4)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#0b224f]"
+  border border-white/20 
+  hover:bg-cyan-500/10 
+  focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[color:var(--focus-ring)] focus-visible:ring-offset-2 focus-visible:ring-offset-[color:var(--bg-page)]"
             >
               {t("profile.referral.share", "Share Code")}
             </button>
@@ -2031,12 +1909,12 @@ focus:ring-2 focus:ring-[#00e5ff] px-4 py-2 text-[#00e5ff]"
               value={referralCodeInput}
               onChange={(e) => setReferralCodeInput(e.target.value)}
               placeholder={t("profile.referral.enterCode", "Enter referral code")}
-              className="flex-1 rounded bg-[#08142f] border border-[#00e5ff]/30 
-focus:ring-2 focus:ring-[#00e5ff] px-4 py-2 outline-none focus:ring-2 focus:ring-[#FFD700]"
+              className="flex-1 rounded-sm bg-[color:var(--bg-panel)] border border-white/10 
+focus:ring-2 focus:ring-[color:var(--focus-ring)] px-4 py-2 outline-hidden focus:ring-2 focus:ring-[color:var(--state-gold)]"
             />
             <button
               onClick={handleRedeemCode}
-              className="rounded bg-green-500 px-4 py-2 font-semibold hover:bg-green-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-green-400 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0b224f]"
+              className="rounded-sm bg-green-500 px-4 py-2 font-semibold hover:bg-green-600 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-green-400 focus-visible:ring-offset-2 focus-visible:ring-offset-[color:var(--bg-page)]"
             >
               {t("profile.referral.redeem", "Redeem")}
             </button>
@@ -2046,11 +1924,11 @@ focus:ring-2 focus:ring-[#00e5ff] px-4 py-2 outline-none focus:ring-2 focus:ring
         </div>
 
         <div
-          className="mt-8 bg-[#0b224f]/85 border border-[#00e5ff]/30 
+          className="mt-8 bg-[color:var(--bg-surface)] border border-white/10 
 rounded-xl p-6 
-shadow-[0_0_24px_rgba(0,229,255,0.15)]"
+shadow-[var(--shadow-raise)]"
         >
-          <h2 className="text-xl text-[#00e5ff] mb-4">
+          <h2 className="text-xl text-cyan-200/80 mb-4">
             {t("profile.friends.addTitle", "Add Friends")}
           </h2>
           <div className="flex gap-2 mb-4">
@@ -2065,13 +1943,13 @@ shadow-[0_0_24px_rgba(0,229,255,0.15)]"
                 "profile.friends.searchPlaceholder",
                 "Type letters to search users (like Ctrl+F)",
               )}
-              className="flex-1 rounded bg-[#08142f] border border-[#00e5ff]/30 
-focus:ring-2 focus:ring-[#00e5ff] px-4 py-2"
+              className="flex-1 rounded-sm bg-[color:var(--bg-panel)] border border-white/10 
+focus:ring-2 focus:ring-[color:var(--focus-ring)] px-4 py-2"
             />
             <button
               onClick={() => handleSearchFriends()}
               disabled={isSearchingFriends}
-              className="rounded bg-[#FFD700] px-4 py-2 text-[#003366] font-semibold disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0b224f]"
+              className="rounded-sm bg-[color:var(--state-gold)] px-4 py-2 text-[color:var(--on-accent)] font-semibold disabled:opacity-50 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-amber-400 focus-visible:ring-offset-2 focus-visible:ring-offset-[color:var(--bg-page)]"
             >
               {isSearchingFriends
                 ? t("profile.friends.searching", "Searching...")
@@ -2083,7 +1961,7 @@ focus:ring-2 focus:ring-[#00e5ff] px-4 py-2"
             {friendSearchResults.map((person) => (
               <div
                 key={person.id}
-                className="flex items-center justify-between rounded border border-[#FFD700]/40 p-3"
+                className="flex items-center justify-between rounded-sm border border-[color:var(--state-gold)] p-3"
               >
                 <div className="flex items-center gap-3">
                   <IconAvatar
@@ -2096,9 +1974,9 @@ focus:ring-2 focus:ring-[#00e5ff] px-4 py-2"
                 <button
                   onClick={() => handleInviteFriend(person.id)}
                   className="rounded-lg px-3 py-1 text-sm font-semibold text-white 
-bg-gradient-to-r from-[#00ffcc] to-[#00e5ff] 
+bg-linear-to-r from-cyan-700 to-cyan-800 
 shadow-[0_0_10px_rgba(0,255,200,0.6)] 
-hover:scale-105 transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#0b224f]"
+hover:scale-105 transition-all focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[color:var(--focus-ring)] focus-visible:ring-offset-2 focus-visible:ring-offset-[color:var(--bg-page)]"
                 >
                   {t("profile.friends.add", "Add Friend")}
                 </button>
@@ -2115,11 +1993,11 @@ hover:scale-105 transition-all focus-visible:outline-none focus-visible:ring-2 f
         </div>
 
         <div
-          className="mt-8 bg-[#0b224f]/85 border border-[#00e5ff]/30 rounded-xl p-6 
-shadow-[0_0_24px_rgba(0,229,255,0.15)]"
+          className="mt-8 bg-[color:var(--bg-surface)] border border-white/10 rounded-xl p-6 
+shadow-[var(--shadow-raise)]"
         >
           <div className="flex items-center justify-between mb-4">
-            <h2 className="text-xl text-[#00e5ff]">
+            <h2 className="text-xl text-cyan-200/80">
               {t("profile.friends.title", "My Friends")}
             </h2>
 
@@ -2129,7 +2007,7 @@ shadow-[0_0_24px_rgba(0,229,255,0.15)]"
                 await loadFriendPresence();
                 await loadFriendInvites();
               }}
-              className="rounded bg-[#FFD700] px-3 py-1 text-sm font-semibold text-[#003366] hover:bg-[#ffd700]/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0b224f]"
+              className="rounded-sm bg-[color:var(--state-gold)] px-3 py-1 text-sm font-semibold text-[color:var(--on-accent)] hover:bg-[color:var(--state-gold)] focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-amber-400 focus-visible:ring-offset-2 focus-visible:ring-offset-[color:var(--bg-page)]"
             >
               {t("profile.friends.refresh", "Refresh")}
             </button>
@@ -2137,13 +2015,13 @@ shadow-[0_0_24px_rgba(0,229,255,0.15)]"
           <div className="mb-4 flex gap-2">
             <button
               onClick={() => setActiveFriendsTab("friends")}
-              className={`rounded px-3 py-1 text-sm font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#0b224f] ${activeFriendsTab === "friends" ? "bg-[#00e5ff] text-[#003366]" : "bg-white/10 text-white"}`}
+              className={`rounded-sm px-3 py-1 text-sm font-semibold focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[color:var(--focus-ring)] focus-visible:ring-offset-2 focus-visible:ring-offset-[color:var(--bg-page)] ${activeFriendsTab === "friends" ? "bg-cyan-500/80 text-[color:var(--on-accent)]" : "bg-white/10 text-white"}`}
             >
               {t("profile.friends.tabFriends", "Friends")}
             </button>
             <button
               onClick={() => setActiveFriendsTab("invites")}
-              className={`rounded px-3 py-1 text-sm font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#0b224f] ${activeFriendsTab === "invites" ? "bg-[#00e5ff] text-[#003366]" : "bg-white/10 text-white"}`}
+              className={`rounded-sm px-3 py-1 text-sm font-semibold focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[color:var(--focus-ring)] focus-visible:ring-offset-2 focus-visible:ring-offset-[color:var(--bg-page)] ${activeFriendsTab === "invites" ? "bg-cyan-500/80 text-[color:var(--on-accent)]" : "bg-white/10 text-white"}`}
             >
               {t("profile.friends.tabInvites", "Invites")} (
               {receivedInvites.length})
@@ -2156,7 +2034,7 @@ shadow-[0_0_24px_rgba(0,229,255,0.15)]"
                   <a
                     key={`${friend.id}-${friend.name}`}
                     href={`/profil/${encodeURIComponent(friend.clerk_id)}`}
-                    className="rounded border border-[#FFD700]/30 bg-white/5 p-3 flex items-center gap-3 hover:bg-white/10 transition-colors cursor-pointer"
+                    className="rounded-sm border border-[color:var(--state-gold)] bg-white/5 p-3 flex items-center gap-3 hover:bg-white/10 transition-colors cursor-pointer"
                   >
                     <IconAvatar
                       iconKey={friend.icon_key}
@@ -2207,7 +2085,9 @@ shadow-[0_0_24px_rgba(0,229,255,0.15)]"
 
                         if (status.state !== "in_game" || !spectateUrl) return null;
 
-                        const allowedSpectateGames = new Set(["chess", "four-in-a-row"]);
+                        // Solitaire Duel is the only game the platform ships, so it
+                        // is the only presence this button can spectate.
+                        const allowedSpectateGames = new Set(["solitaire-duel"]);
                         if (!allowedSpectateGames.has(gameKey)) return null;
 
                         return (
@@ -2229,32 +2109,12 @@ shadow-[0_0_24px_rgba(0,229,255,0.15)]"
                             aria-label={t("profile.friends.spectateLabel", {
                               name: friend.name,
                             })}
-                            className="rounded bg-[#00e5ff] px-2 py-1 text-xs font-semibold text-[#003366] animate-pulse focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#0b224f]"
+                            className="rounded-sm bg-cyan-500/80 px-2 py-1 text-xs font-semibold text-[color:var(--on-accent)] animate-pulse focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[color:var(--focus-ring)] focus-visible:ring-offset-2 focus-visible:ring-offset-[color:var(--bg-page)]"
                           >
                             {t("profile.friends.spectate", "Spectate")}
                           </button>
                         );
                       })()}
-
-                      <button
-                        onClick={(e) => {
-                          e.preventDefault();
-                          e.stopPropagation();
-                          setChallengeTarget({
-                            clerk_id: friend.clerk_id,
-                            name: friend.name,
-                          });
-                        }}
-                        aria-label={t("profile.friends.challengeLabel", {
-                          name: friend.name,
-                        })}
-                        className="rounded-lg px-2 py-1 text-xs font-semibold text-[#003366] \
-bg-gradient-to-r from-[#00e5ff] to-[#0090c9] \
-shadow-[0_0_10px_rgba(0,229,255,0.5)] \
-hover:scale-105 transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#0b224f]"
-                      >
-                        {t("profile.friends.challenge", "Challenge")}
-                      </button>
 
                       <button
                         onClick={(e) => {
@@ -2265,9 +2125,9 @@ hover:scale-105 transition-all focus-visible:outline-none focus-visible:ring-2 f
                           name: friend.name,
                         })}
                         className="rounded-lg px-2 py-1 text-xs font-semibold text-white 
-bg-gradient-to-r from-red-500 to-red-700 
+bg-linear-to-r from-red-500 to-red-700 
 shadow-[0_0_10px_rgba(255,0,0,0.6)] 
-hover:scale-105 transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0b224f]"
+hover:scale-105 transition-all focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-red-400 focus-visible:ring-offset-2 focus-visible:ring-offset-[color:var(--bg-page)]"
                       >
                         {t("profile.friends.remove", "Remove")}
                       </button>
@@ -2287,7 +2147,7 @@ hover:scale-105 transition-all focus-visible:outline-none focus-visible:ring-2 f
                 receivedInvites.map((invite) => (
                   <div
                     key={invite.id}
-                    className="rounded border border-[#FFD700]/30 bg-white/5 p-3 flex items-center gap-3"
+                    className="rounded-sm border border-[color:var(--state-gold)] bg-white/5 p-3 flex items-center gap-3"
                   >
                     <IconAvatar
                       iconKey={invite.sender_icon_key}
@@ -2308,7 +2168,7 @@ hover:scale-105 transition-all focus-visible:outline-none focus-visible:ring-2 f
                         aria-label={t("profile.friends.acceptLabel", {
                           name: invite.sender_name,
                         })}
-                        className="rounded bg-green-500 px-2 py-1 text-xs font-semibold text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-green-400 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0b224f]"
+                        className="rounded-sm bg-green-500 px-2 py-1 text-xs font-semibold text-white focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-green-400 focus-visible:ring-offset-2 focus-visible:ring-offset-[color:var(--bg-page)]"
                       >
                         {t("profile.friends.accept", "Accept")}
                       </button>
@@ -2317,7 +2177,7 @@ hover:scale-105 transition-all focus-visible:outline-none focus-visible:ring-2 f
                         aria-label={t("profile.friends.declineLabel", {
                           name: invite.sender_name,
                         })}
-                        className="rounded bg-red-500 px-2 py-1 text-xs font-semibold text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0b224f]"
+                        className="rounded-sm bg-red-500 px-2 py-1 text-xs font-semibold text-white focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-red-400 focus-visible:ring-offset-2 focus-visible:ring-offset-[color:var(--bg-page)]"
                       >
                         {t("profile.friends.decline", "Decline")}
                       </button>
@@ -2333,45 +2193,22 @@ hover:scale-105 transition-all focus-visible:outline-none focus-visible:ring-2 f
           )}
         </div>
 
-        {/* Private rooms & friend challenges — the same panel the shared room
-            page renders, driven by /api/rooms and refreshed by the verified
-            per-user realtime signal with a poll as the backstop. */}
-        {challengeStatus && (
-          <p className="mt-4 text-sm text-[#9dd8ff]" role="status">
-            {challengeStatus}
-          </p>
-        )}
+        {/* Private rooms — the same panel the shared room page renders, driven
+            by /api/rooms and refreshed by the verified per-user realtime signal
+            with a poll as the backstop. Friend challenges live in the ranked
+            lobby's search tab now. */}
         <RoomsPanel friends={myFriends} />
-
-        <ChallengeFriendDialog
-          friend={challengeTarget}
-          onClose={() => setChallengeTarget(null)}
-          onSent={(ok, code, message) => {
-            setChallengeStatus(
-              ok
-                ? t("profile.friends.challengeSent", "Challenge sent.")
-                : t(
-                    `rooms.error_${code}`,
-                    message ||
-                      t(
-                        "profile.friends.challengeFailed",
-                        "Could not send the challenge.",
-                      ),
-                  ),
-            );
-          }}
-        />
 
         {spectateOverlayUrl && (
           <div className="fixed inset-0 z-[100] bg-black/90 flex items-center justify-center p-4">
-            <div className="relative h-[90vh] w-[95vw] rounded-xl border border-[#00e5ff]/40 bg-black overflow-hidden">
+            <div className="relative h-[90vh] w-[95vw] rounded-xl border border-white/15 bg-black overflow-hidden">
               <button
                 onClick={() => {
                   setSpectateOverlayUrl("");
                   setSpectateLoadError("");
                   setSpectateIsLoaded(false);
                 }}
-                className="absolute right-3 top-3 z-10 rounded bg-red-600 px-3 py-1 text-sm font-semibold text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-black"
+                className="absolute right-3 top-3 z-10 rounded-sm bg-red-600 px-3 py-1 text-sm font-semibold text-white focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-black"
               >
                 {t("profile.friends.spectateClose", "Close Spectate")}
               </button>
@@ -2392,7 +2229,7 @@ hover:scale-105 transition-all focus-visible:outline-none focus-visible:ring-2 f
                       setSpectateIsLoaded(false);
                       setSpectateOverlayUrl((prev) => `${prev.split("#")[0]}#retry-${Date.now()}`);
                     }}
-                    className="rounded bg-[#00e5ff] px-3 py-1 text-xs font-semibold text-[#003366] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-black"
+                    className="rounded-sm bg-cyan-500/80 px-3 py-1 text-xs font-semibold text-[color:var(--on-accent)] focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-black"
                   >
                     {t("profile.friends.spectateRetry", "Retry")}
                   </button>
@@ -2428,146 +2265,12 @@ hover:scale-105 transition-all focus-visible:outline-none focus-visible:ring-2 f
           </div>
         )}
 
-        <div
-          className="mt-8 bg-[#0b224f]/85 border border-[#00e5ff]/30 
-rounded-xl p-6 
-shadow-[0_0_24px_rgba(0,229,255,0.15)]"
-        >
-          <h2 className="text-xl text-[#00e5ff] mb-4">
-            {t("profile.stats.title", "User Statistics")}
-          </h2>
-          {statsError && <p className="text-red-400 mb-4">{statsError}</p>}
-          {/* Tabbed stat panel — mirrors the /classement leaderboard
-              (record / weekly / streaks) instead of a flat grid. */}
-          {/* Per-game Elo ratings come from /api/user-stats (read fresh on
-              every request, outside its stats cache) and render as the
-              "Game Ratings" tab. */}
-          <UserStatsTabs
-            record={stats?.record}
-            ratings={stats?.ratings}
-            overall={stats}
-          />
-
-          {/* Pointer to the GRYND PRO performance dashboard. It is a LINK, not
-              an embedded dashboard: the advanced analytics are gated on the
-              server (/api/stats/performance), so a free player sees the upsell
-              there rather than a second empty panel here. */}
-          <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-[#f5ff3b]/30 bg-[#f5ff3b]/5 p-4">
-            <div>
-              <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-[#00e5ff]">
-                {t("profile.stats.advanced_badge", "GRYND PRO")}
-              </p>
-              <p className="mt-0.5 text-sm text-[#d8fbff]">
-                {t(
-                  "profile.stats.advanced",
-                  "Performance dashboard — win rates, Elo and trophy graphs, and your overall ranking over time.",
-                )}
-              </p>
-            </div>
-            <Link
-              href="/stats"
-              className="shrink-0 rounded-lg border border-[#f5ff3b]/50 bg-[#f5ff3b]/10 px-4 py-2 text-sm font-semibold text-[#f5ff3b] transition hover:bg-[#f5ff3b]/20"
-            >
-              {t("profile.stats.advanced_open", "Open dashboard")}
-            </Link>
-          </div>
-        </div>
+        <BetHistoryPanel bets={bets} />
 
         <div
-          className="mt-12 bg-[#0b224f]/85 border border-[#00e5ff]/30 
+          className="mt-12 bg-[color:var(--bg-surface)] border border-white/10 
 rounded-xl p-6 
-shadow-[0_0_24px_rgba(0,229,255,0.15)]"
-        >
-          <h2 className="text-xl text-[#00e5ff] mb-4">
-            {t("profile.betHistory.title", "Bet history")}
-          </h2>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm text-left">
-              <thead className="border-b border-[#FFD700] text-[#00e5ff]">
-                <tr>
-                  <th className="px-4 py-2">
-                    {t("profile.betHistory.date", "Date")}
-                  </th>
-                  <th className="px-4 py-2">
-                    {t("profile.betHistory.game", "Game / event")}
-                  </th>
-                  <th className="px-4 py-2">
-                    {t("profile.betHistory.stake", "Stake")}
-                  </th>
-                  <th className="px-4 py-2">
-                    {t("profile.betHistory.result", "Result")}
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {bets.length > 0 ? (
-                  bets.map((bet, idx) => (
-                    <tr key={idx} className="border-b border-[#FFD700]/20">
-                      <td className="px-4 py-2">{new Date(bet.date).toLocaleDateString()}</td>
-                      <td className="px-4 py-2">
-                        {bet.type ||
-                          bet.event ||
-                          bet.game_type ||
-                          t("profile.betHistory.unknown", "Unknown")}
-                      </td>
-                      <td className="px-4 py-2">
-                        {bet.amount} {t("profile.tokens", "tokens")}
-                      </td>
-                      <td className="px-4 py-2">
-                        <div className="flex items-center gap-2">
-                          <span
-                            className={`px-2 py-1 rounded-full text-xs ${
-                              bet.result === "won"
-                                ? "bg-green-600/20 text-green-400"
-                                : bet.result === "lost"
-                                  ? "bg-red-600/20 text-red-400"
-                                  : "bg-gray-500/20 text-gray-300"
-                            }`}
-                          >
-                            {bet.result === "won"
-                              ? t("profile.betHistory.won", "Won")
-                              : bet.result === "lost"
-                                ? t("profile.betHistory.lost", "Lost")
-                                : t("profile.betHistory.draw", "Draw")}
-                          </span>
-
-                          {bet.result !== "pending" && (
-                            <span
-                              className={`text-sm ${
-                                bet.tokenDiff > 0
-                                  ? "text-green-400"
-                                  : bet.tokenDiff < 0
-                                    ? "text-red-400"
-                                    : "text-gray-300"
-                              }`}
-                            >
-                              {bet.tokenDiff > 0
-                                ? `+${Number(bet.tokenDiff).toFixed(2)} ${t("profile.tokens", "tokens")}`
-                                : bet.tokenDiff < 0
-                                  ? `${Number(bet.tokenDiff).toFixed(2)} ${t("profile.tokens", "tokens")}`
-                                  : `±0.00 ${t("profile.tokens", "tokens")}`}
-                            </span>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  ))
-                ) : (
-                  <tr>
-                    <td colSpan="4" className="text-center py-4 text-gray-400">
-                      {t("profile.betHistory.empty", "No bets found")}
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-        </div>
-
-        <div
-          className="mt-12 bg-[#0b224f]/85 border border-[#00e5ff]/30 
-rounded-xl p-6 
-shadow-[0_0_24px_rgba(0,229,255,0.15)]"
+shadow-[var(--shadow-raise)]"
         >
         </div>
 
@@ -2597,7 +2300,7 @@ shadow-[0_0_20px_rgba(255,0,0,0.15)] rounded-lg p-6"
             type="password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            className="mt-2 w-full rounded border border-red-400/40 bg-red-900/20 px-4 py-2 outline-none focus:ring-2 focus:ring-red-500"
+            className="mt-2 w-full rounded-sm border border-red-400/40 bg-red-900/20 px-4 py-2 outline-hidden focus:ring-2 focus:ring-red-500"
             placeholder={t(
               "profile.danger.passwordPlaceholder",
               "Enter your password",
@@ -2607,7 +2310,7 @@ shadow-[0_0_20px_rgba(255,0,0,0.15)] rounded-lg p-6"
           <button
             onClick={handleDeleteAccount}
             disabled={!delayDone || !password || isDeleting}
-            className="mt-4 rounded bg-red-600 px-4 py-2 font-semibold hover:bg-red-700 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0b224f]"
+            className="mt-4 rounded-sm bg-red-600 px-4 py-2 font-semibold hover:bg-red-700 disabled:opacity-50 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-red-400 focus-visible:ring-offset-2 focus-visible:ring-offset-[color:var(--bg-page)]"
           >
             {isDeleting
               ? t("profile.danger.deleting", "Deleting...")
@@ -2627,10 +2330,10 @@ shadow-[0_0_20px_rgba(255,0,0,0.15)] rounded-lg p-6"
       {isEditOpen && (
         <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4">
           <div
-            className="max-w-md w-full rounded-xl border border-[#FFD700] bg-[#0b224f] border border-[#00e5ff]/30 
+            className="max-w-md w-full rounded-xl border border-[color:var(--state-gold)] bg-[color:var(--bg-surface)] border border-white/10 
 shadow-[0_0_30px_rgba(0,229,255,0.25)] p-6"
           >
-            <h3 className="text-xl font-bold text-[#00e5ff] mb-4">
+            <h3 className="text-xl font-bold text-cyan-200/80 mb-4">
               {t("profile.edit.title", "Edit Profile")}
             </h3>
             <div className="space-y-3">
@@ -2642,8 +2345,8 @@ shadow-[0_0_30px_rgba(0,229,255,0.25)] p-6"
                 value={editForm.name}
                 onChange={(e) => setEditForm((prev) => ({ ...prev, name: e.target.value }))}
                 placeholder={t("profile.edit.name", "Name")}
-                className="w-full rounded bg-[#08142f] border border-[#00e5ff]/30 
-focus:ring-2 focus:ring-[#00e5ff] px-4 py-2"
+                className="w-full rounded-sm bg-[color:var(--bg-panel)] border border-white/10 
+focus:ring-2 focus:ring-[color:var(--focus-ring)] px-4 py-2"
               />
               <label htmlFor="profil-edit-email" className="sr-only">
                 {t("profile.edit.email", "Email")}
@@ -2653,10 +2356,10 @@ focus:ring-2 focus:ring-[#00e5ff] px-4 py-2"
                 value={editForm.email}
                 onChange={(e) => setEditForm((prev) => ({ ...prev, email: e.target.value }))}
                 placeholder={t("profile.edit.email", "Email")}
-                className="w-full rounded bg-[#08142f] border border-[#00e5ff]/30 
-focus:ring-2 focus:ring-[#00e5ff] px-4 py-2"
+                className="w-full rounded-sm bg-[color:var(--bg-panel)] border border-white/10 
+focus:ring-2 focus:ring-[color:var(--focus-ring)] px-4 py-2"
               />
-              <div className="rounded bg-[#08142f] border border-[#00e5ff]/30 p-3">
+              <div className="rounded-sm bg-[color:var(--bg-panel)] border border-white/10 p-3">
                 <p className="mb-2 block text-sm text-gray-200">
                   {t("profile.edit.icon", "My Grynd Icon")}
                 </p>
@@ -2666,7 +2369,7 @@ focus:ring-2 focus:ring-[#00e5ff] px-4 py-2"
                     setIsEditOpen(false);
                     setIsIconPickerOpen(true);
                   }}
-                  className="flex w-full items-center gap-3 rounded-lg border border-[#00e5ff]/40 bg-[#00e5ff]/10 px-3 py-2.5 transition hover:bg-[#00e5ff]/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#0b224f]"
+                  className="flex w-full items-center gap-3 rounded-lg border border-white/15 bg-cyan-500/10 px-3 py-2.5 transition hover:bg-cyan-500/20 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[color:var(--focus-ring)] focus-visible:ring-offset-2 focus-visible:ring-offset-[color:var(--bg-page)]"
                 >
                   <IconAvatar
                     iconKey={profileInfo.selectedIcon}
@@ -2677,10 +2380,10 @@ focus:ring-2 focus:ring-[#00e5ff] px-4 py-2"
                   <span className="flex-1 text-left text-sm text-gray-200">
                     {t("profile.edit.chooseIcon", "Choose Your Icon")}
                   </span>
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-4 w-4 text-[#00e5ff]"><path d="M9 18l6-6-6-6"/></svg>
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-4 w-4 text-cyan-200/80"><path d="M9 18l6-6-6-6"/></svg>
                 </button>
               </div>
-              <div className="rounded bg-[#08142f] border border-[#00e5ff]/30 p-3">
+              <div className="rounded-sm bg-[color:var(--bg-panel)] border border-white/10 p-3">
                 <p className="mb-2 block text-sm text-gray-200">
                   {t("profile.edit.glow", "My Name Glow")}
                 </p>
@@ -2690,7 +2393,7 @@ focus:ring-2 focus:ring-[#00e5ff] px-4 py-2"
                     setIsEditOpen(false);
                     setIsGlowPickerOpen(true);
                   }}
-                  className="flex w-full items-center gap-3 rounded-lg border border-[#00e5ff]/40 bg-[#00e5ff]/10 px-3 py-2.5 transition hover:bg-[#00e5ff]/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#0b224f]"
+                  className="flex w-full items-center gap-3 rounded-lg border border-white/15 bg-cyan-500/10 px-3 py-2.5 transition hover:bg-cyan-500/20 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[color:var(--focus-ring)] focus-visible:ring-offset-2 focus-visible:ring-offset-[color:var(--bg-page)]"
                 >
                   <span
                     className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-white/15 bg-black/30 text-sm font-bold text-white/70"
@@ -2710,10 +2413,10 @@ focus:ring-2 focus:ring-[#00e5ff] px-4 py-2"
                     {selectedGlowName ||
                       t("profile.edit.chooseGlow", "Choose Your Name Glow")}
                   </span>
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-4 w-4 text-[#00e5ff]"><path d="M9 18l6-6-6-6"/></svg>
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-4 w-4 text-cyan-200/80"><path d="M9 18l6-6-6-6"/></svg>
                 </button>
               </div>
-              <div className="rounded bg-[#08142f] border border-[#00e5ff]/30 p-3">
+              <div className="rounded-sm bg-[color:var(--bg-panel)] border border-white/10 p-3">
                 <p className="mb-2 block text-sm text-gray-200">
                   {t("profile.edit.frame", "My Profile Frame")}
                 </p>
@@ -2723,7 +2426,7 @@ focus:ring-2 focus:ring-[#00e5ff] px-4 py-2"
                     setIsEditOpen(false);
                     setIsFramePickerOpen(true);
                   }}
-                  className="flex w-full items-center gap-3 rounded-lg border border-[#00e5ff]/40 bg-[#00e5ff]/10 px-3 py-2.5 transition hover:bg-[#00e5ff]/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#0b224f]"
+                  className="flex w-full items-center gap-3 rounded-lg border border-white/15 bg-cyan-500/10 px-3 py-2.5 transition hover:bg-cyan-500/20 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[color:var(--focus-ring)] focus-visible:ring-offset-2 focus-visible:ring-offset-[color:var(--bg-page)]"
                 >
                   <span
                     aria-hidden="true"
@@ -2739,7 +2442,7 @@ focus:ring-2 focus:ring-[#00e5ff] px-4 py-2"
                         "Choose Your Profile Frame",
                       )}
                   </span>
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-4 w-4 text-[#00e5ff]"><path d="M9 18l6-6-6-6"/></svg>
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-4 w-4 text-cyan-200/80"><path d="M9 18l6-6-6-6"/></svg>
                 </button>
                 {/* Every profile cosmetic lives behind this ONE picker: the
                     frame plus the badge / avatar / username / chat effects and
@@ -2764,8 +2467,8 @@ focus:ring-2 focus:ring-[#00e5ff] px-4 py-2"
                   "profile.edit.password",
                   "New password (optional)",
                 )}
-                className="w-full rounded bg-[#08142f] border border-[#00e5ff]/30 
-focus:ring-2 focus:ring-[#00e5ff] px-4 py-2"
+                className="w-full rounded-sm bg-[color:var(--bg-panel)] border border-white/10 
+focus:ring-2 focus:ring-[color:var(--focus-ring)] px-4 py-2"
               />
             </div>
 
@@ -2774,7 +2477,7 @@ focus:ring-2 focus:ring-[#00e5ff] px-4 py-2"
             <div className="mt-5 flex justify-end gap-2">
               <button
                 onClick={() => setIsEditOpen(false)}
-                className="rounded border border-white/30 px-4 py-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#0b224f]"
+                className="rounded-sm border border-white/30 px-4 py-2 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[color:var(--focus-ring)] focus-visible:ring-offset-2 focus-visible:ring-offset-[color:var(--bg-page)]"
               >
                 {t("profile.edit.close", "Close")}
               </button>
@@ -2783,7 +2486,7 @@ focus:ring-2 focus:ring-[#00e5ff] px-4 py-2"
                 onClick={handleSaveEditProfile}
                 className={
                   cyberButton +
-                  " focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#0b224f]"
+                  " focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[color:var(--focus-ring)] focus-visible:ring-offset-2 focus-visible:ring-offset-[color:var(--bg-page)]"
                 }
               >
                 {isSavingEdit
@@ -2795,37 +2498,23 @@ focus:ring-2 focus:ring-[#00e5ff] px-4 py-2"
         </div>
       )}
 
-      {/* Official Grynd icon picker — owned icons only, no uploads. */}
-      <ChooseIconModal
-        open={isIconPickerOpen}
-        onClose={() => setIsIconPickerOpen(false)}
+      {/* The four cosmetics pickers. State, ownership and the equip handlers
+          stay on this page; the component only opens and reports. */}
+      <ProfilePickerModals
+        isIconPickerOpen={isIconPickerOpen}
+        onCloseIconPicker={() => setIsIconPickerOpen(false)}
         currentIconKey={profileInfo.selectedIcon}
-        onEquipped={(iconKey) =>
+        onEquipIcon={(iconKey) =>
           setProfileInfo((prev) => ({ ...prev, selectedIcon: iconKey }))
         }
-      />
-
-      {/* Catalog-granted name glow picker — owned glows only. */}
-      <ChooseGlowModal
-        open={isGlowPickerOpen}
-        onClose={() => setIsGlowPickerOpen(false)}
-        onEquipped={handleEquipGlow}
-      />
-
-      {/* The single profile-cosmetics picker: owned frames + badges + avatar /
-          username / chat effects + glows, all equippable in one place. */}
-      <ChooseFrameModal
-        open={isFramePickerOpen}
-        onClose={() => setIsFramePickerOpen(false)}
-        onEquipped={({ category, item }) =>
-          handleEquipCosmetic(category, item)
-        }
-      />
-
-      {/* In-game emote loadout manager — equipped animated emotes (max 9). */}
-      <ChooseEmotesModal
-        open={isEmotesManagerOpen}
-        onClose={() => setIsEmotesManagerOpen(false)}
+        isGlowPickerOpen={isGlowPickerOpen}
+        onCloseGlowPicker={() => setIsGlowPickerOpen(false)}
+        onEquipGlow={handleEquipGlow}
+        isFramePickerOpen={isFramePickerOpen}
+        onCloseFramePicker={() => setIsFramePickerOpen(false)}
+        onEquipCosmetic={(category, item) => handleEquipCosmetic(category, item)}
+        isEmotesManagerOpen={isEmotesManagerOpen}
+        onCloseEmotesManager={() => setIsEmotesManagerOpen(false)}
       />
       {adSlot}
       <Footer />

@@ -214,7 +214,7 @@ export default function GuestClaimPanel({
     return (
       <section
         data-testid="guest-claim-account"
-        className="mb-6 rounded-xl border border-[#00e5ff]/25 bg-[#04122b]/70 p-4 text-sm text-[#9dd8ff]/80"
+        className="mb-6 rounded-xl border border-[#00e5ff]/25 bg-surface/70 p-4 text-sm text-[#9dd8ff]/80"
       >
         {t(
           "guestClaim.account.body",
@@ -252,7 +252,7 @@ export default function GuestClaimPanel({
   return (
     <section
       data-testid="guest-claim-panel"
-      className="mb-6 rounded-xl border border-[#00e5ff]/30 bg-[#04122b]/80 p-4"
+      className="mb-6 rounded-xl border border-[#00e5ff]/30 bg-surface/80 p-4"
     >
       <p className="text-sm font-bold text-white">
         {t("guestClaim.title", "Keep your guest practice record")}

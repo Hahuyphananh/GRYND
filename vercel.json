@@ -19,6 +19,42 @@
     {
       "path": "/api/jobs/battleship-timeouts",
       "schedule": "* * * * *"
+    },
+    {
+      "path": "/api/jobs/audience-snapshot",
+      "schedule": "*/15 * * * *"
+    },
+    {
+      "path": "/api/jobs/pro-weekly-recap",
+      "schedule": "0 9 * * 1"
+    },
+    {
+      "path": "/api/jobs/solitaire-ghost-pool",
+      "schedule": "*/10 * * * *"
+    },
+    {
+      "path": "/api/jobs/solitaire-inactivity",
+      "schedule": "*/5 * * * *"
+    },
+    {
+      "path": "/api/jobs/pro-trial-reminders",
+      "schedule": "0 14 * * *"
+    }
+  ],
+  "services": {
+    "casino-realtime-server": {
+      "root": "realtime-server",
+      "entrypoint": "server.js",
+      "buildCommand": "npm install"
+    }
+  },
+  "rewrites": [
+    {
+      "source": "/(.*)",
+      "destination": {
+        "type": "service",
+        "service": "casino-realtime-server"
+      }
     }
   ]
 }
