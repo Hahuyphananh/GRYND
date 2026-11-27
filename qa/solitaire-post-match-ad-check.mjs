@@ -89,6 +89,12 @@ try {
     ([key, value]) => window.localStorage.setItem(key, value),
     [SESSION_KEY, JSON.stringify(session)],
   );
+  // The video surface requires the shared consent record (`accepted`) before it
+  // may ask for a tag. Without this the browser is a first-time visitor whose
+  // refusal is correct behaviour, and the check could never reach the player.
+  await context.addInitScript(() =>
+    window.localStorage.setItem("grynd_cookie_consent", "accepted"),
+  );
   const page = await context.newPage();
   const errors = [];
   page.on("pageerror", (error) => errors.push(String(error)));
