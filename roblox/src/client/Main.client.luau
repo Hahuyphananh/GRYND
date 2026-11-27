@@ -12,6 +12,13 @@ local Deck = require(Shared.Deck)
 local CardView = require(script.Parent.CardView)
 
 local player = Players.LocalPlayer
+local RS = ReplicatedStorage
+local StartMatch = RS:WaitForChild("StartMatch")
+local SubmitScore = RS:WaitForChild("SubmitScore")
+local GetLeaderboard = RS:WaitForChild("GetLeaderboard")
+local JoinQueue = RS:WaitForChild("JoinQueue")
+local LeaveQueue = RS:WaitForChild("LeaveQueue")
+
 local gui = Instance.new("ScreenGui")
 gui.Name = "GryndSolitaire"
 gui.ResetOnSpawn = false
@@ -119,8 +126,17 @@ end
 
 -- State
 local seed = math.floor(os.time())
-local state = Deck.stateFromSeed(seed)
+local state = nil
 local selected = nil -- { kind, ... }
+local submittedFor = nil
+
+local function newGame(s, label)
+	seed = s
+	state = Deck.stateFromSeed(seed)
+	selected = nil
+	render()
+	status.Text = (label or "Seed") .. " " .. seed .. " — click Draw"
+end
 
 local function clearChildren(f)
 	for _, ch in ipairs(f:GetChildren()) do
@@ -129,6 +145,12 @@ local function clearChildren(f)
 end
 
 local function render()
+	-- Auto-submit score on first completion of this seed.
+	if state and Rules.isComplete(state) and submittedFor ~= seed then
+		submittedFor = seed
+		SubmitScore:FireServer(state.ply)
+	end
+
 	-- Foundations
 	for i, suit in ipairs(Constants.SUITS) do
 		clearChildren(foundations[i])
@@ -254,12 +276,100 @@ for i, suit in ipairs(Constants.SUITS) do
 end
 
 newBtn.MouseButton1Click:Connect(function()
-	seed = math.floor(os.time())
-	state = Deck.stateFromSeed(seed)
-	selected = nil
-	render()
-	status.Text = "New game — seed " .. seed
+	newGame(math.floor(os.time()), "New game")
 end)
 
-render()
-status.Text = "Seed " .. seed .. " — click Draw"
+newGame(seed, "Seed")
+
+-- Daily challenge
+local dailyBtn = Instance.new("TextButton")
+dailyBtn.Name = "Daily"
+dailyBtn.Size = UDim2.new(0, 80, 0, 36)
+dailyBtn.Position = UDim2.new(0, 4 * 78 + 352, 0, 32)
+dailyBtn.BackgroundColor3 = Color3.fromRGB(130, 90, 50)
+dailyBtn.TextColor3 = Color3.new(1, 1, 1)
+dailyBtn.Text = "Daily"
+dailyBtn.Font = Enum.Font.GothamBold
+dailyBtn.TextScaled = true
+dailyBtn.Parent = topRow
+dailyBtn.MouseButton1Click:Connect(function()
+	local Daily = require(Shared.Daily)
+	newGame(Daily.seedForToday(), "Daily " .. Daily.label())
+end)
+
+-- 1v1 lobby
+local pvpBtn = Instance.new("TextButton")
+pvpBtn.Name = "OneVOne"
+pvpBtn.Size = UDim2.new(0, 80, 0, 36)
+pvpBtn.Position = UDim2.new(0, 4 * 78 + 440, 0, 32)
+pvpBtn.BackgroundColor3 = Color3.fromRGB(50, 90, 130)
+pvpBtn.TextColor3 = Color3.new(1, 1, 1)
+pvpBtn.Text = "1v1"
+pvpBtn.Font = Enum.Font.GothamBold
+pvpBtn.TextScaled = true
+pvpBtn.Parent = topRow
+
+local inQueue = false
+pvpBtn.MouseButton1Click:Connect(function()
+	if inQueue then
+		inQueue = false
+		LeaveQueue:FireServer()
+		pvpBtn.Text = "1v1"
+		status.Text = "Left queue"
+	else
+		inQueue = true
+		JoinQueue:FireServer()
+		pvpBtn.Text = "Queue..."
+		status.Text = "Queued for 1v1"
+	end
+end)
+
+StartMatch.OnClientEvent:Connect(function(matchSeed)
+	inQueue = false
+	pvpBtn.Text = "1v1"
+	newGame(matchSeed, "1v1 match")
+	status.Text = "Match started — seed " .. matchSeed
+end)
+
+-- Theme picker
+local themeBtn = Instance.new("TextButton")
+themeBtn.Name = "Theme"
+themeBtn.Size = UDim2.new(0, 80, 0, 36)
+themeBtn.Position = UDim2.new(0, 4 * 78 + 528, 0, 32)
+themeBtn.BackgroundColor3 = Color3.fromRGB(130, 110, 50)
+themeBtn.TextColor3 = Color3.new(1, 1, 1)
+themeBtn.Text = "Theme"
+themeBtn.Font = Enum.Font.GothamBold
+themeBtn.TextScaled = true
+themeBtn.Parent = topRow
+themeBtn.MouseButton1Click:Connect(function()
+	local Theme = require(Shared.Theme)
+	local t = Theme.next()
+	themeBtn.Text = t.name
+	render()
+end)
+
+-- Leaderboard
+local lbBtn = Instance.new("TextButton")
+lbBtn.Name = "Leaderboard"
+lbBtn.Size = UDim2.new(0, 100, 0, 36)
+lbBtn.Position = UDim2.new(0, 4 * 78 + 616, 0, 32)
+lbBtn.BackgroundColor3 = Color3.fromRGB(70, 70, 90)
+lbBtn.TextColor3 = Color3.new(1, 1, 1)
+lbBtn.Text = "Top 10"
+lbBtn.Font = Enum.Font.GothamBold
+lbBtn.TextScaled = true
+lbBtn.Parent = topRow
+lbBtn.MouseButton1Click:Connect(function()
+	local ok, data = pcall(function() return GetLeaderboard:InvokeServer() end)
+	if not ok or not data then status.Text = "Leaderboard unavailable"; return end
+	local lines = {"Top 10 (moves):"}
+	for i, e in ipairs(data) do
+		table.insert(lines, i .. ". " .. tostring(e.userId) .. " — " .. tostring(e.score))
+	end
+	status.Text = table.concat(lines, " | ")
+end)
+
+-- Submit score on win: hook into render? Instead check after each move in move handlers.
+-- We'll submit in the place-card handlers below by detecting completion.
+
