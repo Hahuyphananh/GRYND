@@ -600,7 +600,7 @@ test("solo and daily offer after any finished run, not only a win", () => {
   // as finished as a solved one.
   assert.match(
     game,
-    /\{session\.endedAtMs !== null && !finishing && \(\s*<PostMatchAdSlot/,
+    /\{\(session\.won \|\| session\.endedAtMs !== null\) && !finishing && \(\s*<PostMatchAdSlot/,
     "the offer must follow the end of the run, whatever the outcome",
   );
   assert.doesNotMatch(
@@ -609,7 +609,7 @@ test("solo and daily offer after any finished run, not only a win", () => {
     "a win-only gate would skip every finished loss",
   );
   // The id is the run's end, so the same result cannot offer twice.
-  assert.match(game, /matchId=\{`solitaire:\$\{session\.mode\}:.*endedAtMs\}`\}/);
+  assert.match(game, /matchId=\{`solitaire:\$\{session\.mode\}:.*endedAtMs \?\? "finished"\}`\}/);
 });
 
 test("puzzle results offer the same surface, once per finished run", () => {

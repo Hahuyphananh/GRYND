@@ -1193,13 +1193,16 @@ export default function SoloSolitaireGame({ mode, daily, soloSummary = null }: S
           )}
 
           {/* ANY finished run earns the offer, not only a win. Both result
-              overlays above (solved and forfeited) sit behind it, and the id is
-              this run's end, so the same finished game can never offer twice.
-              The slot itself still asks the server, so PRO, a declined cadence
-              or an unavailable provider renders nothing. */}
-          {session.endedAtMs !== null && !finishing && (
+              overlays above (solved and forfeited) sit behind it. `won` is
+              checked as well as `endedAtMs`: a solved session restored from
+              storage is replayed with `won: true` and no end stamp, and gating
+              on the stamp alone skipped exactly that case. The id is this
+              run's end, so the same finished game can never offer twice. The
+              slot itself still asks the server, so PRO, a declined cadence or
+              an unavailable provider renders nothing. */}
+          {(session.won || session.endedAtMs !== null) && !finishing && (
             <PostMatchAdSlot
-              matchId={`solitaire:${session.mode}:${session.dateKey ?? session.seed}:${session.endedAtMs}`}
+              matchId={`solitaire:${session.mode}:${session.dateKey ?? session.seed}:${session.endedAtMs ?? "finished"}`}
             />
           )}
         </div>
