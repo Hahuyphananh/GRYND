@@ -454,11 +454,19 @@ test("banner eligibility is server-side and never invents a provider", async () 
       NEXT_PUBLIC_ADCASH_LIBRARY_URL: undefined,
     },
     () => {
-      // Only the account-configured Adcash banner is eligible by default:
-      // Hilltop still waits for its written attestation, ExoClick for a zone,
-      // and Ad Exchange is video-only.
-      assert.deepEqual(eligibleBannerProviders("home"), ["adcash"]);
+      // No banner is eligible by default: Hilltop waits for its written
+      // attestation, ExoClick for a zone, Adcash is opt-in after its adult
+      // creatives were seen, and Ad Exchange is video-only.
+      assert.deepEqual(eligibleBannerProviders("home"), []);
       assert.deepEqual(eligibleBannerProviders("not-a-placement"), []);
+    },
+  );
+
+  await withEnv(
+    { ADCASH_ENABLED: "true", NEXT_PUBLIC_ADCASH_ENABLED: "true" },
+    () => {
+      // An explicit operator opt-in is the only way the Adcash banner returns.
+      assert.deepEqual(eligibleBannerProviders("home"), ["adcash"]);
     },
   );
 });
@@ -493,13 +501,14 @@ test("the video chain follows configuration and omits disabled providers", async
   };
 
   await withEnv(clean, () => {
-    // Hilltop's approved tag and the account's Ad Exchange tag are both built
-    // in, so both are eligible by default; ExoClick and Adcash wait for a
-    // dashboard tag.
+    // Only Hilltop is eligible by default. Its approved tag is the one built-in
+    // provider with no adult-creative finding; Ad Exchange has its tag built in
+    // too but is opt-in after serving adult creatives, and ExoClick/Adcash wait
+    // for a dashboard tag.
     assert.deepEqual(
       videoProviderChain(),
-      ["hilltop", "adexchange"],
-      "the built-in tags are the only defaults",
+      ["hilltop"],
+      "Hilltop is the only provider that is on without an explicit opt-in",
     );
   });
 
@@ -532,6 +541,20 @@ test("the video chain follows configuration and omits disabled providers", async
       NEXT_PUBLIC_HILLTOPS_ENABLED: "false",
       NEXT_PUBLIC_EXOCLICK_VAST_ENABLED: "true",
       NEXT_PUBLIC_EXOCLICK_VAST_TAG: "https://video.example/exo.xml",
+    },
+    () => {
+      assert.deepEqual(videoProviderChain(), ["exoclick"]);
+    },
+  );
+
+  // Ad Exchange reappears only when an operator explicitly opts in.
+  await withEnv(
+    {
+      ...clean,
+      NEXT_PUBLIC_HILLTOPS_ENABLED: "false",
+      NEXT_PUBLIC_EXOCLICK_VAST_ENABLED: "true",
+      NEXT_PUBLIC_EXOCLICK_VAST_TAG: "https://video.example/exo.xml",
+      NEXT_PUBLIC_ADEXCHANGE_VAST_ENABLED: "true",
     },
     () => {
       assert.deepEqual(videoProviderChain(), ["exoclick", "adexchange"]);
