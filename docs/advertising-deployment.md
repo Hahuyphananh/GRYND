@@ -441,3 +441,8 @@ off until the same check covers Hilltop creatives.
 The stop is effective only once a release is activated: the publish job skips
 a commit that is no longer the tip of the source branch, so land the change in
 the final commit and confirm the live page makes no provider request.
+
+Reversing the stop is an environment change, not a code change: opt in with
+`NEXT_PUBLIC_ADCASH_ENABLED` + `ADCASH_ENABLED` (banner) or
+`NEXT_PUBLIC_ADEXCHANGE_VAST_ENABLED` (video), then activate a release. The CSP
+already names every origin those creatives need.
