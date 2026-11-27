@@ -91,13 +91,35 @@ function practiceResultId(pathname: string): string {
   return fresh;
 }
 
+const AD_MODE_RE = /^[a-z][a-z0-9-]{0,31}$/;
+
+/**
+ * The mode encoded in a match id, when the caller did not pass one. Only the
+ * ids this app mints are recognised; anything else leaves the dimension off.
+ */
+export function modeFromMatchId(id: string): string | undefined {
+  if (!id) return undefined;
+  const [surface, kind] = id.split(":");
+  if (surface === "solitaire" && (kind === "solo" || kind === "daily")) return kind;
+  if (surface === "puzzle" && (kind === "daily" || kind === "unlimited" || kind === "ranked" || kind === "ai")) {
+    return `puzzle-${kind}`;
+  }
+  return undefined;
+}
+
 export default function PostMatchAdSlot({
   matchId,
+  mode,
   pathname,
   onDone,
 }: {
   /** Explicit id, when the game passes one instead of using a route param. */
   matchId?: string;
+  /**
+   * The finished game's mode. Sent only as the bounded `ad_mode` analytics
+   * dimension; when omitted it is derived from a recognised match id.
+   */
+  mode?: string;
   /** The result screen's own path, for the practice fallback id. */
   pathname?: string;
   /**
@@ -177,6 +199,7 @@ export default function PostMatchAdSlot({
     <PostMatchVideoAd
       matchEnded
       matchId={resolvedId}
+      mode={mode && AD_MODE_RE.test(mode) ? mode : modeFromMatchId(resolvedId)}
       enabled={surface.enabled}
       adFree={surface.adFree}
       onDismiss={() => settle(true)}

@@ -41,6 +41,7 @@ import {
 
 import SolitaireBoard from "./SolitaireBoard";
 import ModeTableau from "../play/ModeTableau";
+import PostMatchAdSlot from "../ads/PostMatchAdSlot";
 import GlitchSay from "../mascot/GlitchSay";
 import { useTranslation } from "../../hooks/useTranslation";
 import {
@@ -888,6 +889,17 @@ export default function StrategicPuzzlePlayer({ puzzles }: { puzzles: PlayerPuzz
                   {t("puzzlePlayer.complete.exit")}
                 </Link>
               </div>
+
+              {/* A completed puzzle is a finished result, so it earns the same
+                  post-match offer as the other puzzle surfaces. Keyed by the
+                  puzzle id: retrying the same puzzle cannot offer twice, while
+                  the next puzzle is a new one. `mode` is the analytics
+                  dimension; the slot still asks the server, so PRO and a
+                  declined cadence render nothing. */}
+              <PostMatchAdSlot
+                matchId={`puzzle:strategic:${puzzle.id}`}
+                mode="puzzle-strategic"
+              />
             </div>
           )}
 

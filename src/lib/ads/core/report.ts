@@ -4,9 +4,10 @@
 // already uses). Deliberately narrow:
 //
 //   * No user id, match id, URL, zone id, tag, creative or free-form error text.
-//     Only the provider, the surface, the placement, the opportunity KIND and a
-//     short status token leave the browser. The opportunity id itself is NOT
-//     sent: it is only used locally for dedupe.
+//     Only the provider, the surface, the placement, the opportunity KIND, the
+//     game MODE (a short fixed token such as `puzzle-daily`) and a short status
+//     token leave the browser. The opportunity id itself is NOT sent: it is only
+//     used locally for dedupe.
 //   * No revenue is ever emitted. These providers' reporting is not available
 //     to this app, and an estimate would be a fabrication.
 //   * An impression is emitted ONLY by the player's real `play` event. A banner
@@ -35,11 +36,21 @@ export interface AdEvent {
   provider: AdProviderId;
   placement: string;
   opportunityId: string;
+  /**
+   * The finished game's mode as a bounded analytics dimension (`solo`, `daily`,
+   * `puzzle-daily`, `puzzle-unlimited`, `puzzle-ranked`, `puzzle-ai`,
+   * `puzzle-strategic`). Free text, ids and anything outside the token rule are
+   * dropped rather than sent.
+   */
+  mode?: string;
   status?: AdOutcomeStatus;
   reason?: string;
   latencyMs?: number;
   verifiedImpression?: boolean;
 }
+
+/** Only a short lowercase token may become the `ad_mode` dimension. */
+const AD_MODE_RE = /^[a-z][a-z0-9-]{0,31}$/;
 
 export interface AdEventPayload {
   event: AdMetric;
@@ -76,6 +87,9 @@ export function buildAdEvent(event: AdEvent): AdEventPayload {
     verified_impression: event.verifiedImpression === true,
   };
 
+  if (typeof event.mode === "string" && AD_MODE_RE.test(event.mode)) {
+    properties.ad_mode = event.mode;
+  }
   if (event.status) properties.status = event.status;
   if (event.reason) properties.reason = event.reason.slice(0, 64);
   if (typeof event.latencyMs === "number" && Number.isFinite(event.latencyMs)) {

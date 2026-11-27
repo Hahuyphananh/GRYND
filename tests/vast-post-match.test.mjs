@@ -19,6 +19,7 @@ import fs from "node:fs";
 import { join, relative, sep } from "node:path";
 
 import { parseVastResponse, pickMediaFile } from "../src/lib/vast/parse.ts";
+import { buildAdEvent } from "../src/lib/ads/core/report.ts";
 import {
   HILLTOPS_VAST_TAG,
   postMatchAdsEnabled,
@@ -544,6 +545,41 @@ test("the surface is mounted only by the wired result screens", () => {
     /<PostMatchAdSlot \/>/,
     "the shared result screen is the single wiring point for every game",
   );
+});
+
+test("ad events carry a bounded game mode, never an id", () => {
+  const base = {
+    metric: "ad_impression",
+    kind: "video",
+    provider: "hilltop",
+    placement: "post-match",
+    opportunityId: "match-123",
+    verifiedImpression: true,
+  };
+
+  // The mode travels as its own dimension, so puzzle and solo impressions can
+  // be compared in PostHog.
+  assert.equal(buildAdEvent({ ...base, mode: "puzzle-daily" }).properties.ad_mode, "puzzle-daily");
+  assert.equal(buildAdEvent({ ...base, mode: "solo" }).properties.ad_mode, "solo");
+
+  // A match id, free text or anything outside the token rule is dropped.
+  for (const bad of ["solitaire:solo:123", "Puzzle Daily", "", "a".repeat(40)]) {
+    assert.ok(
+      !("ad_mode" in buildAdEvent({ ...base, mode: bad }).properties),
+      `${JSON.stringify(bad)} must not become a dimension`,
+    );
+  }
+  assert.ok(!("ad_mode" in buildAdEvent(base).properties));
+});
+
+test("the strategic puzzle result offers the shared slot", () => {
+  const src = code(read("src/components/solitaire-duel/StrategicPuzzlePlayer.tsx"));
+  assert.match(
+    src,
+    /<PostMatchAdSlot\s+matchId=\{`puzzle:strategic:\$\{puzzle\.id\}`\}\s+mode="puzzle-strategic"/,
+    "a completed strategic puzzle must use the shared slot, keyed by the puzzle",
+  );
+  assert.ok(!/PostMatchVideoAd/.test(src), "it must not mount the creative directly");
 });
 
 test("solo and daily offer after any finished run, not only a win", () => {

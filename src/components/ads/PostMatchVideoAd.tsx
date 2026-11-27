@@ -133,6 +133,12 @@ export interface PostMatchVideoAdProps {
    */
   matchId: string;
   /**
+   * The finished game's mode (`solo`, `daily`, `puzzle-daily`, …). Sent only as
+   * the bounded `ad_mode` analytics dimension so impressions can be compared
+   * per mode; it is never an id and never reaches a provider.
+   */
+  mode?: string;
+  /**
    * Runtime kill switch, read on the server by the hosting page. Defaults to
    * true; the build-time public switch is applied on top of it.
    */
@@ -159,12 +165,16 @@ export interface PostMatchVideoAdProps {
 export default function PostMatchVideoAd({
   matchEnded,
   matchId,
+  mode,
   enabled = true,
   adFree = false,
   className = "",
   onDismiss,
   onNoOffer,
 }: PostMatchVideoAdProps) {
+  // Only a short lowercase token is accepted, exactly like the report layer.
+  const adMode =
+    typeof mode === "string" && /^[a-z][a-z0-9-]{0,31}$/.test(mode) ? mode : undefined;
   const [phase, setPhase] = useState<Phase>("loading");
   const [offerAllowed, setOfferAllowed] = useState(false);
   const [consent, setConsent] = useState<CookieConsent | null>(null);
@@ -326,6 +336,7 @@ export default function PostMatchVideoAd({
           kind: "video",
           provider,
           placement: "post-match",
+          mode: adMode,
           opportunityId: opportunity.id,
         });
 
@@ -358,6 +369,7 @@ export default function PostMatchVideoAd({
           kind: "video",
           provider: outcome.provider,
           placement: "post-match",
+          mode: adMode,
           opportunityId: opportunity.id,
           status: outcome.status,
           reason: outcome.reason,
@@ -477,6 +489,7 @@ export default function PostMatchVideoAd({
         kind: "video",
         provider: servedProviderRef.current,
         placement: "post-match",
+        mode: adMode,
         opportunityId: videoOpportunityId(matchId),
         verifiedImpression: true,
       });
@@ -489,6 +502,7 @@ export default function PostMatchVideoAd({
         kind: "video",
         provider: servedProviderRef.current,
         placement: "post-match",
+        mode: adMode,
         opportunityId: videoOpportunityId(matchId),
         verifiedImpression: true,
       });
@@ -505,6 +519,7 @@ export default function PostMatchVideoAd({
         kind: "video",
         provider: servedProviderRef.current,
         placement: "post-match",
+        mode: adMode,
         opportunityId: videoOpportunityId(matchId),
         verifiedImpression: true,
       });
@@ -525,6 +540,7 @@ export default function PostMatchVideoAd({
       kind: "video",
       provider: servedProviderRef.current,
       placement: "post-match",
+      mode: adMode,
       opportunityId: videoOpportunityId(matchId),
       status: "invalid_response",
       reason: "media-error",

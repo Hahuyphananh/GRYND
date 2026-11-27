@@ -356,9 +356,10 @@ The surface's existing gates apply unchanged:
 
 - **After a finished match only** — `PostMatchVideoAd` mounts only when
   `matchEnded` is true, on the result screen. Finished puzzle results count:
-  the end of a daily run, a graded unlimited position, and a settled Puzzle
-  Ranked / AI session. Each is keyed by its run (UTC date, puzzle key, session
-  id), so resuming or reloading the same result cannot offer twice.
+  the end of a daily run, a graded unlimited position, a completed strategic
+  puzzle, and a settled Puzzle Ranked / AI session. Each is keyed by its run
+  (UTC date, puzzle key, session id), so resuming or reloading the same result
+  cannot offer twice.
 - **No ads for GRYND PRO** — the hosting page resolves `ad_free` server-side
   and renders nothing, so a member triggers no request.
 - **Consent first** — the same `NEXT_PUBLIC_POST_MATCH_ADS_REQUIRES_CONSENT`
