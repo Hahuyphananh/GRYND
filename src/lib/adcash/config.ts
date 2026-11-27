@@ -41,7 +41,8 @@
 // ── CONFIGURATION (exact names) ───────────────────────────────────────────
 //
 //   NEXT_PUBLIC_ADCASH_ENABLED              build-time switch. Opt-in:
-//                                          "true"/"1" only.
+//                                          "true"/"1"/"on"/"yes" only.
+//                                          Off unless set: see `switchOn`.
 //   ADCASH_ENABLED                          server, read per request. Same rule.
 //   NEXT_PUBLIC_ADCASH_LIBRARY_URL          REQUIRED. The Adcash library URL
 //                                          copied from the publisher panel.
@@ -123,17 +124,18 @@ export function adcashContainerId(placement: AdcashPlacement): string {
 }
 
 /**
- * Kill switch: ON unless an operator explicitly sets false/0/off/no.
+ * Opt-in switch: only an explicit true/1/on/yes turns the banner on.
  *
- * The account's real library URL and DISPLAY zone are built in below, so the
- * banner works after a deploy without a second configuration step. Every other
- * gate still applies: approved route only, no native shell, no GRYND PRO,
- * consent accepted, and the zone must be a numeric Display zone.
+ * It used to default ON because the account's library and Display zones are
+ * built in. A real-browser run on 2026-11-27 changed that: the zone filled with
+ * an explicit adult creative on the live homepage, next to AdSense. The Display
+ * integration stays in the codebase, but it is OFF until Adcash applies a
+ * non-adult creative/category filter to the account, at which point an operator
+ * opts in with this variable.
  */
 function switchOn(value: string | undefined): boolean {
   const raw = (value ?? "").trim().toLowerCase();
-  if (!raw) return true;
-  return raw !== "false" && raw !== "0" && raw !== "off" && raw !== "no";
+  return raw === "true" || raw === "1" || raw === "on" || raw === "yes";
 }
 
 export function adcashBannerEnabled(): boolean {

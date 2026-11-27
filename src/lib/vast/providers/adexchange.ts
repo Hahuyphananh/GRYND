@@ -25,11 +25,10 @@
 // ── CONFIGURATION ──────────────────────────────────────────────────────────
 //
 //   NEXT_PUBLIC_ADEXCHANGE_VAST_TAG        optional override; must be https.
-//   NEXT_PUBLIC_ADEXCHANGE_VAST_ENABLED=false   kill switch. Enabled by
-//                                          default because the tag is already
-//                                          the account's, unlike the other
-//                                          providers which wait for a dashboard
-//                                          value; set "false" to opt out.
+//   NEXT_PUBLIC_ADEXCHANGE_VAST_ENABLED    opt-in. Unset means OFF: the tag
+//                                          served adult creatives on
+//                                          2026-11-27, so it stays off until
+//                                          the network filters that category.
 //   NEXT_PUBLIC_ADEXCHANGE_VAST_TIMEOUT_MS optional, 1000–8000.
 
 import { ADEXCHANGE_VAST_TAG, normalizeVideoTagUrl, videoAdsGloballyEnabled, videoTimeoutMs } from "./config";
@@ -41,11 +40,17 @@ import type {
   VideoAdResult,
 } from "./types";
 
-/** Enabled unless explicitly switched off ("false" / "0"). */
+/**
+ * Opt-in switch: only an explicit true/1/on/yes enables the provider.
+ *
+ * It used to default ON because the tag is the account's own. A real-browser
+ * run on 2026-11-27 showed that tag serving hardcore adult creatives (and a
+ * gambling creative on another draw), so the provider is OFF until the network
+ * applies a non-adult category filter and an operator opts in here.
+ */
 function adexchangeEnabled(): boolean {
   const raw = (process.env.NEXT_PUBLIC_ADEXCHANGE_VAST_ENABLED ?? "").trim().toLowerCase();
-  if (!raw) return true;
-  return raw !== "false" && raw !== "0" && raw !== "off" && raw !== "no";
+  return raw === "true" || raw === "1" || raw === "on" || raw === "yes";
 }
 
 export function adexchangeVideoConfig(): VideoAdProviderConfig {

@@ -31,6 +31,7 @@ import {
 import { adcashVideoConfig } from "../src/lib/vast/providers/adcash.ts";
 import { exoclickVideoConfig } from "../src/lib/vast/providers/exoclick.ts";
 import { hilltopVideoConfig } from "../src/lib/vast/providers/hilltop.ts";
+import { adexchangeVideoConfig } from "../src/lib/vast/providers/adexchange.ts";
 import { HILLTOPS_VAST_TAG } from "../src/lib/vast/config.ts";
 
 const read = (path) => fs.readFileSync(path, "utf8");
@@ -211,6 +212,36 @@ test("tags are https only, credential-free, and returned unmodified", async () =
       assert.equal(exoclickVideoConfig().configured, false);
     },
   );
+});
+
+test("the Ad Exchange video is opt-in after adult creatives were observed", async () => {
+  // The tag is still the account's and is still built in, but on 2026-11-27 it
+  // served hardcore adult creatives. Nothing may request it until the network
+  // filters that category and an operator opts in explicitly.
+  await withEnv(
+    { ...CLEAN_ENV, NEXT_PUBLIC_ADEXCHANGE_VAST_ENABLED: undefined },
+    () => {
+      const config = adexchangeVideoConfig();
+      assert.equal(config.configured, true, "the issued tag stays available");
+      assert.equal(config.enabled, false, "unset must mean off");
+    },
+  );
+  for (const value of ["true", "1", "on", "yes", "TRUE "]) {
+    await withEnv(
+      { ...CLEAN_ENV, NEXT_PUBLIC_ADEXCHANGE_VAST_ENABLED: value },
+      () => {
+        assert.equal(adexchangeVideoConfig().enabled, true, `"${value}" must opt in`);
+      },
+    );
+  }
+  for (const value of ["false", "0", "off", "no", "junk"]) {
+    await withEnv(
+      { ...CLEAN_ENV, NEXT_PUBLIC_ADEXCHANGE_VAST_ENABLED: value },
+      () => {
+        assert.equal(adexchangeVideoConfig().enabled, false, `"${value}" must stay off`);
+      },
+    );
+  }
 });
 
 test("timeouts are bounded and the master kill switch disables every provider", async () => {

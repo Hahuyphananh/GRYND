@@ -365,8 +365,12 @@ The surface's existing gates apply unchanged:
   answers an empty `<VAST/>` that is a real no-fill: the next provider is tried
   and, if none fills, no overlay is drawn.
 
-Configuration (all optional — the tag is built in and the provider is enabled
-by default, unlike ExoClick/Adcash which wait for a dashboard tag):
+Configuration (the tag is built in, but the provider is **OFF by default**):
+
+On 2026-11-27 this tag served hardcore adult video creatives (and a gambling
+creative on another draw) in a real browser. It stays disabled — and its tag
+stays in code — until the network filters that category. Do not opt in until
+that is confirmed in writing; see §10.
 
 | Variable | Purpose |
 | --- | --- |
@@ -392,8 +396,12 @@ without another deploy step:
 - The reserved container follows the zone it landed on, so the 728x90 creative
   is not clipped into a 300px box (`ADCASH_ZONE_SIZES` in
   `src/lib/adcash/config.ts`).
-- the switches are now kill switches: unset means ON, `false`/`0`/`off` means
-  OFF, for both `NEXT_PUBLIC_ADCASH_ENABLED` and `ADCASH_ENABLED`
+- **the switches are opt-in and OFF by default**: only `true`/`1`/`on`/`yes`
+  enables them, for both `NEXT_PUBLIC_ADCASH_ENABLED` and `ADCASH_ENABLED`.
+  They were briefly defaults-on, then a real browser run on 2026-11-27 showed
+  the live zone serving an explicit adult creative on the homepage. The
+  integration stays, but it must not serve until Adcash applies a non-adult
+  creative/category filter to the account (see §10).
 
 An explicit invalid override (wrong host, non-numeric zone, `zt…` Autotag id)
 still fails closed — it is never silently replaced with the built-in value.
@@ -401,3 +409,31 @@ still fails closed — it is never silently replaced with the built-in value.
 The banner remains gated on the exact browsing route (`/`, `/games|/casino`,
 `/classement`, `/profil`), never the native app, never GRYND PRO, and only
 after consent says `accepted`.
+
+## 10. Content-safety stop (2026-11-27)
+
+A real Chrome run against production filled both third-party surfaces. The
+creatives were explicit adult advertisements:
+
+- Adcash Display zone `12500178` (300x250 inside the `BannerSlot` on `/`): a
+  hardcore dating banner with a click-through to `rapidadexchange.com`.
+- Ad Exchange (`youradexchange.com/video/select.php?r=12500162`) on the
+  post-match result screen: a hardcore adult video, and a slot-machine gambling
+  creative on another draw.
+
+Both networks are Adcash-family exchanges and neither exposes a category filter
+in the tag request this integration makes, so nothing client-side can keep the
+inventory clean. The impact is not cosmetic: adult creatives beside AdSense risk
+the AdSense account, and they are disallowed by the mobile store listings.
+
+Actions taken in code:
+
+- `NEXT_PUBLIC_ADCASH_ENABLED` / `ADCASH_ENABLED` are opt-in again (unset = off).
+- `NEXT_PUBLIC_ADEXCHANGE_VAST_ENABLED` is opt-in (unset = off).
+- The library, zones, tag and CSP origins stay in place, so re-enabling is a
+  variable change once the account is filtered.
+
+Before any re-enable, get written confirmation from the network that the website
+and zone serve **non-adult** creatives only, then spot-check a live result and
+banner in a browser before leaving it on. Keep `HILLTOP_BANNER_PROVIDER_ATTESTED`
+off until the same check covers Hilltop creatives.

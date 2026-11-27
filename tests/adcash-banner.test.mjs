@@ -110,7 +110,11 @@ function allPages(dir = "src/app") {
 
 // ── Configuration ─────────────────────────────────────────────────────────
 
-test("the banner is on by default with the account library and Display zones", async () => {
+test("the banner is opt-in until Adcash filters adult creatives", async () => {
+  // The library and Display zones are still built in, but the switch is now
+  // opt-in: on 2026-11-27 the live zone filled with an explicit adult creative
+  // on the homepage, beside AdSense. Nothing may serve until the account is
+  // filtered, and then an operator turns it on explicitly.
   await withEnv(
     {
       NEXT_PUBLIC_ADCASH_ENABLED: undefined,
@@ -119,28 +123,39 @@ test("the banner is on by default with the account library and Display zones", a
       NEXT_PUBLIC_ADCASH_ZONE_HOME: undefined,
     },
     () => {
-      assert.equal(adcashBannerEnabled(), true, "the account is configured");
-      assert.equal(adcashBannerEnabledOnServer(), true);
-      assert.equal(adcashLibraryUrl(), LIBRARY, "the issued library is built in");
+      assert.equal(adcashBannerEnabled(), false, "unset means off");
+      assert.equal(adcashBannerEnabledOnServer(), false, "unset means off on the server too");
+      assert.equal(adcashLibraryUrl(), LIBRARY, "the issued library is still built in");
       assert.ok(
         ADCASH_ZONE_IDS.includes(adcashZoneId("home")),
         "the zone comes from the issued Display zones",
       );
       assert.equal(adcashBannerConfigured("home"), true);
+      // Configured but off: the server component must render nothing at all.
+      assert.equal(
+        adcashBannerAllowed({
+          enabled: adcashBannerEnabled() && adcashBannerEnabledOnServer(),
+          configured: adcashBannerConfigured("home"),
+          placement: "home",
+        }),
+        false,
+      );
     },
   );
 
-  // Both switches are KILL switches: an explicit false turns it off.
-  for (const value of ["false", "0", "off", "no"]) {
+  // Only an explicit opt-in turns it on; every other value leaves it off.
+  for (const value of ["true", "1", "on", "yes", "TRUE "]) {
     await withEnv({ NEXT_PUBLIC_ADCASH_ENABLED: value }, () => {
-      assert.equal(adcashBannerEnabled(), false, `"${value}" must switch it off`);
+      assert.equal(adcashBannerEnabled(), true, `"${value}" must opt in`);
+    });
+  }
+  for (const value of ["false", "0", "off", "no", "junk"]) {
+    await withEnv({ NEXT_PUBLIC_ADCASH_ENABLED: value }, () => {
+      assert.equal(adcashBannerEnabled(), false, `"${value}" must stay off`);
     });
   }
   await withEnv({ ADCASH_ENABLED: "false" }, () => {
-    assert.equal(adcashBannerEnabledOnServer(), false, "the server kill switch is separate");
-  });
-  await withEnv({ NEXT_PUBLIC_ADCASH_ENABLED: "TRUE " }, () => {
-    assert.equal(adcashBannerEnabled(), true, "case/whitespace insensitive");
+    assert.equal(adcashBannerEnabledOnServer(), false, "the server switch is separate");
   });
 
   // Independence: no other provider's values or flags are read here.
