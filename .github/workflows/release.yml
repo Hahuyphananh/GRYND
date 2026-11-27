@@ -221,6 +221,21 @@ jobs:
           # means off. Do not set them until Adcash confirms filtered inventory.
           NEXT_PUBLIC_ADCASH_ENABLED: ${{ vars.NEXT_PUBLIC_ADCASH_ENABLED }}
           NEXT_PUBLIC_ADEXCHANGE_VAST_ENABLED: ${{ vars.NEXT_PUBLIC_ADEXCHANGE_VAST_ENABLED }}
+          # ExoClick banner + video. The zone id, `<ins>` class and VAST tag are
+          # account-specific and must be copied from the ExoClick dashboard;
+          # unset means off. These values are public (they appear in the page
+          # source) — never put an ExoClick account credential here.
+          NEXT_PUBLIC_EXOCLICK_ENABLED: ${{ vars.NEXT_PUBLIC_EXOCLICK_ENABLED }}
+          NEXT_PUBLIC_EXOCLICK_ZONE_HOME: ${{ vars.NEXT_PUBLIC_EXOCLICK_ZONE_HOME }}
+          NEXT_PUBLIC_EXOCLICK_ZONE_LEADERBOARD: ${{ vars.NEXT_PUBLIC_EXOCLICK_ZONE_LEADERBOARD }}
+          NEXT_PUBLIC_EXOCLICK_ZONE_PROFILE: ${{ vars.NEXT_PUBLIC_EXOCLICK_ZONE_PROFILE }}
+          NEXT_PUBLIC_EXOCLICK_ZONE_HUB: ${{ vars.NEXT_PUBLIC_EXOCLICK_ZONE_HUB }}
+          NEXT_PUBLIC_EXOCLICK_INS_CLASS: ${{ vars.NEXT_PUBLIC_EXOCLICK_INS_CLASS }}
+          NEXT_PUBLIC_EXOCLICK_BANNER_SIZE: ${{ vars.NEXT_PUBLIC_EXOCLICK_BANNER_SIZE }}
+          NEXT_PUBLIC_EXOCLICK_REQUIRES_CONSENT: ${{ vars.NEXT_PUBLIC_EXOCLICK_REQUIRES_CONSENT }}
+          NEXT_PUBLIC_EXOCLICK_VAST_ENABLED: ${{ vars.NEXT_PUBLIC_EXOCLICK_VAST_ENABLED }}
+          NEXT_PUBLIC_EXOCLICK_VAST_TAG: ${{ vars.NEXT_PUBLIC_EXOCLICK_VAST_TAG }}
+          NEXT_PUBLIC_EXOCLICK_VAST_TIMEOUT_MS: ${{ vars.NEXT_PUBLIC_EXOCLICK_VAST_TIMEOUT_MS }}
           # Trustpilot widget (src/lib/trustpilot.ts). Inlined for the same
           # reason as the block above: a value absent here is baked in as
           # `undefined`, so setting the repository variable later could never

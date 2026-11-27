@@ -59,6 +59,24 @@ are public (they appear in the page source); account credentials are not.
 Both switches must be opted in (`true` / `1`). Anything else, including an
 absent line, leaves the banner off.
 
+`next build` inlines every `NEXT_PUBLIC_*` value, so the release workflow in
+`.github/workflows/release.yml` passes each of these through from repository
+variables (Settings → Secrets and variables → Actions → Variables). A value that
+is not listed there is baked in as `undefined` and cannot be fixed by editing
+`grynd/env/app.env`. Set the variables, then activate a release.
+
+What the dashboard hands you, and where each value goes:
+
+| ExoClick tag fragment | Repository variable |
+| --- | --- |
+| `<ins data-zoneid="1234567">` | `NEXT_PUBLIC_EXOCLICK_ZONE_HOME` (plus `_LEADERBOARD`, `_PROFILE` if those pages get their own zone) |
+| `<ins class="eas6a97888e...">` | `NEXT_PUBLIC_EXOCLICK_INS_CLASS` |
+| Video zone → **VAST tag** URL (`https://…xml`) | `NEXT_PUBLIC_EXOCLICK_VAST_TAG`, with `NEXT_PUBLIC_EXOCLICK_VAST_ENABLED=true` |
+
+None of the three can be invented: the zone id and class token are generated per
+zone and the class changes between zone versions. The banner renders nothing
+until both are present and valid.
+
 ## 3. Enabling it
 
 ```bash
