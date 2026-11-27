@@ -545,3 +545,39 @@ test("the surface is mounted only by the wired result screens", () => {
     "the shared result screen is the single wiring point for every game",
   );
 });
+
+test("puzzle results offer the same surface, once per finished run", () => {
+  const puzzle = code(read("src/components/solitaire-duel/SolitairePuzzle.tsx"));
+  const session = code(read("src/components/play/PuzzleSessionPlayer.tsx"));
+
+  // Daily run end and a graded practice position are finished results.
+  assert.match(
+    puzzle,
+    /<PostMatchAdSlot matchId=\{`puzzle:unlimited:\$\{puzzle\.key\}`\} \/>/,
+    "an unlimited puzzle result must use the shared slot, keyed by the position",
+  );
+  assert.match(
+    puzzle,
+    /<PostMatchAdSlot matchId=\{`puzzle:daily:\$\{puzzle\.dateKey\}`\} \/>/,
+    "a daily run must offer at most once per UTC day",
+  );
+  // A settled Puzzle Ranked / AI session is a finished match.
+  assert.match(
+    session,
+    /<PostMatchAdSlot matchId=\{`puzzle:\$\{mode\}:\$\{sessionId\}`\} \/>/,
+    "a settled puzzle session must be keyed by the session",
+  );
+
+  // Through the slot only — mounting the player directly would bypass the
+  // server gate, the PRO answer and the cadence.
+  for (const [name, source] of [
+    ["SolitairePuzzle.tsx", puzzle],
+    ["PuzzleSessionPlayer.tsx", session],
+  ]) {
+    assert.match(source, /import PostMatchAdSlot/, `${name} must use the shared slot`);
+    assert.ok(
+      !/PostMatchVideoAd/.test(source),
+      `${name} must not mount the creative directly`,
+    );
+  }
+});

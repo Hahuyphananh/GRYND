@@ -32,6 +32,7 @@ import NavigationBar from "../navigation-bar";
 import SolitaireBoard from "../solitaire-duel/SolitaireBoard";
 import GlitchSay from "../mascot/GlitchSay";
 import CompetitiveStreakResultBadge from "../profil/CompetitiveStreakResultBadge";
+import PostMatchAdSlot from "../ads/PostMatchAdSlot";
 import { useTranslation } from "../../hooks/useTranslation";
 import {
   PUZZLE_BOARD_POLL_MS,
@@ -812,6 +813,13 @@ export default function PuzzleSessionPlayer({
                 </Link>
               )}
             </div>
+
+            {/* The session is settled, so this popup is a finished result.
+                The id is the session, not the puzzle: a rematch is a new
+                session and counts once, while polling the same settled view
+                cannot offer twice. The shared slot asks the server, so PRO
+                and a declined cadence render nothing at all. */}
+            <PostMatchAdSlot matchId={`puzzle:${mode}:${sessionId}`} />
           </div>
         </div>
       )}

@@ -28,6 +28,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 
 import SolitaireBoard from "./SolitaireBoard";
+import PostMatchAdSlot from "../ads/PostMatchAdSlot";
 import GlitchSay from "../mascot/GlitchSay";
 import { isOfflineError } from "../../hooks/useOnlineStatus";
 import {
@@ -678,6 +679,15 @@ export default function SolitairePuzzle({ kind }: Props) {
                     Back to lobby
                   </Link>
                 )}
+                {/* A graded practice position is the finished result for this
+                    surface, so it earns the same post-match offer as a solo
+                    win. The id is the puzzle key: replaying the same position
+                    cannot count as a second match, while the next puzzle is a
+                    new one. The slot asks the server and renders nothing for
+                    PRO, a declined cadence or any failed read. */}
+                {kind === "unlimited" && judgement && puzzle?.key ? (
+                  <PostMatchAdSlot matchId={`puzzle:unlimited:${puzzle.key}`} />
+                ) : null}
               </div>
             )}
 
@@ -797,6 +807,15 @@ export default function SolitairePuzzle({ kind }: Props) {
                 Back to lobby
               </Link>
             </div>
+
+            {/* The run is over (last step solved, or the first mistake ended
+                it), so this is a finished result. One offer per UTC day: the
+                id is the run's date, so stepping/resuming/reloading the same
+                day can never offer twice. PRO and every server-side "no"
+                render nothing. */}
+            {puzzle?.dateKey ? (
+              <PostMatchAdSlot matchId={`puzzle:daily:${puzzle.dateKey}`} />
+            ) : null}
           </div>
         </div>
       )}
