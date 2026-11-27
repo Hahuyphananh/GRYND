@@ -102,8 +102,8 @@ function readInt(
 /**
  * The active cadence: built-in defaults, overridable per deploy.
  *
- *   NEXT_PUBLIC_POST_MATCH_AD_MATCHES_PER_OFFER (1–20, default 3)
- *   NEXT_PUBLIC_POST_MATCH_AD_COOLDOWN_MINUTES  (0–240, default 5)
+ *   NEXT_PUBLIC_POST_MATCH_AD_MATCHES_PER_OFFER (1–20, default 1)
+ *   NEXT_PUBLIC_POST_MATCH_AD_COOLDOWN_MINUTES  (0–240, default 0)
  *
  * Out-of-range values clamp rather than disable, so a typo can never turn the
  * limit off. Setting the flag `NEXT_PUBLIC_POST_MATCH_ADS_ENABLED=false` is the
