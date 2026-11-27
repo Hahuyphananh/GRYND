@@ -470,10 +470,12 @@ already names every origin those creatives need.
 ## Ad performance by game mode (PostHog)
 
 Every post-match ad event carries `ad_mode` (`solo`, `daily`, `puzzle-daily`,
-`puzzle-unlimited`, `puzzle-ranked`, `puzzle-ai`, `puzzle-strategic`; duel
-results are still untagged) and `placement = "post-match"`. The dimension is a
+`puzzle-unlimited`, `puzzle-ranked`, `puzzle-ai`, `puzzle-strategic`,
+`duel-ranked`, `duel-practice`) and `placement = "post-match"`. The dimension is a
 short bounded token — match ids, URLs, zone ids and free text are dropped by
-`buildAdEvent` in `src/lib/ads/core/report.ts`.
+`buildAdEvent` in `src/lib/ads/core/report.ts`. The duel mode comes from the
+casino result screen (`isPractice ? "duel-practice" : "duel-ranked"`); the free
+practice and puzzle surfaces derive theirs from the match id.
 
 Read-only report (needs `POSTHOG_PERSONAL_API_KEY` with `query:read` and
 `POSTHOG_PROJECT_ID`; never pass a key on the command line):

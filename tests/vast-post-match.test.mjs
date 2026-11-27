@@ -542,8 +542,20 @@ test("the surface is mounted only by the wired result screens", () => {
   // which asks the server first and never renders on a browsing page.
   assert.match(
     read("src/components/result/PvpResultScreen.jsx"),
-    /<PostMatchAdSlot \/>/,
+    /<PostMatchAdSlot mode=\{postMatchAdMode\} \/>/,
     "the shared result screen is the single wiring point for every game",
+  );
+});
+
+test("duel results separate ranked from practice in the ad dimension", () => {
+  const result = code(read("src/components/result/PvpResultScreen.jsx"));
+  const page = code(read("src/app/casino/solitaire-duel/[matchId]/PageClient.tsx"));
+
+  assert.match(result, /postMatchAdMode = null/);
+  assert.match(
+    page,
+    /postMatchAdMode=\{isPractice \? "duel-practice" : "duel-ranked"\}/,
+    "the rated and practice duel results must not share one mode",
   );
 });
 

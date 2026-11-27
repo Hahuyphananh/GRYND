@@ -96,6 +96,6 @@ test("practice undo is a server rollback of the seat's own log", () => {
 test("ranked and practice results offer the shared post-match video", () => {
   const result = read(RESULT);
 
-  assert.match(result, /<PostMatchAdSlot \/>/);
+  assert.match(result, /<PostMatchAdSlot mode=\{postMatchAdMode\} \/>/);
   assert.match(result, /\{!compact && !portalSurface && !postMatchAd && revealed && \(/);
 });

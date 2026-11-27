@@ -1738,6 +1738,10 @@ export default function SolitaireDuelMatchPage() {
         gameName="Solitaire Duel"
         onReturnToLobby={() => router.push("/play")}
         gameKey="solitaire-duel"
+        // The shared result screen serves both a rated duel and a practice
+        // match; this is the analytics dimension that keeps their ad numbers
+        // separate (rendered only when a free seat, never for PRO).
+        postMatchAdMode={isPractice ? "duel-practice" : "duel-ranked"}
         // The opponent speaks in a practice result; the app mascot keeps its
         // own reactions to rated duels. Never two voices on one result.
         showGlitch={!isPractice}

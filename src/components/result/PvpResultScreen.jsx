@@ -255,6 +255,10 @@ export default function PvpResultScreen({
   // the player and "Run it back"), and suppressed in compact mode so Creator
   // Mode recordings never carry an ad.
   postMatchAd = null,
+  // Analytics mode for the shared post-match slot, e.g. `duel-ranked` or
+  // `duel-practice`. Sent only as the bounded `ad_mode` dimension; the slot
+  // still asks the server and decides whether anything may play.
+  postMatchAdMode = null,
   // Canonical key of THIS game when a guest's practice results are persisted
   // for it (tic-tac-toe, dominoes, battleship, odds). Passing it mounts the
   // shared guest → account invitation below the actions; the component itself
@@ -1034,7 +1038,7 @@ export default function PvpResultScreen({
               )}
               {!compact && !portalSurface && !postMatchAd && revealed && (
                 <div className="mx-auto mt-5 w-full max-w-xs">
-                  <PostMatchAdSlot />
+                  <PostMatchAdSlot mode={postMatchAdMode} />
                 </div>
               )}
 
