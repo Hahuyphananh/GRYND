@@ -446,3 +446,19 @@ Reversing the stop is an environment change, not a code change: opt in with
 `NEXT_PUBLIC_ADCASH_ENABLED` + `ADCASH_ENABLED` (banner) or
 `NEXT_PUBLIC_ADEXCHANGE_VAST_ENABLED` (video), then activate a release. The CSP
 already names every origin those creatives need.
+
+### Re-enable checklist
+
+1. Get **written** confirmation from Adcash that the website and every zone
+   (`12500178`, `12500186`, and video tag `r=12500162`) serve non-adult
+   creatives only. A generic policy page is not confirmation for this account.
+2. Set the repository variables `NEXT_PUBLIC_ADCASH_ENABLED=true` and/or
+   `NEXT_PUBLIC_ADEXCHANGE_VAST_ENABLED=true` (the release workflow passes both
+   through). Nothing else in the build needs to change.
+3. On the host, add `ADCASH_ENABLED=true` to `/home/ubuntu/grynd/env/app.env`
+   (mode 0600) for the banner; the video needs only the build variable.
+4. Activate a release, then restart so the env file is re-read.
+5. Load `/` and finish one practice game in a real browser several times. If an
+   adult creative appears once, turn the variable off and redeploy immediately —
+   the networks randomise creatives per request, so a single clean load proves
+   nothing.

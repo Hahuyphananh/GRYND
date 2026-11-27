@@ -215,6 +215,12 @@ jobs:
           NEXT_PUBLIC_HILLTOPS_VAST_URL: ${{ vars.NEXT_PUBLIC_HILLTOPS_VAST_URL }}
           NEXT_PUBLIC_HILLTOP_BANNER_ENABLED: ${{ vars.NEXT_PUBLIC_HILLTOP_BANNER_ENABLED }}
           NEXT_PUBLIC_HILLTOP_BANNER_SCRIPT_URL: ${{ vars.NEXT_PUBLIC_HILLTOP_BANNER_SCRIPT_URL }}
+          # Adcash display and the Ad Exchange video are opt-in after both served
+          # adult creatives (2026-11-27). These passthroughs are what make the
+          # re-enable a repository-variable change, not a code edit; unset
+          # means off. Do not set them until Adcash confirms filtered inventory.
+          NEXT_PUBLIC_ADCASH_ENABLED: ${{ vars.NEXT_PUBLIC_ADCASH_ENABLED }}
+          NEXT_PUBLIC_ADEXCHANGE_VAST_ENABLED: ${{ vars.NEXT_PUBLIC_ADEXCHANGE_VAST_ENABLED }}
           # Trustpilot widget (src/lib/trustpilot.ts). Inlined for the same
           # reason as the block above: a value absent here is baked in as
           # `undefined`, so setting the repository variable later could never
