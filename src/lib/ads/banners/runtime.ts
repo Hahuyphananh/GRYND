@@ -158,6 +158,23 @@ function attemptTimeoutMs(budgetMs: number): number {
   return Math.max(250, Math.min(configured, budget));
 }
 
+/**
+ * Adcash gets a longer single attempt than the shared cap.
+ *
+ * Its library is a two-stage ~200 KB loader: `aclib.js` loads, which loads
+ * `banner.js`, which then fetches the zone's creative JSON and image. In a real
+ * browser on 2026-11-27 the creative landed ~5 s after the chain started —
+ * after the 3.5 s generic deadline — so the slot cleared the container and the
+ * ad was never seen even though the zone filled. The floor is still clamped to
+ * the remaining chain budget, so a slow attempt cannot overrun the slot.
+ */
+const ADCASH_MIN_ATTEMPT_MS = 6_000;
+
+function adcashAttemptTimeoutMs(budgetMs: number): number {
+  const budget = Number.isFinite(budgetMs) ? budgetMs : bannerProviderTimeoutMs();
+  return Math.max(250, Math.min(Math.max(bannerProviderTimeoutMs(), ADCASH_MIN_ATTEMPT_MS), budget));
+}
+
 function clearContainer(container: HTMLElement): void {
   container.replaceChildren();
 }
@@ -316,7 +333,7 @@ async function loadAdcash(
   const watcher = watchForFill({
     container,
     isPresent: () => adcashPresent(container),
-    timeoutMs: attemptTimeoutMs(context.budgetMs),
+    timeoutMs: adcashAttemptTimeoutMs(context.budgetMs),
     signal: context.signal,
     isProviderHost: isAdcashProviderHost,
   });

@@ -66,6 +66,7 @@ const code = (source) =>
 const CONFIG = read("src/lib/adcash/config.ts");
 const BANNER = read("src/components/ads/AdcashBanner.tsx");
 const UNIT = read("src/components/ads/AdcashBannerUnit.tsx");
+const RUNTIME = read("src/lib/ads/banners/runtime.ts");
 const CSP = read("src/lib/security/csp.ts");
 const PROXY = read("src/proxy.ts");
 
@@ -619,4 +620,13 @@ test("the banner container uses the selected zone's size, not the default", () =
   // The hard-coded placement width/height must be gone from the style block.
   assert.ok(!/maxWidth: adcashContainerMaxWidth\(placement\)/.test(code(UNIT)));
   assert.ok(!/minHeight: adcashReservedHeight\(placement\)/.test(code(UNIT)));
+});
+
+test("the Adcash attempt deadline covers its two-stage loader", () => {
+  // Real browser run on 2026-11-27: aclib.js -> banner.js -> banner.php -> the
+  // creative image took ~5 s, so the generic 3.5 s attempt deadline cleared the
+  // container before the fill. The loader must keep at least 6 s, still clamped
+  // to the remaining chain budget.
+  assert.match(code(RUNTIME), /ADCASH_MIN_ATTEMPT_MS = 6_000/);
+  assert.match(code(RUNTIME), /adcashAttemptTimeoutMs\(context\.budgetMs\)/);
 });
