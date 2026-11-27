@@ -37,14 +37,16 @@ import { COOKIE_CONSENT_EVENT, getCookieConsent } from "../../lib/cookieConsent"
 import {
   ADCASH_LIBRARY_ATTRIBUTE,
   ADCASH_READY_TIMEOUT_MS,
+  ADCASH_RESERVED_HEIGHTS,
+  adcashBannerSize,
   adcashConsentSatisfied,
   adcashContainerId,
-  adcashContainerMaxWidth,
   adcashLibraryUrl,
   adcashRequiresConsent,
-  adcashReservedHeight,
   adcashRouteMatchesPlacement,
   adcashRunKey,
+  adcashSizeForZone,
+  adcashSizeMaxWidth,
   adcashZoneId,
   isAdcashProviderHost,
   shouldRunAdcashZone,
@@ -82,6 +84,12 @@ export default function AdcashBannerUnit({
     getCookieConsent(),
   );
 
+  // The zone this placement serves, resolved once for the render as well as the
+  // effect: the reserved box must match THAT zone's creative size, because the
+  // pool holds both a 300x250 and a 728x90.
+  const zone = adcashZoneId(placement);
+  const bannerSize = adcashSizeForZone(zone) ?? adcashBannerSize(placement);
+
   useEffect(() => {
     const onConsentChange = () => setConsent(getCookieConsent());
     window.addEventListener(COOKIE_CONSENT_EVENT, onConsentChange);
@@ -110,7 +118,6 @@ export default function AdcashBannerUnit({
     }
 
     // 3. CONFIGURATION — no invented zone id or library URL, ever.
-    const zone = adcashZoneId(placement);
     const libraryUrl = adcashLibraryUrl();
     if (!zone || !libraryUrl) {
       setPhase("unavailable");
@@ -233,7 +240,7 @@ export default function AdcashBannerUnit({
       document.removeEventListener("securitypolicyviolation", onViolation);
       stop();
     };
-  }, [placement, consent]);
+  }, [placement, consent, zone]);
 
   const consentSatisfied =
     !adcashRequiresConsent() || adcashConsentSatisfied(consent);
@@ -257,8 +264,8 @@ export default function AdcashBannerUnit({
         aria-label="Advertisement"
         className="mx-auto flex w-full items-center justify-center overflow-hidden"
         style={{
-          maxWidth: adcashContainerMaxWidth(placement),
-          minHeight: adcashReservedHeight(placement),
+          maxWidth: adcashSizeMaxWidth(bannerSize),
+          minHeight: ADCASH_RESERVED_HEIGHTS[bannerSize],
         }}
       />
     </>

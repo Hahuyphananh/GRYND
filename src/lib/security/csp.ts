@@ -127,6 +127,13 @@ export const THIRD_PARTY_CONNECT_HOSTS = [
   "https://a.magsrv.com",
   "https://acscdn.com",
   "https://adcash.com",
+  // Adcash DISPLAY delivery, observed in the browser on 2026-11-27: aclib.js
+  // loads banner.js, which fetches the zone's creative JSON from
+  // rapidadexchange.com and sends its heartbeat to usrpubtrck.com. Both are
+  // exact Adcash-family hosts (the VAST from the account's Ad Exchange tag
+  // reports `AdSystem: Adcash`), never a wildcard.
+  "https://rapidadexchange.com",
+  "https://usrpubtrck.com",
   "https://sdk.crazygames.com",
 ] as const;
 
@@ -291,6 +298,11 @@ const IMAGE_HOSTS = [
   "https://a.magsrv.com",
   "https://acscdn.com",
   "https://adcash.com",
+  // Adcash display: the creative image is served from crcdn.org and its
+  // impression pixel is fired on rapidadexchange.com (both observed in a real
+  // zone response on 2026-11-27).
+  "https://crcdn.org",
+  "https://rapidadexchange.com",
   // Observed in the approved HilltopAds VAST response (2026-11-27): the tag,
   // impression/error beacons and click-through are on rude-movie.com; the
   // progressive MP4/WebM files are on www.dismal-library.pro. Both are exact.
@@ -359,7 +371,14 @@ export function buildMediaSrc({
 }: {
   env?: NodeJS.ProcessEnv;
 } = {}): string {
-  const parts = ["'self'", "blob:", "https://www.dismal-library.pro"];
+  const parts = [
+    "'self'",
+    "blob:",
+    "https://www.dismal-library.pro",
+    // Observed in the account's Ad Exchange VAST response (2026-11-27): the
+    // progressive H.264 files are served from vidwestxyz.com.
+    "https://vidwestxyz.com",
+  ];
 
   const hilltopTag = httpsOrigin(env.NEXT_PUBLIC_HILLTOPS_VAST_URL) ?? httpsOrigin(HILLTOPS_VAST_TAG);
   if (hilltopTag) parts.push(hilltopTag);

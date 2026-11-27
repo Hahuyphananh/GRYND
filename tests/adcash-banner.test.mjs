@@ -43,12 +43,15 @@ import {
   adcashReservedHeight,
   adcashRouteMatchesPlacement,
   adcashRunKey,
+  adcashSizeForZone,
+  adcashSizeMaxWidth,
   adcashZoneId,
   isAdcashPlacement,
   isAdcashProviderHost,
   normalizeAdcashLibraryUrl,
   shouldRunAdcashZone,
   ADCASH_ZONE_IDS,
+  ADCASH_ZONE_SIZES,
 } from "../src/lib/adcash/config.ts";
 import { buildFrameSrc } from "../src/lib/security/csp.ts";
 
@@ -587,4 +590,33 @@ test("the integration does not touch HilltopAds, ExoClick or AdSense behaviour",
 
   assert.ok(!/HILLTOP|EXOCLICK|ADSENSE|POST_MATCH|Hilltop|ExoClick|AdSense/.test(code(CONFIG)));
   assert.ok(!/adsbygoogle|googlesyndication|magsrv/i.test(code(UNIT) + code(BANNER)));
+});
+
+// ── The reserved box follows the zone it landed on ────────────────────────
+
+test("each issued Display zone reserves its real creative size", () => {
+  // Measured from the zones themselves on 2026-11-27 (`banner.php?r=<zone>`
+  // answered width/height): 12500178 is 300x250, 12500186 is 728x90. The pool
+  // rotates between them, so one hard-coded per-placement size would clip one.
+  assert.equal(ADCASH_ZONE_SIZES["12500178"], "300x250");
+  assert.equal(ADCASH_ZONE_SIZES["12500186"], "728x90");
+
+  assert.equal(adcashSizeForZone("12500178"), "300x250");
+  assert.equal(adcashSizeForZone(" 12500186 "), "728x90");
+  assert.equal(adcashSizeForZone("99999999"), null);
+  assert.equal(adcashSizeForZone(null), null);
+
+  assert.equal(adcashSizeMaxWidth("300x250"), 300);
+  assert.equal(adcashSizeMaxWidth("728x90"), 728);
+  assert.equal(ADCASH_RESERVED_HEIGHTS["300x250"], 250);
+  assert.equal(ADCASH_RESERVED_HEIGHTS["728x90"], 90);
+});
+
+test("the banner container uses the selected zone's size, not the default", () => {
+  assert.match(code(UNIT), /adcashSizeForZone\(zone\)/);
+  assert.match(code(UNIT), /maxWidth: adcashSizeMaxWidth\(bannerSize\)/);
+  assert.match(code(UNIT), /minHeight: ADCASH_RESERVED_HEIGHTS\[bannerSize\]/);
+  // The hard-coded placement width/height must be gone from the style block.
+  assert.ok(!/maxWidth: adcashContainerMaxWidth\(placement\)/.test(code(UNIT)));
+  assert.ok(!/minHeight: adcashReservedHeight\(placement\)/.test(code(UNIT)));
 });

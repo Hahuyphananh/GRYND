@@ -215,6 +215,20 @@ export const ADCASH_DEFAULT_LIBRARY_URL = "https://acscdn.com/script/aclib.js";
  */
 export const ADCASH_ZONE_IDS = ["12500178", "12500186"] as const;
 
+/**
+ * The creative dimensions each Display zone serves, as reported by the zone
+ * itself on 2026-11-27 (`banner.php?r=<zone>` → `width`/`height`).
+ *
+ * The container has to reserve the size of the zone the opportunity actually
+ * lands on: the pool holds a 300x250 and a 728x90, so a single per-placement
+ * size would clip one of them inside an `overflow-hidden` box.
+ */
+export const ADCASH_ZONE_SIZES: Readonly<Record<string, AdcashBannerSize>> =
+  Object.freeze({
+    "12500178": "300x250",
+    "12500186": "728x90",
+  });
+
 /** The fallback when no rotation key is supplied. */
 export const ADCASH_DEFAULT_ZONE_ID = ADCASH_ZONE_IDS[0];
 
@@ -309,7 +323,21 @@ export function adcashReservedHeight(placement: unknown): number {
 }
 
 export function adcashContainerMaxWidth(placement: unknown): number {
-  return adcashBannerSize(placement) === "300x250" ? 300 : 728;
+  return adcashSizeMaxWidth(adcashBannerSize(placement));
+}
+
+/** The width a container reserves for a known creative size. */
+export function adcashSizeMaxWidth(size: AdcashBannerSize): number {
+  return size === "300x250" ? 300 : 728;
+}
+
+/** The size of the zone an opportunity landed on, or null when it is unknown. */
+export function adcashSizeForZone(
+  zoneId: string | null | undefined,
+): AdcashBannerSize | null {
+  const key = (zoneId ?? "").trim();
+  if (!key) return null;
+  return ADCASH_ZONE_SIZES[key] ?? null;
 }
 
 /** True only when the placement, its zone id and the library URL all exist. */

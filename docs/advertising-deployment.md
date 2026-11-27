@@ -185,11 +185,16 @@ The policy is in `src/lib/security/csp.ts`; `src/proxy.ts` emits it.
 - `script-src`, `connect-src` and `frame-src`: exact provider hosts —
   `juvenilechoice.com`, `a.magsrv.com`, `acscdn.com`, `adcash.com`. There is no
   provider wildcard.
+- Adcash **display delivery** is on `rapidadexchange.com` (the zone's creative
+  JSON and its impression pixel) with a heartbeat to `usrpubtrck.com`, and the
+  creative image itself on `crcdn.org`. All three are exact `connect-src` /
+  `img-src` sources; a browser run on 2026-11-27 showed `aclib.js` is only a
+  loader that pulls `acscdn.com/script/banner.js` and then that zone endpoint.
 - `img-src`: named app/ad hosts only. The old bare `https:` is gone.
 - `media-src`: `'self'`, `blob:`, the origin of each configured VAST tag,
-  `ADS_MEDIA_HOSTS`, and the exact Hilltop creative host observed in the
-  approved tag response (`www.dismal-library.pro`). The old bare `https:` is
-  gone.
+  `ADS_MEDIA_HOSTS`, and the exact creative hosts observed in real tag
+  responses — `www.dismal-library.pro` for Hilltop and `vidwestxyz.com` for the
+  Ad Exchange MP4s (2026-11-27). The old bare `https:` is gone.
 - `connect-src` includes each configured VAST tag origin, because the browser
   fetches the XML directly. The approved Hilltop tag origin is
   `rude-movie.com`; its impression/error beacons are also served there and are
@@ -355,9 +360,10 @@ The surface's existing gates apply unchanged:
   and renders nothing, so a member triggers no request.
 - **Consent first** — the same `NEXT_PUBLIC_POST_MATCH_ADS_REQUIRES_CONSENT`
   gate (default true) and the same cadence/one-per-match rule.
-- **Inline only** — the strict parser refuses Wrapper and VPAID. An empty
-  `<VAST/>` response (this tag returned one on 2026-11-27) is a real no-fill:
-  the next provider is tried and, if none fills, no overlay is drawn.
+- **Inline only** — the strict parser refuses Wrapper and VPAID. This tag
+  returned Inline ads on 2026-11-27 (H.264 MP4s on `vidwestxyz.com`); when it
+  answers an empty `<VAST/>` that is a real no-fill: the next provider is tried
+  and, if none fills, no overlay is drawn.
 
 Configuration (all optional — the tag is built in and the provider is enabled
 by default, unlike ExoClick/Adcash which wait for a dashboard tag):
@@ -380,9 +386,12 @@ The account's real values are built in, so the Display banner is configured
 without another deploy step:
 
 - library: `https://acscdn.com/script/aclib.js`
-- Display zone: `12500178` (numeric — not an Autotag id), used for every
-  approved browsing placement unless `NEXT_PUBLIC_ADCASH_ZONE_<PLACEMENT>`
-  overrides it
+- Display zones: `12500178` (300x250) and `12500186` (728x90), both numeric —
+  never Autotag ids. They are used as a pool, rotating per placement; a
+  per-placement `NEXT_PUBLIC_ADCASH_ZONE_<PLACEMENT>` override wins.
+- The reserved container follows the zone it landed on, so the 728x90 creative
+  is not clipped into a 300px box (`ADCASH_ZONE_SIZES` in
+  `src/lib/adcash/config.ts`).
 - the switches are now kill switches: unset means ON, `false`/`0`/`off` means
   OFF, for both `NEXT_PUBLIC_ADCASH_ENABLED` and `ADCASH_ENABLED`
 

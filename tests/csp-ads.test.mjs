@@ -290,3 +290,28 @@ test("the ad surfaces are still rendered where the model allows them", () => {
   assert.match(read("src/app/reviews/page.tsx"), /TrustpilotPanel/);
   assert.match(read("src/components/AdSenseScript.tsx"), /adsbygoogle\.js\?client=/);
 });
+
+test("the live ad-delivery and creative hosts are named exactly", () => {
+  const connect = new Set(
+    buildConnectSrc({ publishableKey: null, env: {} }).replace(/^connect-src\s+/, "").split(/\s+/),
+  );
+  for (const host of ["https://rapidadexchange.com", "https://usrpubtrck.com"]) {
+    assert.ok(connect.has(host), `connect-src must name ${host}`);
+  }
+
+  const img = new Set(
+    buildImgSrc({ publishableKey: null, env: {} }).replace(/^img-src\s+/, "").split(/\s+/),
+  );
+  for (const host of ["https://crcdn.org", "https://rapidadexchange.com"]) {
+    assert.ok(img.has(host), `img-src must name ${host}`);
+  }
+
+  const media = new Set(
+    buildMediaSrc({ env: {} }).replace(/^media-src\s+/, "").split(/\s+/),
+  );
+  assert.ok(
+    media.has("https://vidwestxyz.com"),
+    "media-src must name the VAST MediaFile CDN observed in the Ad Exchange response",
+  );
+  assert.ok(!media.has("https:"), "media-src stays an allow-list");
+});
