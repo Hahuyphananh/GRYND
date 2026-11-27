@@ -6,7 +6,14 @@ import {
   type LimitConfig,
 } from "./lib/security/rateLimit";
 import { auditLog } from "./lib/security/auditLog";
-import { buildConnectSrc, buildScriptSrc, inlineScriptHashes } from "./lib/security/csp";
+import {
+  buildConnectSrc,
+  buildFrameSrc,
+  buildImgSrc,
+  buildMediaSrc,
+  buildScriptSrc,
+  inlineScriptHashes,
+} from "./lib/security/csp";
 import { clientIpFromHeaders } from "./lib/security/clientIp";
 import { isAdmin } from "./lib/auth/isAdmin";
 import { isMaintenanceMode } from "./lib/security/maintenance";
@@ -518,13 +525,18 @@ function applySecurityHeaders(response: NextResponse, nonce: string = createNonc
   const connectSrc = buildConnectSrc({
     development: process.env.NODE_ENV === "development",
   });
+  const frameSrc = buildFrameSrc({
+    development: process.env.NODE_ENV === "development",
+  });
+  const imgSrc = buildImgSrc();
+  const mediaSrc = buildMediaSrc();
 
   response.headers.set(
     "Content-Security-Policy",
     "default-src 'self'; " +
       scriptSrc +
       "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdn.jsdelivr.net; " +
-      "img-src 'self' data: blob: https:; " +
+      `${imgSrc}; ` +
       "font-src 'self' data: https://fonts.gstatic.com; " +
       `${connectSrc}; ` +
       // AdSense serves each ad unit in a cross-origin iframe, so `frame-src`
@@ -546,12 +558,12 @@ function applySecurityHeaders(response: NextResponse, nonce: string = createNonc
       // `frame-src` directive is what keeps third parties from framing our
       // pages' content, and `frame-ancestors` below separately keeps anyone
       // from framing US.
-      // juvenilechoice.com serves the HilltopAds banner's creative iframe
-      // (src/lib/hilltop/config.ts). It is named per host for the same reason
-      // as the others: `frame-src` is what stops third parties framing OUR
-      // pages, so it stays an allow-list rather than `https:`. The banner is
-      // off by default; without this host a switched-on banner could never
-      // paint, and it would collapse instead of showing a blank box.
+      //
+      // The provider hosts are exact: juvenilechoice.com (HilltopAds),
+      // a.magsrv.com (ExoClick's loader) and acscdn.com/adcash.com (Adcash).
+      // Provider creative CDNs change per account and are NOT guessed with a
+      // wildcard; ADS_CREATIVE_HOSTS adds the exact origins the dashboard
+      // reports. Without a host the frame is refused and the banner collapses.
       //
       // adtrafficquality.google is AdSense's own traffic-quality check (ep1/
       // ep2.adtrafficquality.google). Google's ad code frames it on every ad
@@ -560,23 +572,17 @@ function applySecurityHeaders(response: NextResponse, nonce: string = createNonc
       // loses the invalid-traffic signal it uses to protect the publisher.
       //
       // widget.trustpilot.com (and widgets.trustpilot.com) serve the TrustBox
-      // iframe — the Review Collector strip on the home page and /reviews. The
-      // bootstrap script loads under `https:` in script-src, but frame-src is an
-      // explicit allow-list, so without these two hosts the element is in the
-      // page and the frame is refused: an empty grey box with a broken-document
-      // icon, which is exactly what an unlisted host looks like. Both spellings
-      // are named because Trustpilot has served the bootstrap from each.
-      `frame-src 'self' https://challenges.cloudflare.com https://*.clerk.com https://*.clerk.accounts.dev https://js.stripe.com https://checkout.stripe.com https://*.stripe.com https://*.googlesyndication.com https://*.doubleclick.net https://*.google.com https://fundingchoicesmessages.google.com https://*.adtrafficquality.google https://juvenilechoice.com https://widget.trustpilot.com https://widgets.trustpilot.com ${hilltopDevHosts}; ` +
+      // iframe — the Review Collector strip on the home page and /reviews. Both
+      // spellings are named because Trustpilot has served the bootstrap from
+      // each.
+      `${frameSrc}; ` +
       // The post-match video ad (components/ads/PostMatchVideoAd.tsx) plays a
-      // provider-supplied creative in a native <video>. With no `media-src`,
-      // media falls back to `default-src 'self'` and every ad video is blocked
-      // — the component would show its "unavailable" state and never play. The
-      // creative host is not stable (the VAST MediaFile 302s to a rotating
-      // third-party CDN), so an allow-list is not maintainable here; `https:`
-      // is the narrowest rule that still works. It permits media bytes only —
-      // script-src, frame-src and connect-src are unchanged, and the ad
-      // element refuses anything that is not https before setting <video src>.
-      "media-src 'self' blob: https:; " +
+      // provider-supplied creative in a native <video>. The exact origins are
+      // derived from the approved/configured VAST tags; ADS_MEDIA_HOSTS adds
+      // the account-specific CDN a MediaFile redirects to. There is deliberately
+      // no bare `https:` here: an unlisted media host is blocked and the player
+      // fails closed rather than letting every HTTPS origin serve video bytes.
+      `${mediaSrc}; ` +
       "worker-src 'self' blob:; " +
       "frame-ancestors 'self'; " +
       "base-uri 'self'; " +

@@ -23,8 +23,8 @@
 //   * NEXT_PUBLIC_POST_MATCH_ADS_ENABLED=false is the master kill switch: it
 //     removes the entire post-match ad surface immediately (no card, no request,
 //     no offer counted) without touching a single game or result screen.
-//   * NEXT_PUBLIC_HILLTOPS_ENABLED=false disables this provider specifically.
-// Either one being "false" means no advertising.
+//   * NEXT_PUBLIC_HILLTOPS_ENABLED=false removes this provider from the chain
+//     only. The other providers keep their own switches.
 //
 // Cadence (how OFTEN an ad may appear) lives in ./frequency.ts and is likewise
 // environment-tunable, so experiments never require a game-logic change.
@@ -39,24 +39,54 @@ export const HILLTOPS_VAST_TAG =
   "https://rude-movie.com/d/m.FUzldXGIN/vdZ-GvUr/XedmP9mu/ZGUMlSk/PLT/cV1/NQj-UfzGOJD/UytXNJzEUL2qNxTJMM4/O/Qd";
 
 /**
- * The master feature flag. True only when neither the global ad switch nor the
- * provider switch is explicitly off.
+ * THE MASTER SWITCH for the post-match video surface.
  *
  * `NEXT_PUBLIC_POST_MATCH_ADS_ENABLED=false` disables ALL post-match
- * advertising; `NEXT_PUBLIC_HILLTOPS_ENABLED=false` disables this provider.
- * Both default to enabled, and are inlined at build time like every other
- * `NEXT_PUBLIC_*` value.
+ * advertising without touching a game or result screen. It deliberately does
+ * NOT read a provider switch: with a provider chain, switching one provider
+ * off must leave the other eligible providers untouched.
  */
 export function postMatchAdsEnabled(): boolean {
-  const master = (process.env.NEXT_PUBLIC_POST_MATCH_ADS_ENABLED ?? "")
-    .trim()
-    .toLowerCase();
-  if (master === "false") return false;
+  return (
+    (process.env.NEXT_PUBLIC_POST_MATCH_ADS_ENABLED ?? "").trim().toLowerCase() !==
+    "false"
+  );
+}
 
-  const provider = (process.env.NEXT_PUBLIC_HILLTOPS_ENABLED ?? "")
-    .trim()
-    .toLowerCase();
-  return provider !== "false";
+/**
+ * Consent gate for the post-match video surface
+ * (`NEXT_PUBLIC_POST_MATCH_ADS_REQUIRES_CONSENT`).
+ *
+ * Default ON. A VAST request is a non-essential advertising request, so it may
+ * not leave the browser until the shared consent record says `accepted`. Set
+ * this to `false` only for a property that has a documented legal basis for
+ * pre-consent video advertising; the default must stay on for a CMP/TCF deploy.
+ */
+export function postMatchAdsRequireConsent(): boolean {
+  return (
+    (process.env.NEXT_PUBLIC_POST_MATCH_ADS_REQUIRES_CONSENT ?? "")
+      .trim()
+      .toLowerCase() !== "false"
+  );
+}
+
+/** The shared consent record's accepted state, and nothing looser. */
+export function postMatchConsentSatisfied(
+  consent: "accepted" | "declined" | null | undefined,
+): boolean {
+  return consent === "accepted";
+}
+
+/**
+ * HilltopAds' own switch (`NEXT_PUBLIC_HILLTOPS_ENABLED=false`). It removes only
+ * this provider from the chain; the master switch above still governs the
+ * surface.
+ */
+export function hilltopVideoProviderEnabled(): boolean {
+  return (
+    (process.env.NEXT_PUBLIC_HILLTOPS_ENABLED ?? "").trim().toLowerCase() !==
+    "false"
+  );
 }
 
 /**

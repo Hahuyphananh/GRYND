@@ -302,7 +302,7 @@ function rankStatus(rank, t) {
 
 // `adSlot` is the server-rendered <AdSlot placement="leaderboard" /> from
 // app/classement/page.jsx — above the footer, after the boards.
-export default function LeaderboardPage({ adSlot = null, hilltopSlot = null }) {
+export default function LeaderboardPage({ adSlot = null, bannerSlot = null }) {
   // ENGAGEMENT: opening the ladder is a player action, reported once.
   useEffect(() => {
     trackSolitaireEventOnce("leaderboard_viewed", "leaderboard_viewed", {
@@ -385,7 +385,7 @@ export default function LeaderboardPage({ adSlot = null, hilltopSlot = null }) {
             between two ranks and never over a tab or a player row. The
             footer slot stays at the very bottom, so the two providers are not
             stacked into one dense block. */}
-        {hilltopSlot}
+        {bannerSlot}
 
         {/* Tab bar — scrolls horizontally on mobile instead of wrapping. */}
         {/* Wrapping beats a horizontal strip here: seven tabs hidden off the

@@ -15,4 +15,10 @@
 # src/components/AdSenseScript.tsx — tests/adsense.test.mjs fails if the two
 # drift apart, because a mismatch is silent everywhere except the revenue
 # report.
+#
+# ExoClick / Adcash / HilltopAds: no seller record is added here until each
+# publisher account supplies its official ad-system domain, seller/publisher
+# ID, relationship and (where issued) certification-authority ID. Those values
+# are account-specific and are never invented. Copy the exact records from the
+# provider dashboard into this file, then re-deploy so crawlers see them.
 google.com, pub-4903728316211815, DIRECT, f08c47fec0942fa0

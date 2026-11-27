@@ -33,8 +33,12 @@ export const DEPLOY_WORKFLOW = "release.yml";
 export const DEPLOY_BRANCHES = ["main", "solitaire-first"] as const;
 export type DeployBranch = (typeof DEPLOY_BRANCHES)[number];
 
-/** The intended production branch: the Solitaire-first release. */
-export const DEFAULT_DEPLOY_BRANCH: DeployBranch = "solitaire-first";
+/**
+ * The intended production branch. Production deploys from `main`; the
+ * `solitaire-first` branch stays allowlisted only for a deliberate, manual
+ * dispatch while that narrowing is still being evaluated.
+ */
+export const DEFAULT_DEPLOY_BRANCH: DeployBranch = "main";
 
 /** The repository this dashboard belongs to; GITHUB_DEPLOY_REPO overrides it. */
 export const DEFAULT_DEPLOY_REPO = "Hahuyphananh/GRYND";

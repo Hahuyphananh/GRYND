@@ -45,6 +45,7 @@ import {
   markHilltopBannerLoaded,
   normalizeHilltopScriptUrl,
 } from "../src/lib/hilltop/config.ts";
+import { buildFrameSrc } from "../src/lib/security/csp.ts";
 import { adsEnabled } from "../src/lib/ads.ts";
 
 const read = (path) => fs.readFileSync(path, "utf8");
@@ -406,7 +407,7 @@ function allPages(dir = "src/app") {
 
 test("no gameplay route and no global layout mounts the banner", () => {
   const offenders = allPages().filter((page) => {
-    if (!/HilltopBanner/.test(read(page))) return false;
+    if (!/(?:HilltopBanner|BannerSlot)/.test(read(page))) return false;
     const route = page
       .replace(/^src\/app\//, "")
       .replace(/\/page\.(jsx?|tsx?)$/, "");
@@ -421,7 +422,10 @@ test("no gameplay route and no global layout mounts the banner", () => {
   assert.deepEqual(offenders, [], "the banner must never be mounted on gameplay");
 
   // Not global, and not inside the app shell.
-  assert.ok(!/HilltopBanner/.test(read("src/app/layout.tsx")), "never in the global layout");
+  assert.ok(
+    !/(?:HilltopBanner|BannerSlot)/.test(read("src/app/layout.tsx")),
+    "never in the global layout",
+  );
 });
 
 test("the component itself refuses a gameplay URL at runtime", () => {
@@ -444,30 +448,37 @@ const APPROVED_PLACEMENTS = {
   "src/app/profil/page.jsx": "profile",
 };
 
-test("the banner is mounted on exactly the four approved pages", () => {
+test("the unified banner is mounted on exactly the approved pages", () => {
   const mounting = allPages()
-    .filter((page) => /<HilltopBanner\b/.test(read(page)))
+    .filter((page) => /<BannerSlot\b/.test(read(page)))
     .sort();
 
   assert.deepEqual(
     mounting,
     Object.keys(APPROVED_PLACEMENTS).sort(),
-    "only the home page, the games hub, the leaderboard and the profile may carry it",
+    "only the home page, the leaderboard and the profile may carry it",
   );
 
   for (const [page, placement] of Object.entries(APPROVED_PLACEMENTS)) {
     const source = read(page);
     assert.equal(
-      (source.match(/<HilltopBanner\b/g) ?? []).length,
+      (source.match(/<BannerSlot\b/g) ?? []).length,
       1,
-      `${page} must mount exactly one banner — no per-card or repeated blocks`,
+      `${page} must mount exactly one banner slot — no per-card or repeated blocks`,
     );
     assert.match(
       source,
-      new RegExp(`<HilltopBanner placement="${placement}" />`),
+      new RegExp(`<BannerSlot placement="${placement}" />`),
       `${page} must name its own placement, not another surface's`,
     );
-    assert.match(source, /import HilltopBanner from /, `${page} must import the component`);
+    assert.match(source, /import BannerSlot from /, `${page} must import the slot`);
+
+    // The provider components may still exist for direct use/tests, but a page
+    // must never mount one alongside the chain: that would draw two creatives.
+    assert.ok(
+      !/<(?:HilltopBanner|ExoClickBanner|AdcashBanner)\b/.test(source),
+      `${page} must not mount an individual provider next to the unified slot`,
+    );
   }
 });
 
@@ -481,20 +492,20 @@ test("each approved page hands the banner to its client, which renders it once",
   for (const [page, client] of Object.entries(CLIENTS)) {
     assert.match(
       read(page),
-      /hilltopSlot=\{<HilltopBanner placement="[a-z]+" \/>\}/,
-      `${page} must pass the banner down as a server-rendered slot`,
+      /bannerSlot=\{<BannerSlot placement="[a-z]+" \/>\}/,
+      `${page} must pass the chain down as a server-rendered slot`,
     );
 
     const source = read(client);
-    assert.match(source, /hilltopSlot = null/, `${client} must accept the slot`);
+    assert.match(source, /bannerSlot = null/, `${client} must accept the slot`);
     assert.equal(
-      (source.match(/\{hilltopSlot\}/g) ?? []).length,
+      (source.match(/\{bannerSlot\}/g) ?? []).length,
       1,
       `${client} must render the slot exactly once`,
     );
 
     // Density: the banner is never stacked against the page's AdSense slot.
-    const bannerAt = source.indexOf("{hilltopSlot}");
+    const bannerAt = source.indexOf("{bannerSlot}");
     const adsenseAt = source.indexOf("{adSlot}");
     assert.ok(bannerAt > -1 && adsenseAt > -1, `${client} must render both providers`);
     assert.ok(
@@ -605,14 +616,12 @@ test("a lobby, a board, a match and an alias are all refused", () => {
 });
 
 test("the document's CSP allows the provider's creative frame", () => {
-  const frameSrc = read("src/proxy.ts").match(/frame-src [^;]+;/);
-  assert.ok(frameSrc, "an explicit frame-src directive must stay");
+  const frameSrc = buildFrameSrc({ env: {} });
   // Whole tokens, never substrings: `https://evil.test/?u=https://juvenilechoice.com`
   // must not read as an allowed host. (`https://host` also starts with
   // "https:", so this compares tokens, not substrings of the directive.)
-  const hosts = frameSrc[0]
+  const hosts = frameSrc
     .replace(/^frame-src\s+/, "")
-    .replace(/;\s*$/, "")
     .trim()
     .split(/\s+/);
   assert.ok(

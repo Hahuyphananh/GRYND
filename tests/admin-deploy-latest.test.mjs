@@ -85,9 +85,9 @@ async function rejection(promiseFactory) {
 
 // ── configuration ─────────────────────────────────────────────────────────
 
-test("deploy config: the branch allowlist is exact and solitaire-first is the default", () => {
+test("deploy config: the branch allowlist is exact and main is the default", () => {
   assert.deepEqual([...DEPLOY_BRANCHES], ["main", "solitaire-first"]);
-  assert.equal(DEFAULT_DEPLOY_BRANCH, "solitaire-first");
+  assert.equal(DEFAULT_DEPLOY_BRANCH, "main");
   assert.equal(isDeployBranch("solitaire-first"), true);
   assert.equal(isDeployBranch("main"), true);
   assert.equal(isDeployBranch("feature"), false);
@@ -216,7 +216,7 @@ test("deploy: a commit that is already live is not dispatched", async () => {
   const outcome = await deployLatest({ liveCommit: SHA, env: ENV, fetchImpl });
 
   assert.equal(outcome.status, "already-live");
-  assert.equal(outcome.branch, "solitaire-first");
+  assert.equal(outcome.branch, "main");
   assert.equal(outcome.shortCommit, SHA.slice(0, 7));
   assert.equal(calls.length, 1, "only the commit lookup should run");
   assert.ok(!calls.some((call) => call.url.endsWith("/dispatches")));

@@ -2,7 +2,7 @@ import PageClient from "./PageClient";
 import JsonLd from "../components/seo/JsonLd";
 import AdSenseScript from "../components/AdSenseScript";
 import AdSlot from "../components/AdSlot";
-import HilltopBanner from "../components/ads/HilltopBanner";
+import BannerSlot from "../components/ads/BannerSlot";
 import SocialProof from "../components/home/SocialProof";
 import { ogImageUrl, SITE_URL } from "../lib/ogImages";
 import { getReviewAggregate } from "../lib/reviews";
@@ -43,10 +43,11 @@ export default async function Page() {
         // Passed in as a child, like the ad slots, so it is rendered on the
         // server and lands inside the page's content column above the footer.
         socialProof={<SocialProof />}
-        // A second, independent provider. It carries its own server-side
-        // entitlement check and its own placement allow-list, and it renders
-        // inside the page's content column — never over the hero or a card.
-        hilltopSlot={<HilltopBanner placement="home" />}
+        // ONE banner surface for the whole page. It resolves the configured
+        // provider priority, applies switch/configuration/placement/
+        // entitlement gates on the server, and lets the browser try one
+        // provider at a time until one fills.
+        bannerSlot={<BannerSlot placement="home" />}
       />
     </>
   );

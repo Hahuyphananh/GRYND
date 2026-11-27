@@ -392,12 +392,12 @@ test("nothing is drawn until a creative is ready, and never fake media", () => {
 test("an unavailable ad is removed immediately, never left on screen", () => {
   const source = code(COMPONENT);
 
-  // Every no-ad path — a missing tag URL, a refused/failed/timed-out request,
-  // a response with no playable creative, or a creative the browser cannot
-  // play — closes the surface at once.
+  // Every no-ad path — no eligible provider, a match already served, a
+  // duplicate claim, a chain that never filled, or a creative the browser
+  // cannot play — closes the surface at once.
   assert.equal(
     (source.match(/removeNow\(\);/g) ?? []).length,
-    4,
+    5,
     "each no-ad path must remove the surface immediately",
   );
 
@@ -420,7 +420,7 @@ test("an unavailable ad is removed immediately, never left on screen", () => {
   // A served creative that fails to play is cleared the same way: the 405 is
   // reported to the network, then the surface goes — no "could not be played"
   // card is left over the result.
-  assert.match(source, /fireTracking\(ad\.errorUrls, "405"\);\s*removeNow\(\);/);
+  assert.match(source, /fireTracking\(ad\.errorUrls, "405"\);[\s\S]*?removeNow\(\);/);
 
   // Removal leaves nothing behind: the overlay only exists with a creative,
   // so there is no loading screen and no card left to close.

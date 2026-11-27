@@ -193,6 +193,29 @@ export function hilltopBannerEnabledOnServer(): boolean {
 }
 
 /**
+ * Consent gate (`NEXT_PUBLIC_HILLTOP_BANNER_REQUIRES_CONSENT`).
+ *
+ * This used to be the one provider without a consent check, which meant an
+ * enabled banner could request provider code before the visitor decided. The
+ * default is now ON: only an explicit "false" exempts it. Ad requests are
+ * non-essential, so the safe default is no request until consent is accepted.
+ */
+export function hilltopBannerRequiresConsent(): boolean {
+  return (
+    (process.env.NEXT_PUBLIC_HILLTOP_BANNER_REQUIRES_CONSENT ?? "")
+      .trim()
+      .toLowerCase() !== "false"
+  );
+}
+
+/** The shared consent record's accepted state, and nothing looser. */
+export function hilltopConsentSatisfied(
+  consent: "accepted" | "declined" | null | undefined,
+): boolean {
+  return consent === "accepted";
+}
+
+/**
  * PROVIDER ATTESTATION (`HILLTOP_BANNER_PROVIDER_ATTESTED`).
  *
  * Set only after HilltopAds confirms IN WRITING that this zone cannot enable

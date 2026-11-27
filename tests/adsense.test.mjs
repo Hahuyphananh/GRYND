@@ -38,6 +38,8 @@ import { readFileSync, readdirSync, statSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join, relative, sep } from "node:path";
 
+import { buildFrameSrc } from "../src/lib/security/csp.ts";
+
 const here = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(here, "..");
 const read = (p) => readFileSync(join(ROOT, p), "utf8");
@@ -267,23 +269,23 @@ test("each allowed page renders the tag exactly once", () => {
 });
 
 test("the CSP lets AdSense's ad frames through", () => {
-  // script-src, img-src and connect-src already allow all of `https:`, so the
-  // only directive that needs naming is frame-src — each ad unit renders in a
-  // cross-origin iframe, and Google's consent message is served from its own
-  // host. Without these the loader downloads and then silently paints nothing.
-  const frameSrc = PROXY.match(/frame-src [^;]+;/);
-  assert.ok(frameSrc, "the CSP must keep an explicit frame-src directive");
-  assert.match(frameSrc[0], /googlesyndication\.com/, "ad frames come from googlesyndication.com");
-  assert.match(frameSrc[0], /doubleclick\.net/, "ad frames come from doubleclick.net");
+  // Each ad unit renders in a cross-origin iframe and Google's consent message
+  // is served from its own host. Without these the loader downloads and then
+  // silently paints nothing. The policy is built from the shared allowlist, so
+  // this reads the directive rather than a literal in the proxy.
+  const frameSrc = buildFrameSrc({ env: {} });
+  assert.ok(frameSrc.startsWith("frame-src "), "the CSP must keep an explicit frame-src directive");
+  assert.match(frameSrc, /googlesyndication\.com/, "ad frames come from googlesyndication.com");
+  assert.match(frameSrc, /doubleclick\.net/, "ad frames come from doubleclick.net");
   assert.match(
-    frameSrc[0],
+    frameSrc,
     /fundingchoicesmessages\.google\.com/,
     "the consent message is served from fundingchoicesmessages.google.com",
   );
   // AdSense frames this on every impression to score traffic quality; without
   // it the unit still paints but every page reports a CSP violation.
   assert.match(
-    frameSrc[0],
+    frameSrc,
     /adtrafficquality\.google/,
     "AdSense's traffic-quality frame is served from adtrafficquality.google",
   );

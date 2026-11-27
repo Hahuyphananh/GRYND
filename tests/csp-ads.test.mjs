@@ -17,9 +17,13 @@ import { readFileSync } from "node:fs";
 import {
   THIRD_PARTY_SCRIPT_HOSTS,
   buildConnectSrc,
+  buildFrameSrc,
+  buildImgSrc,
+  buildMediaSrc,
   buildScriptSrc,
   clerkFrontendApiHost,
   inlineScriptHashes,
+  parseHttpsOriginAllowlist,
 } from "../src/lib/security/csp.ts";
 import { CRAZYGAMES_SDK_SRC } from "../src/lib/portal/crazygames.ts";
 import { TRUSTPILOT_SCRIPT_SRC } from "../src/lib/trustpilot.ts";
@@ -172,10 +176,117 @@ test("the proxy builds its policy from the shared allowlist", () => {
   );
 });
 
+const tokensOf = (directive, name) =>
+  new Set(directive.replace(new RegExp(`^${name}\\s+`), "").split(/\s+/));
+
+test("frame-src names exact provider hosts and never a provider wildcard", () => {
+  for (const development of [false, true]) {
+    const tokens = tokensOf(buildFrameSrc({ development, env: {} }), "frame-src");
+    for (const exact of [
+      "https://juvenilechoice.com",
+      "https://a.magsrv.com",
+      "https://acscdn.com",
+      "https://adcash.com",
+    ]) {
+      assert.ok(tokens.has(exact), `missing ${exact}`);
+    }
+    for (const wildcard of [
+      "https://*.magsrv.com",
+      "https://*.acscdn.com",
+      "https://*.adcash.com",
+    ]) {
+      assert.ok(!tokens.has(wildcard), `provider wildcard returned: ${wildcard}`);
+    }
+    assert.ok(!tokens.has("https:") && !tokens.has("http:"));
+  }
+});
+
+test("img-src names hosts instead of allowing every https origin", () => {
+  const tokens = tokensOf(buildImgSrc({ env: {} }), "img-src");
+  assert.ok(!tokens.has("https:"), "a bare https: lets any host receive image beacons");
+  assert.ok(tokens.has("'self'"));
+  assert.ok(tokens.has("data:"));
+  assert.ok(tokens.has("blob:"));
+  assert.ok(tokens.has("https://pagead2.googlesyndication.com"));
+  assert.ok(tokens.has("https://api.producthunt.com"));
+  assert.ok(tokens.has("https://juvenilechoice.com"));
+  assert.ok(tokens.has("https://a.magsrv.com"));
+  assert.ok(tokens.has("https://acscdn.com"));
+  assert.ok(!tokens.has("https://*.magsrv.com"));
+});
+
+test("media-src derives exact origins from the configured VAST tags", () => {
+  const defaults = tokensOf(buildMediaSrc({ env: {} }), "media-src");
+  assert.ok(defaults.has("https://rude-movie.com"));
+  assert.ok(
+    defaults.has("https://www.dismal-library.pro"),
+    "the approved Hilltop creative host is named",
+  );
+  assert.ok(!defaults.has("https:"), "the default policy has no scheme wildcard");
+
+  const connectDefaults = tokensOf(buildConnectSrc({ publishableKey: null, env: {} }), "connect-src");
+  assert.ok(connectDefaults.has("https://rude-movie.com"), "the VAST tag origin must be fetchable");
+
+  const tokens = tokensOf(
+    buildMediaSrc({
+      env: {
+        NEXT_PUBLIC_HILLTOPS_VAST_URL: "https://hilltop-media.example/tag.xml",
+        NEXT_PUBLIC_EXOCLICK_VAST_TAG: "https://exo-media.example/tag.xml",
+        NEXT_PUBLIC_ADCASH_VAST_TAG: "https://adcash-media.example/tag.xml",
+      },
+    }),
+    "media-src",
+  );
+  for (const exact of [
+    "https://hilltop-media.example",
+    "https://exo-media.example",
+    "https://adcash-media.example",
+  ]) {
+    assert.ok(tokens.has(exact), `missing ${exact}`);
+  }
+  assert.ok(!tokens.has("https:"), "media-src must not permit arbitrary video hosts");
+});
+
+test("an operator can add exact account-specific origins, never wildcards", () => {
+  assert.deepEqual(parseHttpsOriginAllowlist("https://cdn.example.test, https://track.example.test/"), [
+    "https://cdn.example.test",
+    "https://track.example.test",
+  ]);
+  assert.deepEqual(
+    parseHttpsOriginAllowlist(
+      "https://*.example.test http://plain.example.test https://bad.test/path https://user:pass@bad.test https://ok.test",
+    ),
+    ["https://ok.test"],
+    "wildcards, http, paths and credentials are refused",
+  );
+
+  const frame = tokensOf(
+    buildFrameSrc({ env: { ADS_CREATIVE_HOSTS: "https://cdn.example.test" } }),
+    "frame-src",
+  );
+  assert.ok(frame.has("https://cdn.example.test"));
+  assert.ok(!frame.has("https://unrelated.example.test"));
+
+  const media = tokensOf(
+    buildMediaSrc({ env: { ADS_MEDIA_HOSTS: "https://media.example.test" } }),
+    "media-src",
+  );
+  assert.ok(media.has("https://media.example.test"));
+});
+
+test("the proxy emits the named frame, image and media directives", () => {
+  const proxy = read("src/proxy.ts");
+  assert.match(proxy, /buildFrameSrc\(/);
+  assert.match(proxy, /buildImgSrc\(/);
+  assert.match(proxy, /buildMediaSrc\(/);
+  assert.doesNotMatch(proxy, /img-src 'self' data: blob: https:/);
+  assert.doesNotMatch(proxy, /media-src 'self' blob: https:/);
+});
+
 test("the ad surfaces are still rendered where the model allows them", () => {
   // Guards against 'tighten CSP' turning into 'quietly drop the ad code'.
   assert.match(read("src/app/page.jsx"), /AdSenseScript/);
-  assert.match(read("src/app/page.jsx"), /HilltopBanner/);
+  assert.match(read("src/app/page.jsx"), /BannerSlot/);
   assert.match(read("src/app/reviews/page.tsx"), /TrustpilotPanel/);
   assert.match(read("src/components/AdSenseScript.tsx"), /adsbygoogle\.js\?client=/);
 });

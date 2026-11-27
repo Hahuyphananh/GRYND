@@ -16,6 +16,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 
 import DeployBranchSelector from "./DeployBranchSelector";
+import AdEarningsPanel from "../../../components/admin/AdEarningsPanel";
 import { DEFAULT_DEPLOY_BRANCH, getDeployTargets } from "../../../lib/admin/deployLatest";
 import { buildMfaDiagnostics } from "../../../lib/admin/mfaDiagnostics";
 import {
@@ -432,6 +433,11 @@ export default async function OperationsPage() {
             </>
           )}
         </section>
+
+        {/* Publisher earnings, read from each network's reporting API by the
+            admin-only route. Client-fetched so the three outbound calls never
+            delay this page's own snapshot. */}
+        <AdEarningsPanel />
 
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <section className={CARD}>

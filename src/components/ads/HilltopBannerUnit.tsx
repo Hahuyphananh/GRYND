@@ -46,6 +46,11 @@
 import { useEffect, useRef, useState } from "react";
 
 import AdCodeMarker from "../AdCodeMarker";
+import {
+  COOKIE_CONSENT_EVENT,
+  getCookieConsent,
+  type CookieConsent,
+} from "../../lib/cookieConsent";
 import { isMatchHref } from "../../lib/matchNavigation";
 import {
   HILLTOP_CONTAINER_ID,
@@ -54,9 +59,11 @@ import {
   HILLTOP_RESERVED_HEIGHT_PX,
   HILLTOP_SNIPPET_ATTRIBUTE,
   hilltopBannerLoadedThisSession,
+  hilltopBannerRequiresConsent,
   hilltopBannerScriptUrl,
   hilltopBannerSessionStorage,
   hilltopBannerSnippet,
+  hilltopConsentSatisfied,
   hilltopRouteMatchesPlacement,
   markHilltopBannerLoaded,
   type HilltopPlacement,
@@ -72,10 +79,31 @@ function bannerPresent(host: HTMLElement): boolean {
 export default function HilltopBannerUnit({ placement }: { placement: HilltopPlacement }) {
   const hostRef = useRef<HTMLDivElement | null>(null);
   const [phase, setPhase] = useState<Phase>("idle");
+  const [consent, setConsent] = useState<CookieConsent | null>(null);
+  const [consentReady, setConsentReady] = useState(false);
+
+  useEffect(() => {
+    const apply = () => {
+      setConsent(getCookieConsent());
+      setConsentReady(true);
+    };
+    apply();
+    window.addEventListener(COOKIE_CONSENT_EVENT, apply);
+    return () => window.removeEventListener(COOKIE_CONSENT_EVENT, apply);
+  }, []);
+
+  const consentOk =
+    !hilltopBannerRequiresConsent() || hilltopConsentSatisfied(consent);
 
   useEffect(() => {
     const host = hostRef.current;
     if (!host) return undefined;
+    // No provider request before the visitor's decision. The record is read
+    // after mount (never during SSR), and an accepted record re-runs this.
+    if (!consentReady || !consentOk) {
+      setPhase("idle");
+      return undefined;
+    }
 
     // 1. ROUTE GUARD — the page viewing us must be the page this placement
     //    belongs to. This is what makes "the four approved pages, and nothing
@@ -173,7 +201,11 @@ export default function HilltopBannerUnit({ placement }: { placement: HilltopPla
       observer.disconnect();
       window.clearTimeout(timer);
     };
-  }, [placement]);
+  }, [placement, consentReady, consentOk]);
+
+  // No ad surface before consent: do not reserve space for a request that is
+  // not allowed to happen.
+  if (!consentReady || !consentOk) return null;
 
   // Already loaded earlier in this session: the provider's single instance is
   // gone with the page it lived in, so render nothing rather than an empty box.

@@ -26,6 +26,8 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import { join, relative, sep } from "node:path";
 
+import { buildFrameSrc } from "../src/lib/security/csp.ts";
+
 import {
   isMatchHref,
   resolveMatchNavigation,
@@ -177,6 +179,15 @@ test("no ad capability exists inside gameplay", () => {
     // The third provider's banner is subject to the same rule: gameplay is
     // ad-free whatever vendor the tag comes from.
     assert.ok(!/<HilltopBanner\b/.test(source), `${page} ${why} — no banner`);
+    assert.ok(!/<BannerSlot\b/.test(source), `${page} ${why} — no banner chain`);
+    assert.ok(
+      !/<ExoClickBanner\b/.test(source),
+      `${page} ${why} — no third-party banner`,
+    );
+    assert.ok(
+      !/<AdcashBanner\b/.test(source),
+      `${page} ${why} — no third-party banner`,
+    );
   };
 
   // 1. Any per-entity route (`[matchId]`, `game/[gameId]`, `table/[tableId]`,
@@ -533,14 +544,14 @@ test("the ad config exposes no Monetag surface", () => {
 });
 
 test("the CSP allows no Monetag frame host, and keeps the AdSense ones", () => {
-  const frameSrc = PROXY.match(/frame-src [^;]+;/);
-  assert.ok(frameSrc, "the CSP must keep an explicit frame-src directive");
+  const frameSrc = buildFrameSrc({ env: {} });
+  assert.ok(frameSrc.startsWith("frame-src "), "the CSP must keep an explicit frame-src directive");
   assert.ok(
-    !MONETAG_PATTERN.test(frameSrc[0]),
+    !MONETAG_PATTERN.test(frameSrc),
     "no removed provider host may linger in frame-src",
   );
   assert.ok(
-    frameSrc[0].includes("https://*.googlesyndication.com"),
+    frameSrc.includes("https://*.googlesyndication.com"),
     "the AdSense ad frames must still be allowed",
   );
 });

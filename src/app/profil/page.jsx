@@ -1,7 +1,7 @@
 import PageClient from "./PageClient";
 import AdSenseScript from "../../components/AdSenseScript";
 import AdSlot from "../../components/AdSlot";
-import HilltopBanner from "../../components/ads/HilltopBanner";
+import BannerSlot from "../../components/ads/BannerSlot";
 
 export const metadata = {
   robots: { index: false, follow: false },
@@ -21,7 +21,7 @@ export default function Page() {
       <AdSenseScript />
       <PageClient
         adSlot={<AdSlot placement="profile" />}
-        hilltopSlot={<HilltopBanner placement="profile" />}
+        bannerSlot={<BannerSlot placement="profile" />}
       />
     </>
   );

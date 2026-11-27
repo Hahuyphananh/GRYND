@@ -1,7 +1,7 @@
 import PageClient from "./PageClient";
 import AdSenseScript from "../../components/AdSenseScript";
 import AdSlot from "../../components/AdSlot";
-import HilltopBanner from "../../components/ads/HilltopBanner";
+import BannerSlot from "../../components/ads/BannerSlot";
 import { pageMetadata, DEFAULT_OG_IMAGE } from "../../lib/seo";
 
 export const metadata = pageMetadata({
@@ -17,7 +17,7 @@ export default function Page() {
       <AdSenseScript />
       <PageClient
         adSlot={<AdSlot placement="leaderboard" />}
-        hilltopSlot={<HilltopBanner placement="leaderboard" />}
+        bannerSlot={<BannerSlot placement="leaderboard" />}
       />
     </>
   );

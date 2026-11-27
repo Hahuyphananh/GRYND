@@ -76,7 +76,7 @@ const WAYS = [
   },
 ];
 
-export default function MainComponent({ adSlot = null, hilltopSlot = null, socialProof = null }) {
+export default function MainComponent({ adSlot = null, bannerSlot = null, socialProof = null }) {
   const { isLoaded, isSignedIn, signOut } = useAuth();
   const { user } = useUser();
 
@@ -502,7 +502,7 @@ export default function MainComponent({ adSlot = null, hilltopSlot = null, socia
           </p>
         </section>
 
-        {hilltopSlot}
+        {bannerSlot}
 
         {/* Trustpilot + Product Hunt. A server-rendered child (see
             src/components/home/SocialProof.tsx), so the TrustBox element and

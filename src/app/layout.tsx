@@ -161,6 +161,13 @@ export default async function RootLayout({ children }: { children: React.ReactNo
             component's note. */}
         <ConsentModeDefault nonce={nonce} />
         {adsenseAccount && <meta name="google-adsense-account" content={adsenseAccount} />}
+        {/* Adcash website-ownership verification for grynd.dedyn.io. Static by
+            design: the token is issued per property, is not a secret, and must
+            be present in the served <head> before the panel's Verify check. */}
+        <meta
+          name="6a97888e-site-verification"
+          content="2ae1ef58227babf16f2dce787efaabf6"
+        />
         <link rel="manifest" href="/manifest.json" />
         {/* Organization + WebSite nodes, emitted through the shared renderer
             (it escapes "<" so no value can close the script tag). */}

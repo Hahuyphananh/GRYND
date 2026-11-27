@@ -33,6 +33,15 @@
 //                         dead-click, web-vitals and exception modules from
 //                         the assets host at runtime (us-assets / eu-assets);
 //   HilltopAds            juvenilechoice.com (the banner snippet);
+//   ExoClick              a.magsrv.com (the loader). The creative iframe and
+//                         measurement hosts are account/zone-specific and are
+//                         NOT guessed here; an operator adds the exact origins
+//                         the dashboard reports through ADS_CREATIVE_HOSTS.
+//   Adcash                acscdn.com (the aclib library) plus adcash.com (the
+//                         display creative frame), both exact. The library URL
+//                         itself is configuration, never a default here. Any
+//                         other account-specific host is supplied through
+//                         ADS_CREATIVE_HOSTS, never a wildcard.
 //   Trustpilot            widget(s).trustpilot.com (the TrustBox bootstrap);
 //   CrazyGames            sdk.crazygames.com (the portal bridge, /play only).
 //
@@ -40,6 +49,9 @@
 // `https:`. tests/csp-ads.test.mjs fails if the wildcard returns.
 
 import { createHash } from "node:crypto";
+
+import { HILLTOPS_VAST_TAG } from "../vast/config";
+import { ADEXCHANGE_VAST_TAG } from "../vast/providers/config";
 
 /**
  * Origin allowlist for third-party script. Kept as exact CSP source
@@ -62,6 +74,9 @@ export const THIRD_PARTY_SCRIPT_HOSTS = [
   "https://fundingchoicesmessages.google.com",
   "https://*.adtrafficquality.google",
   "https://juvenilechoice.com",
+  "https://a.magsrv.com",
+  "https://acscdn.com",
+  "https://adcash.com",
   "https://widget.trustpilot.com",
   "https://widgets.trustpilot.com",
   "https://sdk.crazygames.com",
@@ -109,6 +124,9 @@ export const THIRD_PARTY_CONNECT_HOSTS = [
   "https://widget.trustpilot.com",
   "https://widgets.trustpilot.com",
   "https://juvenilechoice.com",
+  "https://a.magsrv.com",
+  "https://acscdn.com",
+  "https://adcash.com",
   "https://sdk.crazygames.com",
 ] as const;
 
@@ -192,6 +210,183 @@ function httpsOrigin(value: string | null | undefined): string | null {
 }
 
 /**
+ * Parse an operator-supplied CSP host allowlist.
+ *
+ * One or more comma/whitespace separated EXACT https origins. Paths, queries,
+ * fragments, credentials, wildcards and non-https values are refused. This is
+ * deliberately an allowlist of origins, never a scheme: a provider whose
+ * creative/tracking CDN is only known from the publisher dashboard is added
+ * here by the operator, not guessed in code.
+ */
+export function parseHttpsOriginAllowlist(
+  value: string | null | undefined,
+): string[] {
+  const origins: string[] = [];
+  const seen = new Set<string>();
+
+  for (const raw of (value ?? "").split(/[,\s]+/)) {
+    if (!raw || origins.length >= 16) continue;
+    let url: URL;
+    try {
+      url = new URL(raw);
+    } catch {
+      continue;
+    }
+    if (url.protocol !== "https:") continue;
+    if (url.hostname.includes("*")) continue;
+    if (url.username || url.password) continue;
+    if (url.pathname !== "/" || url.search || url.hash) continue;
+    if (seen.has(url.origin)) continue;
+    seen.add(url.origin);
+    origins.push(url.origin);
+  }
+
+  return origins;
+}
+
+/**
+ * Exact, code-known iframe hosts. Provider wildcards used to sit here; they are
+ * gone. Account-specific creative hosts come from ADS_CREATIVE_HOSTS.
+ */
+const FRAME_HOSTS = [
+  "https://challenges.cloudflare.com",
+  "https://*.clerk.com",
+  "https://*.clerk.accounts.dev",
+  "https://js.stripe.com",
+  "https://checkout.stripe.com",
+  "https://*.stripe.com",
+  "https://*.googlesyndication.com",
+  "https://*.doubleclick.net",
+  "https://*.google.com",
+  "https://fundingchoicesmessages.google.com",
+  "https://*.adtrafficquality.google",
+  "https://juvenilechoice.com",
+  "https://a.magsrv.com",
+  "https://acscdn.com",
+  "https://adcash.com",
+  "https://widget.trustpilot.com",
+  "https://widgets.trustpilot.com",
+] as const;
+
+/**
+ * Exact, code-known image hosts. This replaces the old `https:` blanket: app
+ * images, ad pixels and the badge image are named, and any account-specific
+ * creative pixel host is supplied through ADS_CREATIVE_HOSTS.
+ */
+const IMAGE_HOSTS = [
+  "https://pagead2.googlesyndication.com",
+  "https://*.googlesyndication.com",
+  "https://*.doubleclick.net",
+  "https://*.google.com",
+  "https://*.googleadservices.com",
+  "https://*.adtrafficquality.google",
+  "https://*.googleusercontent.com",
+  "https://img.clerk.com",
+  "https://images.clerk.dev",
+  "https://*.posthog.com",
+  "https://widget.trustpilot.com",
+  "https://widgets.trustpilot.com",
+  "https://api.producthunt.com",
+  "https://juvenilechoice.com",
+  "https://a.magsrv.com",
+  "https://acscdn.com",
+  "https://adcash.com",
+  // Observed in the approved HilltopAds VAST response (2026-11-27): the tag,
+  // impression/error beacons and click-through are on rude-movie.com; the
+  // progressive MP4/WebM files are on www.dismal-library.pro. Both are exact.
+  "https://rude-movie.com",
+  "https://www.dismal-library.pro",
+  // Ad Exchange (youradexchange.com) — the post-match tag host. Its impression
+  // and error beacons are read as images; a creative served from another CDN is
+  // added through ADS_CREATIVE_HOSTS rather than guessed here.
+  "https://youradexchange.com",
+] as const;
+
+/** Build the `frame-src` directive from exact hosts only. */
+export function buildFrameSrc({
+  development = false,
+  env = process.env,
+}: {
+  development?: boolean;
+  env?: NodeJS.ProcessEnv;
+} = {}): string {
+  const parts = [
+    "'self'",
+    ...FRAME_HOSTS,
+    ...parseHttpsOriginAllowlist(env.ADS_CREATIVE_HOSTS),
+  ];
+  if (development) parts.push("http://juvenilechoice.com");
+  return `frame-src ${parts.join(" ")}`;
+}
+
+/** Build the `img-src` directive from exact hosts only. */
+export function buildImgSrc({
+  publishableKey = process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY,
+  env = process.env,
+}: {
+  publishableKey?: string | null;
+  env?: NodeJS.ProcessEnv;
+} = {}): string {
+  const parts = [
+    "'self'",
+    "data:",
+    "blob:",
+    ...IMAGE_HOSTS,
+    ...parseHttpsOriginAllowlist(env.ADS_CREATIVE_HOSTS),
+  ];
+
+  const supabase = httpsOrigin(env.NEXT_PUBLIC_SUPABASE_URL);
+  if (supabase) parts.push(supabase);
+
+  const clerkHost = clerkFrontendApiHost(publishableKey);
+  if (clerkHost) parts.push(`https://${clerkHost}`);
+
+  return `img-src ${parts.join(" ")}`;
+}
+
+/**
+ * Build the `media-src` directive from exact hosts only.
+ *
+ * The approved Hilltop tag's origin is known from code. ExoClick/Adcash tag
+ * origins are included only when their configured tags exist. The CDN a VAST
+ * MediaFile ultimately redirects to is account-specific and cannot be derived;
+ * an operator whose creative is served elsewhere adds that exact origin through
+ * ADS_MEDIA_HOSTS. Until they do, the browser blocks the media and the player
+ * fails closed instead of allowing every https host to serve video.
+ */
+export function buildMediaSrc({
+  env = process.env,
+}: {
+  env?: NodeJS.ProcessEnv;
+} = {}): string {
+  const parts = ["'self'", "blob:", "https://www.dismal-library.pro"];
+
+  const hilltopTag = httpsOrigin(env.NEXT_PUBLIC_HILLTOPS_VAST_URL) ?? httpsOrigin(HILLTOPS_VAST_TAG);
+  if (hilltopTag) parts.push(hilltopTag);
+
+  // The Ad Exchange tag is known from code and enabled by default, so its exact
+  // origin belongs in the policy without an operator step.
+  const adexchangeTag =
+    httpsOrigin(env.NEXT_PUBLIC_ADEXCHANGE_VAST_TAG) ?? httpsOrigin(ADEXCHANGE_VAST_TAG);
+  if (adexchangeTag) parts.push(adexchangeTag);
+
+  for (const key of [
+    "NEXT_PUBLIC_EXOCLICK_VAST_TAG",
+    "NEXT_PUBLIC_ADCASH_VAST_TAG",
+  ] as const) {
+    const origin = httpsOrigin(env[key]);
+    if (origin) parts.push(origin);
+  }
+
+  parts.push(
+    ...parseHttpsOriginAllowlist(env.ADS_CREATIVE_HOSTS),
+    ...parseHttpsOriginAllowlist(env.ADS_MEDIA_HOSTS),
+  );
+
+  return `media-src ${[...new Set(parts)].join(" ")}`;
+}
+
+/**
  * Build the whole `script-src` directive (without the trailing `;`).
  *
  * `nonce` is the per-request value; when present it is the only way an inline
@@ -208,14 +403,19 @@ export function buildScriptSrc({
   extraHosts = "",
   nonce = null,
   hashes = [],
+  env = process.env,
 }: {
   development?: boolean;
   publishableKey?: string | null;
   extraHosts?: string;
   nonce?: string | null;
   hashes?: readonly string[];
+  env?: NodeJS.ProcessEnv;
 } = {}): string {
-  const hosts: string[] = [...THIRD_PARTY_SCRIPT_HOSTS];
+  const hosts: string[] = [
+    ...THIRD_PARTY_SCRIPT_HOSTS,
+    ...parseHttpsOriginAllowlist(env.ADS_CREATIVE_HOSTS),
+  ];
 
   const clerkHost = clerkFrontendApiHost(publishableKey);
   if (clerkHost) hosts.push(`https://${clerkHost}`);
@@ -256,10 +456,32 @@ export function buildConnectSrc({
   const realtime = httpsOrigin(env.NEXT_PUBLIC_SOCKET_URL);
   if (realtime) parts.push(realtime, toWebSocketOrigin(realtime));
 
+  // The post-match VAST document is fetched by the browser, so its tag origin
+  // must be a connect-src source. The approved Hilltop origin is known from
+  // code; the other two only when their configured tags exist.
+  const hilltopTag =
+    httpsOrigin(env.NEXT_PUBLIC_HILLTOPS_VAST_URL) ?? httpsOrigin(HILLTOPS_VAST_TAG);
+  if (hilltopTag) parts.push(hilltopTag);
+
+  const adexchangeTag =
+    httpsOrigin(env.NEXT_PUBLIC_ADEXCHANGE_VAST_TAG) ?? httpsOrigin(ADEXCHANGE_VAST_TAG);
+  if (adexchangeTag) parts.push(adexchangeTag);
+
+  for (const key of [
+    "NEXT_PUBLIC_EXOCLICK_VAST_TAG",
+    "NEXT_PUBLIC_ADCASH_VAST_TAG",
+  ] as const) {
+    const origin = httpsOrigin(env[key]);
+    if (origin) parts.push(origin);
+  }
+
   const clerkHost = clerkFrontendApiHost(publishableKey);
   if (clerkHost) parts.push(`https://${clerkHost}`);
 
-  parts.push(...THIRD_PARTY_CONNECT_HOSTS);
+  parts.push(
+    ...THIRD_PARTY_CONNECT_HOSTS,
+    ...parseHttpsOriginAllowlist(env.ADS_CREATIVE_HOSTS),
+  );
 
   // `next dev` talks to its own HMR socket over ws:// on the same host, and a
   // local Supabase/PostHog can be plain http. Neither exists in production.

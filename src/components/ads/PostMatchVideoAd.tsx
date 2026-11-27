@@ -81,17 +81,36 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { postMatchAdsEnabled, postMatchVastUrl } from "../../lib/vast/config";
-import { requestVastAds, sendVastBeacon } from "../../lib/vast/client";
+import {
+  COOKIE_CONSENT_EVENT,
+  getCookieConsent,
+  type CookieConsent,
+} from "../../lib/cookieConsent";
+import {
+  postMatchAdsEnabled,
+  postMatchAdsRequireConsent,
+  postMatchConsentSatisfied,
+} from "../../lib/vast/config";
+import { sendVastBeacon } from "../../lib/vast/client";
 import {
   markPostMatchAdDismissed,
   observeCompletedMatch,
 } from "../../lib/vast/frequency";
+import type { VastLinearAd, VastMediaFile } from "../../lib/vast/parse";
+import { requestVideoAd } from "../../lib/vast/providers";
+import { videoFailureOutcome, videoProviderChain } from "../../lib/vast/providers/chain";
+import { toPlayerVastAd } from "../../lib/vast/providers/normalize";
+import type { NormalizedVideoAd, VideoProviderId } from "../../lib/vast/providers/types";
+import { runAdChain } from "../../lib/ads/core/chain";
 import {
-  pickMediaFile,
-  type VastLinearAd,
-  type VastMediaFile,
-} from "../../lib/vast/parse";
+  claimOpportunity,
+  markMatchAdServed,
+  newOpportunityOwner,
+  videoOpportunityId,
+  wasMatchAdServed,
+} from "../../lib/ads/core/opportunity";
+import { outcomeMetric, reportAdEvent } from "../../lib/ads/core/report";
+import { videoChainBudgetMs } from "../../lib/ads/banners/limits";
 
 type Phase = "loading" | "ready" | "closed";
 
@@ -148,26 +167,49 @@ export default function PostMatchVideoAd({
 }: PostMatchVideoAdProps) {
   const [phase, setPhase] = useState<Phase>("loading");
   const [offerAllowed, setOfferAllowed] = useState(false);
+  const [consent, setConsent] = useState<CookieConsent | null>(null);
+  const [consentReady, setConsentReady] = useState(false);
   const [ad, setAd] = useState<VastLinearAd | null>(null);
   const [media, setMedia] = useState<VastMediaFile | null>(null);
   const [muted, setMuted] = useState(true);
+  const [servedProvider, setServedProvider] = useState<VideoProviderId>("hilltop");
   const [playedSeconds, setPlayedSeconds] = useState(0);
   const [videoDuration, setVideoDuration] = useState<number | null>(null);
 
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   const requestStartedRef = useRef(false);
+  const ownerRef = useRef(newOpportunityOwner());
+  const servedProviderRef = useRef<VideoProviderId>("hilltop");
   const impressionSentRef = useRef(false);
   const startSentRef = useRef(false);
   const completeSentRef = useRef(false);
   const skipSentRef = useRef(false);
   const endedRef = useRef(false);
 
-  // Three gates, all required: the live server flag (prop), the membership
-  // answer (prop — `ad_free` is a paid benefit, so a member sees nothing) and
-  // the build-time public flag. Any one being false means nothing renders,
-  // nothing loads and the cadence is not advanced.
-  const active = enabled && !adFree && postMatchAdsEnabled();
+  // The shared consent record. It is read after mount and on every change, so
+  // the server never guesses a visitor's choice. Nothing is requested until the
+  // record resolves.
+  useEffect(() => {
+    const apply = () => {
+      setConsent(getCookieConsent());
+      setConsentReady(true);
+    };
+    apply();
+    window.addEventListener(COOKIE_CONSENT_EVENT, apply);
+    return () => window.removeEventListener(COOKIE_CONSENT_EVENT, apply);
+  }, []);
+
+  const consentSatisfied =
+    !postMatchAdsRequireConsent() || postMatchConsentSatisfied(consent);
+
+  // Four gates, all required: the live server flag (prop), the membership
+  // answer (prop — `ad_free` is a paid benefit, so a member sees nothing), the
+  // build-time public flag and the visitor's consent. Any one being false means
+  // nothing renders, no VAST request leaves the browser and the cadence is not
+  // advanced.
+  const active =
+    enabled && !adFree && postMatchAdsEnabled() && consentSatisfied;
 
   // A host that decides navigation AFTER this component must hear "nothing will
   // play" from whichever path produces that answer. Held in a ref so a
@@ -200,8 +242,12 @@ export default function PostMatchVideoAd({
   // what makes a refresh of this result page a non-event.
   useEffect(() => {
     if (!matchEnded) return;
-    // Switched off (kill switch, membership or the build-time flag): nothing is
-    // requested and the cadence is deliberately not advanced.
+    // Wait for the stored consent answer before deciding anything. Without this
+    // guard the first render (consent still null) would be treated as a refusal
+    // and settle the result screen before the record is even read.
+    if (!consentReady) return;
+    // Switched off (kill switch, membership, build-time flag or consent):
+    // nothing is requested and the cadence is deliberately not advanced.
     if (!active) {
       onNoOfferRef.current?.();
       return;
@@ -209,7 +255,7 @@ export default function PostMatchVideoAd({
     const decision = observeCompletedMatch(matchId);
     if (decision.offer) setOfferAllowed(true);
     else onNoOfferRef.current?.();
-  }, [active, matchEnded, matchId]);
+  }, [active, consentReady, matchEnded, matchId]);
 
   const fireTracking = useCallback(
     (urls: readonly string[], errorCode?: string) => {
@@ -230,12 +276,34 @@ export default function PostMatchVideoAd({
   );
 
   // ── Activation ────────────────────────────────────────────────────────────
-  // One request per mount, no matter how many times this is invoked.
+  // One sequential chain per mount, no matter how many times this is invoked.
+  // Providers are tried in configured priority, and a fill ends the chain, so
+  // two creatives can never play for one match.
   const activate = useCallback(async () => {
     if (requestStartedRef.current) return;
 
-    const url = postMatchVastUrl();
-    if (!url) {
+    const opportunity = {
+      id: videoOpportunityId(matchId),
+      kind: "video" as const,
+      placement: "post-match",
+    };
+
+    // ROTATION: the opportunity id chooses the first provider, so two
+    // configured video providers alternate between matches instead of the
+    // configured first one taking every request. Stable for this match id.
+    const order = videoProviderChain(opportunity.id);
+    if (order.length === 0) {
+      removeNow();
+      return;
+    }
+
+    // A video already served for this match survives a refresh in this tab.
+    if (wasMatchAdServed(matchId)) {
+      removeNow();
+      return;
+    }
+
+    if (!claimOpportunity(opportunity.id, ownerRef.current)) {
       removeNow();
       return;
     }
@@ -245,35 +313,84 @@ export default function PostMatchVideoAd({
     abortRef.current = controller;
     setPhase("loading");
 
-    const result = await requestVastAds(url, { signal: controller.signal });
+    let filledAd: NormalizedVideoAd | null = null;
 
-    // Unmounted (or closed) while the request was in flight: drop the result.
+    const result = await runAdChain({
+      opportunity,
+      order,
+      totalBudgetMs: videoChainBudgetMs(),
+      signal: controller.signal,
+      attempt: async (provider, budgetMs) => {
+        reportAdEvent({
+          metric: "ad_request",
+          kind: "video",
+          provider,
+          placement: "post-match",
+          opportunityId: opportunity.id,
+        });
+
+        const response = await requestVideoAd(provider, {
+          signal: controller.signal,
+          timeoutMs: budgetMs,
+        });
+
+        if (response.ok) {
+          filledAd = response.ad;
+          return {
+            provider,
+            status: "filled" as const,
+            verifiedImpression: false,
+            reason: "inline-ad",
+          };
+        }
+
+        // `strict: false` disables discriminant narrowing, so read the failure
+        // branch explicitly (the same pattern as the VAST parser callers).
+        const failure = response as {
+          ok: false;
+          reason: Parameters<typeof videoFailureOutcome>[1];
+        };
+        return videoFailureOutcome(provider, failure.reason);
+      },
+      onOutcome: (outcome) => {
+        reportAdEvent({
+          metric: outcomeMetric(outcome.status),
+          kind: "video",
+          provider: outcome.provider,
+          placement: "post-match",
+          opportunityId: opportunity.id,
+          status: outcome.status,
+          reason: outcome.reason,
+          verifiedImpression: false,
+        });
+      },
+    });
+
+    // Unmounted (or closed) while the chain was in flight: drop the result.
     if (controller.signal.aborted) return;
 
-    // No fill, a refused response, or a timeout: there is no advertisement, so
-    // the surface leaves immediately instead of holding the screen.
-    if (!result.ok) {
+    // No provider filled: there is no advertisement, so the surface leaves
+    // immediately instead of holding the result screen.
+    const ad = filledAd;
+    if (!result.filled || !ad) {
       removeNow();
       return;
     }
 
-    const nextAd = result.ads.find((candidate) => pickMediaFile(candidate) !== null) ?? null;
-    const nextMedia = nextAd ? pickMediaFile(nextAd) : null;
-
-    if (!nextAd || !nextMedia) {
-      removeNow();
-      return;
-    }
-
-    setAd(nextAd);
-    setMedia(nextMedia);
+    setAd(toPlayerVastAd(ad));
+    setMedia(ad.media);
+    setServedProvider(ad.provider);
+    servedProviderRef.current = ad.provider;
+    markMatchAdServed(matchId);
     setPhase("ready");
-  }, [removeNow]);
+  }, [matchId, removeNow]);
 
   // THE AD STARTS ITSELF. No click, no "watch video" step: the moment the
   // cadence allows an offer the tag is requested. Muted playback is what makes
   // that possible under every browser's autoplay policy.
   useEffect(() => {
+    // `offerAllowed` is only set after the consent record resolved, so this
+    // cannot request before consent; `active` still turns a later decline off.
     if (!active || !matchEnded || !offerAllowed) return;
     void activate();
   }, [activate, active, matchEnded, offerAllowed]);
@@ -354,22 +471,47 @@ export default function PostMatchVideoAd({
     if (!impressionSentRef.current) {
       impressionSentRef.current = true;
       fireTracking(ad.impressionUrls);
+      // The ONLY verified impression: the media element actually started.
+      reportAdEvent({
+        metric: "ad_impression",
+        kind: "video",
+        provider: servedProviderRef.current,
+        placement: "post-match",
+        opportunityId: videoOpportunityId(matchId),
+        verifiedImpression: true,
+      });
     }
     if (!startSentRef.current) {
       startSentRef.current = true;
       fireTracking(trackingFor("start"));
+      reportAdEvent({
+        metric: "ad_video_start",
+        kind: "video",
+        provider: servedProviderRef.current,
+        placement: "post-match",
+        opportunityId: videoOpportunityId(matchId),
+        verifiedImpression: true,
+      });
     }
-  }, [ad, fireTracking, trackingFor]);
+  }, [ad, fireTracking, matchId, trackingFor]);
 
   const handleEnded = useCallback(() => {
     endedRef.current = true;
     if (ad && !completeSentRef.current) {
       completeSentRef.current = true;
       fireTracking(trackingFor("complete"));
+      reportAdEvent({
+        metric: "ad_video_complete",
+        kind: "video",
+        provider: servedProviderRef.current,
+        placement: "post-match",
+        opportunityId: videoOpportunityId(matchId),
+        verifiedImpression: true,
+      });
     }
     // The creative is over; hand the page back to the result.
     dismiss();
-  }, [ad, dismiss, fireTracking, trackingFor]);
+  }, [ad, dismiss, fireTracking, matchId, trackingFor]);
 
   const handleMediaError = useCallback(() => {
     if (!ad) return;
@@ -378,8 +520,18 @@ export default function PostMatchVideoAd({
     // waiting to be closed.
     // VAST error code 405: media file not supported / playback failed.
     fireTracking(ad.errorUrls, "405");
+    reportAdEvent({
+      metric: "ad_error",
+      kind: "video",
+      provider: servedProviderRef.current,
+      placement: "post-match",
+      opportunityId: videoOpportunityId(matchId),
+      status: "invalid_response",
+      reason: "media-error",
+      verifiedImpression: false,
+    });
     removeNow();
-  }, [ad, fireTracking, removeNow]);
+  }, [ad, fireTracking, matchId, removeNow]);
 
   const handleDuration = useCallback((video: HTMLVideoElement) => {
     const value = video.duration;
@@ -473,7 +625,15 @@ export default function PostMatchVideoAd({
           {muted ? "Sound off" : "Sound on"}
         </button>
         <p className="text-[11px] text-white/30">
-          Ad by HilltopAds · the match result is not affected.
+          Ad by {
+            {
+              hilltop: "HilltopAds",
+              exoclick: "ExoClick",
+              adcash: "Adcash",
+              adexchange: "Ad Exchange",
+            }[servedProvider]
+          }{" "}
+          · the match result is not affected.
         </p>
       </div>
     </div>

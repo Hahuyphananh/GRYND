@@ -39,7 +39,7 @@ import CompetitiveStreakBadge from "../../components/profil/CompetitiveStreakBad
 // GRYND PRO chat color palette (matches the neon casino aesthetic).
 // `adSlot` is the server-rendered <AdSlot placement="profile" /> from
 // app/profil/page.jsx — above the footer, never over a control.
-export default function ProfilePage({ adSlot = null, hilltopSlot = null }) {
+export default function ProfilePage({ adSlot = null, bannerSlot = null }) {
   // ENGAGEMENT: the profile screen was opened. About the SCREEN, not identity —
   // no name, email or id is attached.
   useEffect(() => {
@@ -1545,7 +1545,7 @@ shadow-[var(--shadow-raise)]"
             identity card. It is a card of its own: nothing under it is a
             control, a statistic or an account setting, and the footer slot is
             a long way below so the two providers never stack. */}
-        {hilltopSlot}
+        {bannerSlot}
 
         <ProfileAccentPanel
           accent={cosmetics.accent}
