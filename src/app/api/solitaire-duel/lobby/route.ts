@@ -36,6 +36,11 @@ import {
   sweepInactiveMatches,
 } from "../../../../lib/solitaire-duel/serverStore";
 import { MATCH_STATUS } from "../../../../lib/solitaire-duel/constants";
+import {
+  classifyOpponent,
+  opponentLabel,
+  type OpponentKind,
+} from "../../../../lib/solitaire-duel/opponentKind";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -45,6 +50,10 @@ type RecentMatch = {
   status: string;
   outcome: "win" | "loss" | "draw" | null;
   isAi: boolean;
+  isGhost: boolean;
+  /** Canonical classification — the source of `opponent`. */
+  opponentKind: OpponentKind;
+  /** Human-readable label derived from `opponentKind`. */
   opponent: string;
   createdAtMs: number | null;
   endedAtMs: number | null;
@@ -97,6 +106,9 @@ export async function GET() {
           result: solitaireDuelMatches.result,
           winnerId: solitaireDuelMatches.winnerId,
           isAi: solitaireDuelMatches.isAi,
+          isGhost: solitaireDuelMatches.isGhost,
+          player1Id: solitaireDuelMatches.player1Id,
+          player2Id: solitaireDuelMatches.player2Id,
           createdAt: solitaireDuelMatches.createdAt,
           endedAt: solitaireDuelMatches.endedAt,
         })
@@ -110,23 +122,34 @@ export async function GET() {
         .orderBy(desc(solitaireDuelMatches.createdAt))
         .limit(6);
 
-      recent = rows.map((row) => ({
-        matchId: String(row.id),
-        status: String(row.status),
-        // The winner is the server's column; the UI only names the caller's side
-        // of it. A finished row with no winner was a draw.
-        outcome: row.winnerId
-          ? row.winnerId === userId
-            ? "win"
-            : "loss"
-          : row.status === MATCH_STATUS.FINISHED
-            ? "draw"
-            : null,
-        isAi: Boolean(row.isAi),
-        opponent: row.isAi ? "GRYND AI" : "Live player",
-        createdAtMs: instantMs(row.createdAt),
-        endedAtMs: instantMs(row.endedAt),
-      }));
+      recent = rows.map((row) => {
+        // The server's own flags decide: a recorded run is never "Live player".
+        const opponentKind = classifyOpponent({
+          isAi: row.isAi,
+          isGhost: row.isGhost,
+          player1Id: row.player1Id,
+          player2Id: row.player2Id,
+        });
+        return {
+          matchId: String(row.id),
+          status: String(row.status),
+          // The winner is the server's column; the UI only names the caller's side
+          // of it. A finished row with no winner was a draw.
+          outcome: row.winnerId
+            ? row.winnerId === userId
+              ? "win"
+              : "loss"
+            : row.status === MATCH_STATUS.FINISHED
+              ? "draw"
+              : null,
+          isAi: Boolean(row.isAi),
+          isGhost: Boolean(row.isGhost),
+          opponentKind,
+          opponent: opponentLabel(opponentKind),
+          createdAtMs: instantMs(row.createdAt),
+          endedAtMs: instantMs(row.endedAt),
+        };
+      });
 
       // The caller's own friend challenge, so the lobby can report whether the
       // invited friend has taken the seat yet — and so the panel survives a

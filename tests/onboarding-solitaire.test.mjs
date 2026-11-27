@@ -230,7 +230,12 @@ test("personalization recommends a Solitaire mode, not a game", () => {
     const key = MODE_LABEL_KEYS[mode];
     assert.deepEqual(Object.keys(key ? { key } : {}), ["key"]);
     for (const locale of LOCALES) assert.notEqual(t(locale, key), key);
-    assert.equal(MODE_ROUTES[mode].startsWith("/casino/solitaire-duel"), true);
+    // Every mode points at a real route; bots live on /play/ai, the other three
+    // start in the Solitaire lobby (stale assertion fixed in Phase 4).
+    assert.equal(
+      MODE_ROUTES[mode],
+      mode === "play_vs_bots" ? "/play/ai" : "/casino/solitaire-duel",
+    );
   }
 });
 

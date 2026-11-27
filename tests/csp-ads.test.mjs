@@ -16,8 +16,10 @@ import { readFileSync } from "node:fs";
 
 import {
   THIRD_PARTY_SCRIPT_HOSTS,
+  buildConnectSrc,
   buildScriptSrc,
   clerkFrontendApiHost,
+  inlineScriptHashes,
 } from "../src/lib/security/csp.ts";
 import { CRAZYGAMES_SDK_SRC } from "../src/lib/portal/crazygames.ts";
 import { TRUSTPILOT_SCRIPT_SRC } from "../src/lib/trustpilot.ts";
@@ -42,14 +44,68 @@ test("script-src never falls back to a scheme-wide wildcard", () => {
   }
 });
 
-test("production keeps self and inline, and blocks eval", () => {
+test("script-src is nonce-based and never allows inline", () => {
   const prod = buildScriptSrc({ development: false, publishableKey: null });
   assert.match(prod, /'self'/);
-  assert.match(prod, /'unsafe-inline'/);
+  // Inline scripts must present the per-request nonce. 'unsafe-inline' is
+  // exactly what let an injected <script> run before this change.
+  assert.doesNotMatch(prod, /'unsafe-inline'/);
+  assert.doesNotMatch(prod, /'nonce-/, "no nonce supplied, none emitted");
   assert.doesNotMatch(prod, /'unsafe-eval'/, "eval is development-only");
+
+  const withNonce = buildScriptSrc({ nonce: "abc123", publishableKey: null });
+  assert.match(withNonce, /'nonce-abc123'/);
+  assert.doesNotMatch(withNonce, /'unsafe-inline'/);
 
   const dev = buildScriptSrc({ development: true, publishableKey: null });
   assert.match(dev, /'unsafe-eval'/, "next dev needs eval");
+});
+
+test("the GA inline snippet keeps a hash that matches the shipped script", () => {
+  const hashes = inlineScriptHashes();
+  assert.equal(hashes.length, 1);
+  assert.match(hashes[0], /^'sha256-[A-Za-z0-9+/=]+'$/);
+
+  // Drift guard: the hash is computed from a copy of the snippet the CLIENT
+  // component renders (it cannot carry the request nonce), so every line of
+  // that copy must still exist verbatim in the component.
+  const tag = read("src/components/GoogleAnalytics.tsx");
+  for (const line of [
+    "window.dataLayer = window.dataLayer || [];",
+    "function gtag(){dataLayer.push(arguments);}",
+    "gtag('js', new Date());",
+    "gtag('config', 'G-PFN3BBLC0E');",
+  ]) {
+    assert.ok(tag.includes(line), `GA snippet drifted: ${line}`);
+  }
+});
+
+test("connect-src is an allowlist, not a scheme wildcard", () => {
+  const directive = buildConnectSrc({ publishableKey: null, env: {} });
+  const tokens = new Set(directive.replace(/^connect-src\s+/, "").split(/\s+/));
+
+  assert.ok(!tokens.has("https:"), "a bare https: lets any injected script exfiltrate");
+  assert.ok(!tokens.has("wss:"), "a bare wss: does the same over WebSocket");
+  assert.ok(tokens.has("'self'"));
+  assert.ok(tokens.has("https://*.clerk.com"));
+  assert.ok(tokens.has("https://api.stripe.com"));
+  assert.ok(tokens.has("https://*.posthog.com"));
+});
+
+test("connect-src pins the deploy's own Supabase and realtime backends", () => {
+  const directive = buildConnectSrc({
+    publishableKey: null,
+    env: {
+      NEXT_PUBLIC_SUPABASE_URL: "https://project.supabase.co/",
+      NEXT_PUBLIC_SOCKET_URL: "https://grynd-realtime.onrender.com",
+    },
+  });
+  const tokens = new Set(directive.replace(/^connect-src\s+/, "").split(/\s+/));
+
+  assert.ok(tokens.has("https://project.supabase.co"));
+  assert.ok(tokens.has("wss://project.supabase.co"));
+  assert.ok(tokens.has("https://grynd-realtime.onrender.com"));
+  assert.ok(tokens.has("wss://grynd-realtime.onrender.com"));
 });
 
 test("every provider the app loads is explicitly allowed", () => {

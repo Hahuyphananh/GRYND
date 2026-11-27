@@ -23,6 +23,7 @@
 // somebody else's record.
 
 import { useCallback, useEffect, useState } from "react";
+import { trackSolitaireEventOnce } from "../lib/solitaire-analytics";
 import Link from "next/link";
 import { useAuth, useUser } from "@clerk/nextjs";
 import NavigationBar from "../components/navigation-bar";
@@ -108,6 +109,19 @@ export default function MainComponent({ adSlot = null, hilltopSlot = null, socia
       cancelled = true;
     };
   }, [isSignedIn, isLoaded]);
+
+  // ACQUISITION: the landing screen was reached. One event per session (the
+  // helper dedupes and enforces consent); `source` is the campaign that
+  // brought the visitor, when the URL carries one.
+  useEffect(() => {
+    let source;
+    try {
+      source = new URLSearchParams(window.location.search).get("utm_source") || undefined;
+    } catch {
+      source = undefined;
+    }
+    trackSolitaireEventOnce("landing_page_viewed", "landing_page_viewed", { source });
+  }, []);
 
   // The public Solitaire ranking preview. Works signed out — it is the same
   // board /classement renders, just five rows of it.

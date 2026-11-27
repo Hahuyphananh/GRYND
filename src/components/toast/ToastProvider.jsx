@@ -168,6 +168,10 @@ export function ToastProvider({ children }) {
       {portalReady &&
         createPortal(
           <div
+            // `aria-label` is only allowed on elements with a role; a bare div
+            // with a live region left axe reporting aria-prohibited-attr on
+            // every page. `region` is the right landmark for the stack.
+            role="region"
             aria-live="polite"
             aria-label="Notifications"
             className="pointer-events-none fixed bottom-4 right-4 z-[100] flex w-[min(92vw,360px)] flex-col gap-2"

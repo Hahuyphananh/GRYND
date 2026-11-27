@@ -4,7 +4,8 @@ import ShareLadderButton from "../../components/share/ShareLadderButton";
 
 import { isGameAvailable } from "../../lib/gameAvailability";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { trackSolitaireEventOnce } from "../../lib/solitaire-analytics";
 import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
 import { useUser } from "@clerk/nextjs";
@@ -302,6 +303,13 @@ function rankStatus(rank, t) {
 // `adSlot` is the server-rendered <AdSlot placement="leaderboard" /> from
 // app/classement/page.jsx — above the footer, after the boards.
 export default function LeaderboardPage({ adSlot = null, hilltopSlot = null }) {
+  // ENGAGEMENT: opening the ladder is a player action, reported once.
+  useEffect(() => {
+    trackSolitaireEventOnce("leaderboard_viewed", "leaderboard_viewed", {
+      surface: "classement",
+    });
+  }, []);
+
   const { t } = useTranslation();
   const { isLoaded: clerkLoaded, isSignedIn, user } = useUser();
   const [tab, setTab] = useState("all-time");

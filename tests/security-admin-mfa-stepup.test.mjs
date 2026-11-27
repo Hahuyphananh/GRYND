@@ -50,10 +50,10 @@ test("proxy: admin API handler enforces authentication", () => {
   assert.ok(adminApiStart > 0, "Admin API handler should exist");
   
   // Find the closing brace of the admin API block (approximate)
-  const adminApiEnd = proxy.indexOf("return applySecurityHeaders(NextResponse.next());", adminApiStart);
+  const adminApiEnd = proxy.indexOf("if (isPublicRoute(req)", adminApiStart);
   assert.ok(adminApiEnd > adminApiStart, "Admin API handler should have proper structure");
   
-  const adminApiBlock = proxy.substring(adminApiStart, adminApiEnd + 100);
+  const adminApiBlock = proxy.substring(adminApiStart, adminApiEnd);
   
   // Must call auth() to get userId
   assert.match(
@@ -94,8 +94,8 @@ test("proxy: admin API handler enforces admin role authorization", () => {
   const proxy = read("src/proxy.ts");
   
   const adminApiStart = proxy.indexOf('if (pathname.startsWith("/api/admin"))');
-  const adminApiEnd = proxy.indexOf("return applySecurityHeaders(NextResponse.next());", adminApiStart);
-  const adminApiBlock = proxy.substring(adminApiStart, adminApiEnd + 100);
+  const adminApiEnd = proxy.indexOf("if (isPublicRoute(req)", adminApiStart);
+  const adminApiBlock = proxy.substring(adminApiStart, adminApiEnd);
   
   // Must check admin status via isAdmin() or env var allowlist
   assert.match(
@@ -143,8 +143,8 @@ test("proxy: admin API handler enforces MFA step-up", () => {
   const proxy = read("src/proxy.ts");
   
   const adminApiStart = proxy.indexOf('if (pathname.startsWith("/api/admin"))');
-  const adminApiEnd = proxy.indexOf("return applySecurityHeaders(NextResponse.next());", adminApiStart);
-  const adminApiBlock = proxy.substring(adminApiStart, adminApiEnd + 100);
+  const adminApiEnd = proxy.indexOf("if (isPublicRoute(req)", adminApiStart);
+  const adminApiBlock = proxy.substring(adminApiStart, adminApiEnd);
   
   // Must retrieve factorVerificationAge from auth()
   assert.match(
@@ -381,14 +381,13 @@ test("proxy: admin API handler returns early with proper response", () => {
   const proxy = read("src/proxy.ts");
   
   const adminApiStart = proxy.indexOf('if (pathname.startsWith("/api/admin"))');
-  const adminApiEnd = proxy.indexOf("return applySecurityHeaders(NextResponse.next());", adminApiStart);
-  const adminApiBlock = proxy.substring(adminApiStart, adminApiEnd + 100);
+  const adminApiEnd = proxy.indexOf("if (isPublicRoute(req)", adminApiStart);
+  const adminApiBlock = proxy.substring(adminApiStart, adminApiEnd);
   
   // After all checks pass, must return NextResponse.next() to allow the request
-  assert.match(
-    adminApiBlock,
-    /return\s+applySecurityHeaders\s*\(\s*NextResponse\.next\(\)\s*\)/,
-    "Admin API handler must return NextResponse.next() after successful checks"
+  assert.ok(
+    adminApiBlock.includes("applySecurityHeaders(passThrough(), nonce)") || adminApiBlock.includes("applySecurityHeaders(NextResponse.next())"),
+"Admin API handler must return NextResponse.next() after successful checks"
   );
   
   // Must apply security headers to all responses - check the full block more carefully
@@ -437,8 +436,8 @@ test("proxy: admin API check is comprehensive and fail-closed", () => {
   const proxy = read("src/proxy.ts");
   
   const adminApiStart = proxy.indexOf('if (pathname.startsWith("/api/admin"))');
-  const adminApiEnd = proxy.indexOf("return applySecurityHeaders(NextResponse.next());", adminApiStart);
-  const adminApiBlock = proxy.substring(adminApiStart, adminApiEnd + 100);
+  const adminApiEnd = proxy.indexOf("if (isPublicRoute(req)", adminApiStart);
+  const adminApiBlock = proxy.substring(adminApiStart, adminApiEnd);
   
   // Count the number of early returns (should be 3: auth, authz, MFA)
   const returnMatches = adminApiBlock.match(/return\s+applySecurityHeaders\s*\(/g);

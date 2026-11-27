@@ -1690,7 +1690,7 @@ export const APP_TEXT_TRANSLATIONS = {
           botsNote:
             "Bots are AI practice opponents, never a stand-in for a human. Their matches never change your rating.",
           rankedNote:
-            "Ranked pairs you with real players only — matchmaking never silently falls back to AI. The tutorial is always available, whatever you choose.",
+            "Ranked matches you with a live player. If nobody is waiting, the same deal is raced against a recorded run by a real player — never an AI. The tutorial is always available, whatever you choose.",
           rankedNoteShort:
             "Ranked matches affect your existing rating. Practice and bot matches never do.",
           solo_practice: {
@@ -1707,7 +1707,7 @@ export const APP_TEXT_TRANSLATIONS = {
           },
           ranked_pvp: {
             title: "Ranked PvP",
-            desc: "Real human opponents, the same deal for both players, and the existing rating ladder.",
+            desc: "A live opponent — or a recorded run of the same deal when nobody is waiting — with the existing rating ladder on the line.",
           },
           reason: {
             solo_practice: "Start with solo: you'll learn the board at your own pace.",
@@ -1723,7 +1723,7 @@ export const APP_TEXT_TRANSLATIONS = {
           title: "Your next deal is waiting",
           lead: "Practice, take today's challenge, or face a real opponent. Whatever you pick, Glitch will be around if you need a hint.",
           recommended: "Recommended for you: {mode}",
-          cta: "Enter the Solitaire lobby",
+          cta: "See your next step",
           backToSettings: "Back to settings",
         },
         glitch: {
@@ -2359,6 +2359,10 @@ export const APP_TEXT_TRANSLATIONS = {
     },
     learn: LEARN_TRANSLATIONS.en,
     solitaireReview: SOLITAIRE_REVIEW_TRANSLATIONS.en,
+    // Solitaire Duel lobby card (the card itself may still render a literal;
+    // these are the canonical strings the platform test holds the locales to).
+    solitaire_duel_name: "Solitaire Duel",
+    solitaire_duel_desc: "A rated 1v1 race: both players get the exact same Klondike deal. Solve the whole puzzle first to win.",
     solitaireBoard: SOLITAIRE_BOARD_TRANSLATIONS.en,
     // /profil → the solitaire modes panel. It was the last block on the page
     // still written in English for every player.
@@ -4701,6 +4705,8 @@ export const APP_TEXT_TRANSLATIONS = {
     },
     learn: LEARN_TRANSLATIONS.fr,
     solitaireReview: SOLITAIRE_REVIEW_TRANSLATIONS.fr,
+    solitaire_duel_name: "Solitaire Duel",
+    solitaire_duel_desc: "Une course 1v1 classée : les deux joueurs reçoivent exactement la même donne de Klondike. Résolvez toute la patience en premier pour gagner.",
     solitaireBoard: SOLITAIRE_BOARD_TRANSLATIONS.fr,
     // /profil → les modes Solitaire. Dernier bloc de la page encore écrit en
     // anglais pour tous les joueurs.
@@ -7045,6 +7051,8 @@ export const APP_TEXT_TRANSLATIONS = {
     },
     learn: LEARN_TRANSLATIONS.es,
     solitaireReview: SOLITAIRE_REVIEW_TRANSLATIONS.es,
+    solitaire_duel_name: "Solitaire Duel",
+    solitaire_duel_desc: "Una carrera 1v1 clasificatoria: ambos jugadores reciben exactamente el mismo reparto de Klondike. Resuelve todo el solitario primero para ganar.",
     solitaireBoard: SOLITAIRE_BOARD_TRANSLATIONS.es,
     // /profil → los modos de Solitario. Último bloque de la página que seguía
     // escrito en inglés para todos los jugadores.

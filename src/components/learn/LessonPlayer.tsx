@@ -15,6 +15,7 @@ import {
   IconSparkles,
 } from "@tabler/icons-react";
 
+import { trackSolitaireEventOnce } from "../../lib/solitaire-analytics";
 import Footer from "../Footer";
 import NavigationBar from "../navigation-bar";
 import SolitaireBoard from "../solitaire-duel/SolitaireBoard";
@@ -265,6 +266,15 @@ type PendingAdvance = {
 };
 
 function Player({ lesson }: { lesson: Lesson }) {
+  // ENGAGEMENT: the academy lesson was opened. Completion is reported by the
+  // lesson's own completion handler, not by this mount.
+  useEffect(() => {
+    trackSolitaireEventOnce(`academy_lesson_started:${lesson.id}`, "academy_lesson_started", {
+      lesson_id: lesson.id,
+      surface: "academy",
+    });
+  }, [lesson.id]);
+
   const { t } = useTranslation();
   const { progress, recordStep, recordPhase, completeLesson, isProgressLoaded } =
     useLessonProgress();

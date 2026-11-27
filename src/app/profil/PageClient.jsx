@@ -30,6 +30,7 @@ import { clearSessionArtifacts } from "../../lib/security/sessionCleanup";
 import { fetchDeduped } from "../../lib/dedupeFetch";
 import { runOptimistically } from "../../lib/optimistic";
 import { useTranslation } from "../../hooks/useTranslation";
+import { trackSolitaireEventOnce } from "../../lib/solitaire-analytics";
 import PlayerLevelBadge from "../../components/player-level/PlayerLevelBadge";
 import PlayerLevelProgressCard from "../../components/player-level/PlayerLevelProgressCard";
 import DailyStreakRecordBadge from "../../components/profil/DailyStreakRecordBadge";
@@ -39,6 +40,12 @@ import CompetitiveStreakBadge from "../../components/profil/CompetitiveStreakBad
 // `adSlot` is the server-rendered <AdSlot placement="profile" /> from
 // app/profil/page.jsx — above the footer, never over a control.
 export default function ProfilePage({ adSlot = null, hilltopSlot = null }) {
+  // ENGAGEMENT: the profile screen was opened. About the SCREEN, not identity —
+  // no name, email or id is attached.
+  useEffect(() => {
+    trackSolitaireEventOnce("profile_viewed", "profile_viewed", { surface: "profil" });
+  }, []);
+
   const { isSignedIn, isLoaded, user } = useUser();
   const { signOut } = useClerk();
   // Both history panels resolve their copy through the app-wide bundle
@@ -1061,16 +1068,13 @@ export default function ProfilePage({ adSlot = null, hilltopSlot = null }) {
 
     try {
       const payload = {};
+      // Name is the ONLY field this form may change. Email and password are
+      // owned by Clerk (the API rejects them), so nothing here can attempt an
+      // unverified credential change.
       const normalizedName = String(editForm.name || "").trim();
-      const normalizedEmail = String(editForm.email || "").trim();
-      const normalizedPassword = String(editForm.password || "").trim();
       const normalizedCurrentName = String(profileInfo.name || "").trim();
-      const normalizedCurrentEmail = String(profileInfo.email || "").trim();
 
       if (normalizedName && normalizedName !== normalizedCurrentName) payload.name = normalizedName;
-      if (normalizedEmail && normalizedEmail !== normalizedCurrentEmail)
-        payload.email = normalizedEmail;
-      if (normalizedPassword) payload.password = normalizedPassword;
 
       if (!Object.keys(payload).length) {
         setEditStatus(t("profile.edit.noChanges", "No changes to save."));
@@ -2392,17 +2396,20 @@ shadow-[0_0_30px_rgba(0,229,255,0.25)] p-6"
                 className="w-full rounded-sm bg-[color:var(--bg-panel)] border border-white/10 
 focus:ring-2 focus:ring-[color:var(--focus-ring)] px-4 py-2"
               />
-              <label htmlFor="profil-edit-email" className="sr-only">
-                {t("profile.edit.email", "Email")}
-              </label>
-              <input
-                id="profil-edit-email"
-                value={editForm.email}
-                onChange={(e) => setEditForm((prev) => ({ ...prev, email: e.target.value }))}
-                placeholder={t("profile.edit.email", "Email")}
-                className="w-full rounded-sm bg-[color:var(--bg-panel)] border border-white/10 
-focus:ring-2 focus:ring-[color:var(--focus-ring)] px-4 py-2"
-              />
+              <div className="rounded-sm bg-[color:var(--bg-panel)] border border-white/10 p-3">
+                <p className="mb-1 block text-sm text-gray-200">
+                  {t("profile.edit.email", "Email")}
+                </p>
+                <p className="break-all text-sm text-gray-400">
+                  {profileInfo.email || "—"}
+                </p>
+                <p className="mt-1 text-xs text-gray-500">
+                  {t(
+                    "profile.edit.emailManaged",
+                    "Managed by your sign-in account. Changing it there updates this once it is verified.",
+                  )}
+                </p>
+              </div>
               <div className="rounded-sm bg-[color:var(--bg-panel)] border border-white/10 p-3">
                 <p className="mb-2 block text-sm text-gray-200">
                   {t("profile.edit.icon", "My Grynd Icon")}
@@ -2499,21 +2506,6 @@ focus:ring-2 focus:ring-[color:var(--focus-ring)] px-4 py-2"
                   )}
                 </p>
               </div>
-              <label htmlFor="profil-edit-password" className="sr-only">
-                {t("profile.edit.password", "New password (optional)")}
-              </label>
-              <input
-                id="profil-edit-password"
-                type="password"
-                value={editForm.password}
-                onChange={(e) => setEditForm((prev) => ({ ...prev, password: e.target.value }))}
-                placeholder={t(
-                  "profile.edit.password",
-                  "New password (optional)",
-                )}
-                className="w-full rounded-sm bg-[color:var(--bg-panel)] border border-white/10 
-focus:ring-2 focus:ring-[color:var(--focus-ring)] px-4 py-2"
-              />
             </div>
 
             {editStatus && <p className="mt-3 text-sm text-gray-200">{editStatus}</p>}

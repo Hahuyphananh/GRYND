@@ -1,24 +1,14 @@
 import crypto from "crypto";
 
-let hasWarnedMissingSecret = false;
+import { requireSecret } from "./security/requireSecret";
 
 function getEffectiveSecret() {
-  const configured =
-    process.env.GAME_SESSION_SECRET ||
-    process.env.NEXTAUTH_SECRET ||
-    process.env.CLERK_SECRET_KEY;
-
-  if (!configured) {
-    if (!hasWarnedMissingSecret) {
-      console.warn(
-        "[serverSession] No session secret configured. Using development fallback secret.",
-      );
-      hasWarnedMissingSecret = true;
-    }
-    return "development-only-insecure-secret";
-  }
-
-  return configured;
+  // No production fallback (see lib/security/requireSecret.ts): the literal
+  // default was public source, so every signed session could be forged.
+  return requireSecret(
+    ["GAME_SESSION_SECRET", "NEXTAUTH_SECRET", "CLERK_SECRET_KEY"],
+    "Server session signing",
+  );
 }
 
 function b64url(input) {

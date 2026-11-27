@@ -204,10 +204,11 @@ test("5. the existing first-game completion semantics are untouched", () => {
   for (const file of [QUESTIONNAIRE_ROUTE, DISMISS_ROUTE]) {
     assert.doesNotMatch(read(file), /firstGameCompletedAt:\s*new Date\(\)/);
   }
-  // The RPS page still calls that endpoint from a real terminal state.
-  const rps = read("src/app/casino/rps/play-ai/PageClient.tsx");
-  assert.match(rps, /api\/onboarding\/first-game-complete/);
-  assert.match(rps, /if \(tutorial\.mode !== "active" \|\| !matchOver\) return;/);
+  // The RPS tutorial page that used to call this endpoint has been retired, and
+  // no client calls it any more (only the route, schema and migration mention
+  // it). It is kept idempotent and grant-free, so even a stale client cannot
+  // re-award anything.
+  assert.doesNotMatch(route, /xpGranted: [1-9]/);
 });
 
 // ── Scenario 6: existing account, no questionnaire ────────────────────────
@@ -221,10 +222,9 @@ test("6. an existing account is never sent back through the tutorial", () => {
     }),
     false
   );
-  const lobby = read(LOBBY);
-  assert.match(lobby, /shouldShowQuestionnaireInvite\(\{/);
-  // The invitation only renders for signed-in users with the tutorial done.
-  assert.match(lobby, /onboardingCompleted: ok \? data\.onboardingCompleted === true : null/);
+  // The lobby that rendered the invitation has been retired (the /casino hub
+  // now directs to the Solitaire lobby, and nothing imports the invite helper),
+  // so there is no UI left to read here. The /sync hand-off below is the live path.
 
   // The /sync hand-off honours the same rule: a freshly-synced account that
   // already finished the tutorial goes home instead of back into onboarding.
@@ -236,9 +236,8 @@ test("6. an existing account is never sent back through the tutorial", () => {
 // ── Scenario 7: existing account clicks "Customize My GRYND" ──────────────
 
 test("7. Customize My GRYND opens the questionnaire and returns to the lobby", () => {
-  const lobby = read(LOBBY);
-  assert.match(lobby, /href="\/welcome\/questionnaire\?from=lobby"/);
-  assert.match(lobby, /onboarding\.questionnaire\.invite\.primary/);
+  // The lobby entry point was retired with the old hub; the destination rule
+  // below is what still has to hold, and the questionnaire page honours it.
   // An existing player submitting from the lobby goes to the lobby, not into
   // onboarding.
   assert.equal(questionnaireDestination({ from: "lobby", onboardingCompleted: true }), "/casino");
@@ -249,12 +248,8 @@ test("7. Customize My GRYND opens the questionnaire and returns to the lobby", (
 // ── Scenario 8: existing account clicks "Maybe Later" ─────────────────────
 
 test("8. Maybe Later dismisses server-side and never repeats", () => {
-  const lobby = read(LOBBY);
-  assert.match(lobby, /onboarding\.questionnaire\.invite\.secondary/);
-  assert.match(lobby, /onClick=\{dismissQuestionnaireInvite\}/);
-  // Session suppressor + server flag, matching the existing lobby pattern.
-  assert.match(lobby, /sessionStorage\.setItem\(QUESTIONNAIRE_INVITE_SESSION_KEY, "1"\)/);
-  assert.match(lobby, /fetch\("\/api\/onboarding\/questionnaire\/dismiss"/);
+  // The "Maybe Later" button lived on the retired lobby; the server-side
+  // dismissal it called is still there, and that is what the checks below cover.
 
   // Once dismissed it is settled for good, in both surfaces.
   const dismissed = {

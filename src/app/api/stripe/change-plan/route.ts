@@ -23,7 +23,6 @@
 // `customer.subscription.updated` delivery lands.
 
 import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@clerk/nextjs/server";
 import { eq } from "drizzle-orm";
 import { db } from "../../../../db";
 import { tokenSubscriptionPlans, tokenSubscriptions } from "../../../../db/schema";
@@ -36,12 +35,17 @@ import {
 import { isProBillingInterval } from "../../../../lib/proBilling";
 import { BASE_CURRENCY } from "../../../../lib/currency";
 import { auditLog } from "../../../../lib/security/auditLog";
+import { requireAgeVerifiedUser } from "../../../../lib/auth/requireAgeVerified";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function POST(req: NextRequest) {
-  const { userId: clerkId } = await auth();
+  // 18+ gate: this route creates or modifies a PAID subscription. An account
+  // that the age gate would refuse must not be able to start or re-price one.
+  const gate = await requireAgeVerifiedUser();
+  if (gate.response) return gate.response;
+  const clerkId = gate.userId;
   if (!clerkId) {
     return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
   }

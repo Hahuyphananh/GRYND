@@ -34,6 +34,10 @@ import LearnSubnav from "./LearnSubnav";
 import { usePracticeProgress } from "../../hooks/usePracticeProgress";
 import { useTranslation } from "../../hooks/useTranslation";
 import {
+  SOLITAIRE_EVENTS,
+  trackSolitaireEvent,
+} from "../../lib/solitaire-analytics";
+import {
   PRACTICE_DIFFICULTIES,
   applyPracticeMove,
   createPracticeSession,
@@ -212,6 +216,13 @@ export default function LearnPracticePage({
       difficulty: exercise.difficulty,
       source,
     });
+    // Measurable start: ids only, and whether the drill came from a review.
+    trackSolitaireEvent(SOLITAIRE_EVENTS.practiceDrillStarted, {
+      surface: "practice",
+      source,
+      skill_id: exercise.skillId,
+      exercise_id: exercise.id,
+    });
     setCompleted(null);
     setActive({
       exercise,
@@ -264,6 +275,14 @@ export default function LearnPracticePage({
         skillId: active.exercise.skillId,
         difficulty: active.exercise.difficulty,
         source,
+      });
+      // Paired with practice_drill_started, so completion is attributable to
+      // the same skill and to a review-originated drill.
+      trackSolitaireEvent(SOLITAIRE_EVENTS.practiceDrillCompleted, {
+        surface: "practice",
+        source,
+        skill_id: active.exercise.skillId,
+        exercise_id: active.exercise.id,
       });
       setCompleted({
         exercise: active.exercise,

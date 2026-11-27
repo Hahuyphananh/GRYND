@@ -80,9 +80,12 @@ export async function POST(req) {
   // client-side checks only pre-empt the request (src/lib/ageVerification.ts).
   const age = calculateAge(birthDate);
 
-  // Age is ASKED FOR, never used to turn a player away: an under-18 birth date is
-  // stored like any other. Only an unusable date (unparseable, in the future, or
-  // older than any living person) is refused.
+  // An under-18 birth date is STORED, not rejected here: the player completes
+  // onboarding and is then stopped by the gate (src/lib/auth/requireAgeVerified.ts
+  // and the /access-denied redirect in src/proxy.ts). Refusing it at this point
+  // would leave them stuck on /complete-profile with no explanation. Only an
+  // unusable date (unparseable, in the future, or older than any living person)
+  // is refused.
   if (age === null || age < 0 || age > MAXIMUM_AGE) {
     return new Response(
       JSON.stringify({ success: false, error: "Enter a valid date of birth" }),

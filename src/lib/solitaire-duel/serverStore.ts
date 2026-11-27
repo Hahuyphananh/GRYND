@@ -57,6 +57,9 @@ import {
   VARIANT,
   VARIANT_VERSION,
 } from "./constants";
+import { SOLITAIRE_EVENTS, onceOnServer } from "../solitaire-analytics";
+import { classifyOpponent } from "./opponentKind";
+import { captureSolitaireServerEvent } from "../analytics-server";
 import {
   AI_STAGNATION_LIMIT,
   aiMoveDelayMs,
@@ -384,6 +387,15 @@ export function matchToDto(
     // seat "GRYND AI", to offer a restart, and to send the next practice match
     // back through the practice path rather than the rated queue.
     isAi: Boolean(match.isAi),
+    // THE canonical classification, computed once on the server so the lobby,
+    // match view, result screen and analytics cannot disagree. `human` here
+    // means a live account in this match — a ghost is `recorded`.
+    opponentKind: classifyOpponent({
+      isAi: match.isAi,
+      isGhost: match.isGhost,
+      player1Id: match.player1Id,
+      player2Id: match.player2Id,
+    }),
     aiDifficulty: aiDifficultyForMatch(match),
     // The public bot identity for a practice row: name, displayed rating,
     // difficulty, copy and avatar placeholder. Null on a human duel.
@@ -2846,6 +2858,55 @@ async function finalizeMatch(
   const finalRow = updated ?? match;
 
   await settleSolitaireDuelMatch(tx, finalRow, outcome);
+
+  // ── Authoritative analytics ────────────────────────────────────────────
+  // Settlement is the FIRST moment a competitive result is true: the rows are
+  // written and the rating has been applied. Nothing client-side may report a
+  // ranked result earlier. `onceOnServer` removes a duplicate capture from a
+  // retried request on this instance; the settlement itself is idempotent in
+  // the database (terminal statuses never re-settle).
+  if (onceOnServer(`solitaire-settled:${finalRow.id}`)) {
+    const startedAtMs = instantMs(finalRow.startedAt) ?? nowMs;
+    const durationSeconds = Math.max(0, Math.round((nowMs - startedAtMs) / 1000));
+    const seats = [finalRow.player1Id, finalRow.player2Id ?? null].filter(
+      (id): id is string => Boolean(id),
+    );
+    for (const seatId of seats) {
+      const result =
+        outcome.result === RESULT.DRAW
+          ? "draw"
+          : winnerId === seatId
+            ? "win"
+            : "loss";
+      const properties = {
+        mode: finalRow.isAi ? "ai" : "ranked",
+        game_id: "solitaire-duel",
+        result,
+        // A recorded run is NOT a live human: settle-time classification uses
+        // the same canonical helper as every UI surface.
+        opponent_type: classifyOpponent({
+          isAi: finalRow.isAi,
+          isGhost: finalRow.isGhost,
+          player1Id: finalRow.player1Id,
+          player2Id: finalRow.player2Id,
+        }),
+        duration_seconds: durationSeconds,
+        surface: "server_settlement",
+      };
+      captureSolitaireServerEvent(
+        finalRow.isAi ? SOLITAIRE_EVENTS.gameCompleted : SOLITAIRE_EVENTS.rankedMatchCompleted,
+        seatId,
+        properties,
+      );
+      if (!finalRow.isAi && outcome.resolution === RESOLUTION.FORFEIT && result !== "win") {
+        captureSolitaireServerEvent(SOLITAIRE_EVENTS.rankedMatchForfeited, seatId, {
+          ...properties,
+          result: "loss",
+          surface: "server_settlement",
+        });
+      }
+    }
+  }
 
   // A free-practice match is excluded from the canonical queue entirely, so it
   // must not mirror a transition either.

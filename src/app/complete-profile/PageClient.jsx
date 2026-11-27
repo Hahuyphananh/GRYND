@@ -2,9 +2,10 @@
 
 // ── /complete-profile — age gate between sign-up and the rest of onboarding ──
 //
-// ONE job: collect the date of birth the platform asks every player for. Age is
-// recorded, never used to turn anybody away — an under-18 player signs up and
-// plays like everyone else.
+// ONE job: collect the date of birth the platform asks every player for. The
+// date is recorded, then the 18+ rule is applied by the server: an under-18
+// player is sent to /access-denied by src/proxy.ts rather than into the app.
+// (A wrong date is correctable through support — see /access-denied.)
 // The submit path is unchanged and still the only thing that matters —
 // `calculateAge` mirrors the authoritative server calculation in
 // /api/update-birthdate (src/lib/ageVerification.ts), and a pass hands the

@@ -43,6 +43,10 @@ import {
 } from "@tabler/icons-react";
 import { useTranslation } from "../../hooks/useTranslation";
 import { shouldRouteWelcomeToQuestionnaire } from "../../lib/onboardingFlow";
+import {
+  SOLITAIRE_EVENTS,
+  trackSolitaireEventOnce,
+} from "../../lib/solitaire-analytics";
 import { GAME_ROUTE } from "../../lib/solitaire-duel/constants";
 import {
   MODE_LABEL_KEYS,
@@ -84,7 +88,11 @@ export default function WelcomePageClient({ replay = false, fromQuestionnaire = 
   const contentRef = useRef<HTMLDivElement>(null);
 
   const storageKey = user?.id ? `${STEP_STORAGE_PREFIX}${user.id}` : null;
-  const doneTarget = replay ? "/settings" : LOBBY_URL;
+  // Finish on the HOME dashboard, not the lobby: the dashboard already owns the
+  // one deterministic "recommended next" card (a first Solo game, the Daily
+  // Challenge, or the Academy), so onboarding hands off to that existing
+  // system instead of inventing a second recommendation here.
+  const doneTarget = replay ? "/settings" : "/";
   const recommended = useMemo(() => recommendedMode(answers), [answers]);
 
   const clearStepStorage = useCallback(() => {
@@ -199,10 +207,24 @@ export default function WelcomePageClient({ replay = false, fromQuestionnaire = 
     if (status === "ready") contentRef.current?.focus();
   }, [step, status]);
 
-  const goTo = useCallback((next: number) => {
-    setSaveFailed(false);
-    setStep(Math.max(0, Math.min(TOTAL_STEPS - 1, next)));
-  }, []);
+  const goTo = useCallback(
+    (next: number) => {
+      setSaveFailed(false);
+      const target = Math.max(0, Math.min(TOTAL_STEPS - 1, next));
+      // Step-level drop-off was previously invisible (only "welcome started"
+      // and the tutorial mount were tracked). `onboarding_step_completed` uses
+      // the existing taxonomy and allowlisted props, once per step per session.
+      if (target > step) {
+        trackSolitaireEventOnce(
+          `onboarding-step:${step}`,
+          SOLITAIRE_EVENTS.onboardingStepCompleted,
+          { step: step + 1, steps_total: TOTAL_STEPS, surface: "welcome" },
+        );
+      }
+      setStep(target);
+    },
+    [step],
+  );
 
   const completeOnboarding = useCallback(async () => {
     const res = await fetch("/api/onboarding/complete", {

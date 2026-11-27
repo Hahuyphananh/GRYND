@@ -1,432 +1,369 @@
 {
-  "timestamp": "2026-08-27T00:49:28.854Z",
-  "baseUrl": "https://www.grynd.mywire.org/",
+  "timestamp": "2026-11-27T01:04:01.601Z",
+  "baseUrl": "https://grynd.dedyn.io/",
+  "pagesVisitedCount": 72,
   "pagesVisited": [
-    "https://www.grynd.mywire.org/",
-    "https://www.grynd.mywire.org/#main-content",
-    "https://www.grynd.mywire.org/games",
-    "https://www.grynd.mywire.org/classement",
-    "https://www.grynd.mywire.org/contact",
-    "https://www.grynd.mywire.org/reviews",
-    "https://www.grynd.mywire.org/faq",
-    "https://www.grynd.mywire.org/sign-up",
-    "https://www.grynd.mywire.org/sign-in",
-    "https://www.grynd.mywire.org/games/roulette",
-    "https://www.grynd.mywire.org/games/blackjack",
-    "https://www.grynd.mywire.org/games/poker/multi",
-    "https://www.grynd.mywire.org/games/plinko",
-    "https://www.grynd.mywire.org/profil",
-    "https://www.grynd.mywire.org/games/neon-flush",
-    "https://www.grynd.mywire.org/games/chess",
-    "https://www.grynd.mywire.org/games/pool-masters",
-    "https://www.grynd.mywire.org/games/dice-flush",
-    "https://www.grynd.mywire.org/games/precision",
-    "https://www.grynd.mywire.org/security-policy",
-    "https://www.grynd.mywire.org/privacy-policy",
-    "https://www.grynd.mywire.org/terms",
-    "https://www.grynd.mywire.org/fair-play",
-    "https://www.grynd.mywire.org/accessibility"
+    "https://grynd.dedyn.io/",
+    "https://grynd.dedyn.io/casino",
+    "https://grynd.dedyn.io/casino/chess",
+    "https://grynd.dedyn.io/casino/chess/ai",
+    "https://grynd.dedyn.io/casino/keno",
+    "https://grynd.dedyn.io/casino/keno-pvp",
+    "https://grynd.dedyn.io/casino/rps",
+    "https://grynd.dedyn.io/casino/uno",
+    "https://grynd.dedyn.io/casino/odds",
+    "https://grynd.dedyn.io/casino/precision",
+    "https://grynd.dedyn.io/casino/mines-pvp",
+    "https://grynd.dedyn.io/casino/memory-grid",
+    "https://grynd.dedyn.io/casino/lane-runner",
+    "https://grynd.dedyn.io/casino/lane-runner/history",
+    "https://grynd.dedyn.io/casino/hex-duel",
+    "https://grynd.dedyn.io/faq",
+    "https://grynd.dedyn.io/contact",
+    "https://grynd.dedyn.io/profil",
+    "https://grynd.dedyn.io/classement",
+    "https://grynd.dedyn.io/fair-play",
+    "https://grynd.dedyn.io/accessibility",
+    "https://grynd.dedyn.io/privacy-policy",
+    "https://grynd.dedyn.io/security-policy",
+    "https://grynd.dedyn.io/terms",
+    "https://grynd.dedyn.io/about",
+    "https://grynd.dedyn.io/access-denied",
+    "https://grynd.dedyn.io/account-deletion",
+    "https://grynd.dedyn.io/admin",
+    "https://grynd.dedyn.io/admin/mfa-required",
+    "https://grynd.dedyn.io/admin/operations",
+    "https://grynd.dedyn.io/admin/operations/logs",
+    "https://grynd.dedyn.io/casino/solitaire-duel",
+    "https://grynd.dedyn.io/casino/solitaire-duel/play-ai",
+    "https://grynd.dedyn.io/complete-profile",
+    "https://grynd.dedyn.io/cookie-policy",
+    "https://grynd.dedyn.io/daily",
+    "https://grynd.dedyn.io/game-unavailable",
+    "https://grynd.dedyn.io/games",
+    "https://grynd.dedyn.io/guides",
+    "https://grynd.dedyn.io/learn",
+    "https://grynd.dedyn.io/learn/coaching",
+    "https://grynd.dedyn.io/learn/courses",
+    "https://grynd.dedyn.io/learn/practice",
+    "https://grynd.dedyn.io/learn/videos",
+    "https://grynd.dedyn.io/maintenance",
+    "https://grynd.dedyn.io/mfa-required",
+    "https://grynd.dedyn.io/play",
+    "https://grynd.dedyn.io/play/ai",
+    "https://grynd.dedyn.io/play/daily",
+    "https://grynd.dedyn.io/play/daily-puzzle",
+    "https://grynd.dedyn.io/play/daily-puzzle/play",
+    "https://grynd.dedyn.io/play/puzzle-ai",
+    "https://grynd.dedyn.io/play/puzzle-ranked",
+    "https://grynd.dedyn.io/play/ranked",
+    "https://grynd.dedyn.io/play/solo",
+    "https://grynd.dedyn.io/play/strategic-puzzles",
+    "https://grynd.dedyn.io/play/unlimited-puzzles",
+    "https://grynd.dedyn.io/play/unlimited-puzzles/play",
+    "https://grynd.dedyn.io/reviews",
+    "https://grynd.dedyn.io/rewards",
+    "https://grynd.dedyn.io/rooms/join",
+    "https://grynd.dedyn.io/sentry-example-page",
+    "https://grynd.dedyn.io/settings",
+    "https://grynd.dedyn.io/share/win",
+    "https://grynd.dedyn.io/solitaire",
+    "https://grynd.dedyn.io/stats",
+    "https://grynd.dedyn.io/sync",
+    "https://grynd.dedyn.io/thank-you",
+    "https://grynd.dedyn.io/upgrade-pro",
+    "https://grynd.dedyn.io/welcome",
+    "https://grynd.dedyn.io/welcome/claim",
+    "https://grynd.dedyn.io/welcome/questionnaire"
   ],
+  "discoveredStaticRoutes": [
+    "/",
+    "/about",
+    "/access-denied",
+    "/accessibility",
+    "/account-deletion",
+    "/admin",
+    "/admin/mfa-required",
+    "/admin/operations",
+    "/admin/operations/logs",
+    "/casino",
+    "/casino/solitaire-duel",
+    "/casino/solitaire-duel/play-ai",
+    "/classement",
+    "/complete-profile",
+    "/contact",
+    "/cookie-policy",
+    "/daily",
+    "/fair-play",
+    "/faq",
+    "/game-unavailable",
+    "/games",
+    "/guides",
+    "/learn",
+    "/learn/coaching",
+    "/learn/courses",
+    "/learn/practice",
+    "/learn/videos",
+    "/maintenance",
+    "/mfa-required",
+    "/play",
+    "/play/ai",
+    "/play/daily",
+    "/play/daily-puzzle",
+    "/play/daily-puzzle/play",
+    "/play/puzzle-ai",
+    "/play/puzzle-ranked",
+    "/play/ranked",
+    "/play/solo",
+    "/play/strategic-puzzles",
+    "/play/unlimited-puzzles",
+    "/play/unlimited-puzzles/play",
+    "/privacy-policy",
+    "/profil",
+    "/reviews",
+    "/rewards",
+    "/rooms/join",
+    "/security-policy",
+    "/sentry-example-page",
+    "/settings",
+    "/share/win",
+    "/solitaire",
+    "/stats",
+    "/sync",
+    "/terms",
+    "/thank-you",
+    "/upgrade-pro",
+    "/welcome",
+    "/welcome/claim",
+    "/welcome/questionnaire"
+  ],
+  "criticalRoutes": [
+    "/",
+    "/casino",
+    "/casino/chess",
+    "/casino/chess/ai",
+    "/casino/keno",
+    "/casino/keno-pvp",
+    "/casino/rps",
+    "/casino/uno",
+    "/casino/odds",
+    "/casino/precision",
+    "/casino/mines-pvp",
+    "/casino/memory-grid",
+    "/casino/lane-runner",
+    "/casino/lane-runner/history",
+    "/casino/hex-duel",
+    "/faq",
+    "/contact",
+    "/profil",
+    "/classement",
+    "/fair-play",
+    "/accessibility",
+    "/privacy-policy",
+    "/security-policy",
+    "/terms"
+  ],
+  "crawlLimit": 150,
   "errors": [
     {
-      "type": "console",
-      "message": "Access to script at 'https://embed.tawk.to/69f1165f4648951c37a18238/1jnarupqq' from origin 'https://www.grynd.mywire.org' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.",
-      "url": "https://www.grynd.mywire.org/"
-    },
-    {
-      "type": "requestfailed",
-      "url": "https://embed.tawk.to/69f1165f4648951c37a18238/1jnarupqq",
-      "error": "net::ERR_FAILED"
+      "type": "http",
+      "status": 404,
+      "url": "https://www.grynd.dedyn.io/games/chess"
     },
     {
       "type": "console",
-      "message": "Failed to load resource: net::ERR_FAILED",
-      "url": "https://www.grynd.mywire.org/"
+      "message": "Failed to load resource: the server responded with a status of 404 ()",
+      "url": "https://www.grynd.dedyn.io/games/chess"
     },
     {
-      "type": "console",
-      "message": "Access to script at 'https://embed.tawk.to/69f1165f4648951c37a18238/1jnarupqq' from origin 'https://www.grynd.mywire.org' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.",
-      "url": "https://www.grynd.mywire.org/games"
-    },
-    {
-      "type": "requestfailed",
-      "url": "https://embed.tawk.to/69f1165f4648951c37a18238/1jnarupqq",
-      "error": "net::ERR_FAILED"
-    },
-    {
-      "type": "console",
-      "message": "Failed to load resource: net::ERR_FAILED",
-      "url": "https://www.grynd.mywire.org/games"
-    },
-    {
-      "type": "console",
-      "message": "Access to script at 'https://embed.tawk.to/69f1165f4648951c37a18238/1jnarupqq' from origin 'https://www.grynd.mywire.org' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.",
-      "url": "https://www.grynd.mywire.org/classement"
-    },
-    {
-      "type": "requestfailed",
-      "url": "https://embed.tawk.to/69f1165f4648951c37a18238/1jnarupqq",
-      "error": "net::ERR_FAILED"
-    },
-    {
-      "type": "console",
-      "message": "Failed to load resource: net::ERR_FAILED",
-      "url": "https://www.grynd.mywire.org/classement"
+      "type": "navigation",
+      "status": 404,
+      "url": "https://grynd.dedyn.io/casino/chess"
     },
     {
       "type": "http",
-      "status": 401,
-      "url": "https://www.grynd.mywire.org/api/user/stats"
+      "status": 404,
+      "url": "https://www.grynd.dedyn.io/games/keno"
+    },
+    {
+      "type": "console",
+      "message": "Failed to load resource: the server responded with a status of 404 ()",
+      "url": "https://www.grynd.dedyn.io/games/keno"
+    },
+    {
+      "type": "navigation",
+      "status": 404,
+      "url": "https://grynd.dedyn.io/casino/keno"
+    },
+    {
+      "type": "http",
+      "status": 404,
+      "url": "https://www.grynd.dedyn.io/games/keno-pvp"
+    },
+    {
+      "type": "console",
+      "message": "Failed to load resource: the server responded with a status of 404 ()",
+      "url": "https://www.grynd.dedyn.io/games/keno-pvp"
+    },
+    {
+      "type": "navigation",
+      "status": 404,
+      "url": "https://grynd.dedyn.io/casino/keno-pvp"
+    },
+    {
+      "type": "http",
+      "status": 404,
+      "url": "https://www.grynd.dedyn.io/games/rps"
+    },
+    {
+      "type": "console",
+      "message": "Failed to load resource: the server responded with a status of 404 ()",
+      "url": "https://www.grynd.dedyn.io/games/rps"
+    },
+    {
+      "type": "navigation",
+      "status": 404,
+      "url": "https://grynd.dedyn.io/casino/rps"
+    },
+    {
+      "type": "http",
+      "status": 404,
+      "url": "https://www.grynd.dedyn.io/games/uno"
+    },
+    {
+      "type": "console",
+      "message": "Failed to load resource: the server responded with a status of 404 ()",
+      "url": "https://www.grynd.dedyn.io/games/uno"
+    },
+    {
+      "type": "navigation",
+      "status": 404,
+      "url": "https://grynd.dedyn.io/casino/uno"
+    },
+    {
+      "type": "http",
+      "status": 404,
+      "url": "https://www.grynd.dedyn.io/games/odds"
+    },
+    {
+      "type": "console",
+      "message": "Failed to load resource: the server responded with a status of 404 ()",
+      "url": "https://www.grynd.dedyn.io/games/odds"
+    },
+    {
+      "type": "navigation",
+      "status": 404,
+      "url": "https://grynd.dedyn.io/casino/odds"
+    },
+    {
+      "type": "http",
+      "status": 404,
+      "url": "https://www.grynd.dedyn.io/games/precision"
+    },
+    {
+      "type": "console",
+      "message": "Failed to load resource: the server responded with a status of 404 ()",
+      "url": "https://www.grynd.dedyn.io/games/precision"
+    },
+    {
+      "type": "navigation",
+      "status": 404,
+      "url": "https://grynd.dedyn.io/casino/precision"
+    },
+    {
+      "type": "http",
+      "status": 404,
+      "url": "https://www.grynd.dedyn.io/games/mines-pvp"
+    },
+    {
+      "type": "console",
+      "message": "Failed to load resource: the server responded with a status of 404 ()",
+      "url": "https://www.grynd.dedyn.io/games/mines-pvp"
+    },
+    {
+      "type": "navigation",
+      "status": 404,
+      "url": "https://grynd.dedyn.io/casino/mines-pvp"
+    },
+    {
+      "type": "http",
+      "status": 404,
+      "url": "https://www.grynd.dedyn.io/games/memory-grid"
+    },
+    {
+      "type": "console",
+      "message": "Failed to load resource: the server responded with a status of 404 ()",
+      "url": "https://www.grynd.dedyn.io/games/memory-grid"
+    },
+    {
+      "type": "navigation",
+      "status": 404,
+      "url": "https://grynd.dedyn.io/casino/memory-grid"
+    },
+    {
+      "type": "http",
+      "status": 404,
+      "url": "https://www.grynd.dedyn.io/games/lane-runner"
+    },
+    {
+      "type": "console",
+      "message": "Failed to load resource: the server responded with a status of 404 ()",
+      "url": "https://www.grynd.dedyn.io/games/lane-runner"
+    },
+    {
+      "type": "navigation",
+      "status": 404,
+      "url": "https://grynd.dedyn.io/casino/lane-runner"
+    },
+    {
+      "type": "http",
+      "status": 404,
+      "url": "https://www.grynd.dedyn.io/games/hex-duel"
+    },
+    {
+      "type": "console",
+      "message": "Failed to load resource: the server responded with a status of 404 ()",
+      "url": "https://www.grynd.dedyn.io/games/hex-duel"
+    },
+    {
+      "type": "navigation",
+      "status": 404,
+      "url": "https://grynd.dedyn.io/casino/hex-duel"
     },
     {
       "type": "console",
       "message": "Failed to load resource: the server responded with a status of 401 ()",
-      "url": "https://www.grynd.mywire.org/classement"
-    },
-    {
-      "type": "console",
-      "message": "Access to script at 'https://embed.tawk.to/69f1165f4648951c37a18238/1jnarupqq' from origin 'https://www.grynd.mywire.org' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.",
-      "url": "https://www.grynd.mywire.org/contact"
-    },
-    {
-      "type": "requestfailed",
-      "url": "https://embed.tawk.to/69f1165f4648951c37a18238/1jnarupqq",
-      "error": "net::ERR_FAILED"
-    },
-    {
-      "type": "console",
-      "message": "Failed to load resource: net::ERR_FAILED",
-      "url": "https://www.grynd.mywire.org/contact"
-    },
-    {
-      "type": "console",
-      "message": "Access to script at 'https://embed.tawk.to/69f1165f4648951c37a18238/1jnarupqq' from origin 'https://www.grynd.mywire.org' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.",
-      "url": "https://www.grynd.mywire.org/reviews"
-    },
-    {
-      "type": "requestfailed",
-      "url": "https://embed.tawk.to/69f1165f4648951c37a18238/1jnarupqq",
-      "error": "net::ERR_FAILED"
-    },
-    {
-      "type": "console",
-      "message": "Failed to load resource: net::ERR_FAILED",
-      "url": "https://www.grynd.mywire.org/reviews"
-    },
-    {
-      "type": "console",
-      "message": "Access to script at 'https://embed.tawk.to/69f1165f4648951c37a18238/1jnarupqq' from origin 'https://www.grynd.mywire.org' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.",
-      "url": "https://www.grynd.mywire.org/faq"
-    },
-    {
-      "type": "requestfailed",
-      "url": "https://embed.tawk.to/69f1165f4648951c37a18238/1jnarupqq",
-      "error": "net::ERR_FAILED"
-    },
-    {
-      "type": "console",
-      "message": "Failed to load resource: net::ERR_FAILED",
-      "url": "https://www.grynd.mywire.org/faq"
-    },
-    {
-      "type": "console",
-      "message": "Access to script at 'https://embed.tawk.to/69f1165f4648951c37a18238/1jnarupqq' from origin 'https://www.grynd.mywire.org' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.",
-      "url": "https://www.grynd.mywire.org/sign-up"
-    },
-    {
-      "type": "requestfailed",
-      "url": "https://embed.tawk.to/69f1165f4648951c37a18238/1jnarupqq",
-      "error": "net::ERR_FAILED"
-    },
-    {
-      "type": "console",
-      "message": "Failed to load resource: net::ERR_FAILED",
-      "url": "https://www.grynd.mywire.org/sign-up"
-    },
-    {
-      "type": "console",
-      "message": "Access to script at 'https://embed.tawk.to/69f1165f4648951c37a18238/1jnarupqq' from origin 'https://www.grynd.mywire.org' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.",
-      "url": "https://www.grynd.mywire.org/sign-in"
-    },
-    {
-      "type": "requestfailed",
-      "url": "https://embed.tawk.to/69f1165f4648951c37a18238/1jnarupqq",
-      "error": "net::ERR_FAILED"
-    },
-    {
-      "type": "console",
-      "message": "Failed to load resource: net::ERR_FAILED",
-      "url": "https://www.grynd.mywire.org/sign-in"
-    },
-    {
-      "type": "console",
-      "message": "Access to script at 'https://embed.tawk.to/69f1165f4648951c37a18238/1jnarupqq' from origin 'https://www.grynd.mywire.org' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.",
-      "url": "https://www.grynd.mywire.org/games/roulette"
-    },
-    {
-      "type": "requestfailed",
-      "url": "https://embed.tawk.to/69f1165f4648951c37a18238/1jnarupqq",
-      "error": "net::ERR_FAILED"
-    },
-    {
-      "type": "console",
-      "message": "Failed to load resource: net::ERR_FAILED",
-      "url": "https://www.grynd.mywire.org/games/roulette"
-    },
-    {
-      "type": "console",
-      "message": "Access to script at 'https://embed.tawk.to/69f1165f4648951c37a18238/1jnarupqq' from origin 'https://www.grynd.mywire.org' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.",
-      "url": "https://www.grynd.mywire.org/games/blackjack"
-    },
-    {
-      "type": "requestfailed",
-      "url": "https://embed.tawk.to/69f1165f4648951c37a18238/1jnarupqq",
-      "error": "net::ERR_FAILED"
-    },
-    {
-      "type": "console",
-      "message": "Failed to load resource: net::ERR_FAILED",
-      "url": "https://www.grynd.mywire.org/games/blackjack"
-    },
-    {
-      "type": "console",
-      "message": "Access to script at 'https://embed.tawk.to/69f1165f4648951c37a18238/1jnarupqq' from origin 'https://www.grynd.mywire.org' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.",
-      "url": "https://www.grynd.mywire.org/games/poker/multi"
-    },
-    {
-      "type": "requestfailed",
-      "url": "https://embed.tawk.to/69f1165f4648951c37a18238/1jnarupqq",
-      "error": "net::ERR_FAILED"
-    },
-    {
-      "type": "console",
-      "message": "Failed to load resource: net::ERR_FAILED",
-      "url": "https://www.grynd.mywire.org/games/poker/multi"
-    },
-    {
-      "type": "http",
-      "status": 401,
-      "url": "https://www.grynd.mywire.org/api/get-user-tokens"
+      "url": "https://www.grynd.dedyn.io/profil"
     },
     {
       "type": "console",
       "message": "Failed to load resource: the server responded with a status of 401 ()",
-      "url": "https://www.grynd.mywire.org/games/poker/multi"
-    },
-    {
-      "type": "console",
-      "message": "Failed to fetch tokens: Unauthorized",
-      "url": "https://www.grynd.mywire.org/games/poker/multi"
-    },
-    {
-      "type": "console",
-      "message": "Access to script at 'https://embed.tawk.to/69f1165f4648951c37a18238/1jnarupqq' from origin 'https://www.grynd.mywire.org' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.",
-      "url": "https://www.grynd.mywire.org/games/plinko"
-    },
-    {
-      "type": "requestfailed",
-      "url": "https://embed.tawk.to/69f1165f4648951c37a18238/1jnarupqq",
-      "error": "net::ERR_FAILED"
-    },
-    {
-      "type": "console",
-      "message": "Failed to load resource: net::ERR_FAILED",
-      "url": "https://www.grynd.mywire.org/games/plinko"
-    },
-    {
-      "type": "console",
-      "message": "Access to script at 'https://embed.tawk.to/69f1165f4648951c37a18238/1jnarupqq' from origin 'https://www.grynd.mywire.org' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.",
-      "url": "https://www.grynd.mywire.org/profil"
-    },
-    {
-      "type": "requestfailed",
-      "url": "https://embed.tawk.to/69f1165f4648951c37a18238/1jnarupqq",
-      "error": "net::ERR_FAILED"
-    },
-    {
-      "type": "console",
-      "message": "Failed to load resource: net::ERR_FAILED",
-      "url": "https://www.grynd.mywire.org/profil"
-    },
-    {
-      "type": "console",
-      "message": "Access to script at 'https://embed.tawk.to/69f1165f4648951c37a18238/1jnarupqq' from origin 'https://www.grynd.mywire.org' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.",
-      "url": "https://www.grynd.mywire.org/games/neon-flush"
-    },
-    {
-      "type": "requestfailed",
-      "url": "https://embed.tawk.to/69f1165f4648951c37a18238/1jnarupqq",
-      "error": "net::ERR_FAILED"
-    },
-    {
-      "type": "console",
-      "message": "Failed to load resource: net::ERR_FAILED",
-      "url": "https://www.grynd.mywire.org/games/neon-flush"
-    },
-    {
-      "type": "http",
-      "status": 401,
-      "url": "https://www.grynd.mywire.org/api/uno/available-games"
+      "url": "https://www.grynd.dedyn.io/play/puzzle-ranked"
     },
     {
       "type": "console",
       "message": "Failed to load resource: the server responded with a status of 401 ()",
-      "url": "https://www.grynd.mywire.org/games/neon-flush"
-    },
-    {
-      "type": "http",
-      "status": 401,
-      "url": "https://www.grynd.mywire.org/api/get-user-tokens"
+      "url": "https://www.grynd.dedyn.io/play/ranked"
     },
     {
       "type": "console",
       "message": "Failed to load resource: the server responded with a status of 401 ()",
-      "url": "https://www.grynd.mywire.org/games/neon-flush"
-    },
-    {
-      "type": "console",
-      "message": "Access to script at 'https://embed.tawk.to/69f1165f4648951c37a18238/1jnarupqq' from origin 'https://www.grynd.mywire.org' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.",
-      "url": "https://www.grynd.mywire.org/games/chess"
-    },
-    {
-      "type": "requestfailed",
-      "url": "https://embed.tawk.to/69f1165f4648951c37a18238/1jnarupqq",
-      "error": "net::ERR_FAILED"
-    },
-    {
-      "type": "console",
-      "message": "Failed to load resource: net::ERR_FAILED",
-      "url": "https://www.grynd.mywire.org/games/chess"
+      "url": "https://www.grynd.dedyn.io/solitaire"
     },
     {
       "type": "http",
-      "status": 401,
-      "url": "https://www.grynd.mywire.org/api/get-user-tokens"
+      "status": 404,
+      "url": "https://www.grynd.dedyn.io/sentry-example-page"
     },
     {
       "type": "console",
-      "message": "Failed to load resource: the server responded with a status of 401 ()",
-      "url": "https://www.grynd.mywire.org/games/chess"
+      "message": "Failed to load resource: the server responded with a status of 404 ()",
+      "url": "https://www.grynd.dedyn.io/sentry-example-page"
     },
     {
-      "type": "console",
-      "message": "Access to script at 'https://embed.tawk.to/69f1165f4648951c37a18238/1jnarupqq' from origin 'https://www.grynd.mywire.org' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.",
-      "url": "https://www.grynd.mywire.org/games/pool-masters"
-    },
-    {
-      "type": "requestfailed",
-      "url": "https://embed.tawk.to/69f1165f4648951c37a18238/1jnarupqq",
-      "error": "net::ERR_FAILED"
-    },
-    {
-      "type": "console",
-      "message": "Failed to load resource: net::ERR_FAILED",
-      "url": "https://www.grynd.mywire.org/games/pool-masters"
-    },
-    {
-      "type": "console",
-      "message": "Access to script at 'https://embed.tawk.to/69f1165f4648951c37a18238/1jnarupqq' from origin 'https://www.grynd.mywire.org' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.",
-      "url": "https://www.grynd.mywire.org/games/dice-flush"
-    },
-    {
-      "type": "requestfailed",
-      "url": "https://embed.tawk.to/69f1165f4648951c37a18238/1jnarupqq",
-      "error": "net::ERR_FAILED"
-    },
-    {
-      "type": "console",
-      "message": "Failed to load resource: net::ERR_FAILED",
-      "url": "https://www.grynd.mywire.org/games/dice-flush"
-    },
-    {
-      "type": "console",
-      "message": "Access to script at 'https://embed.tawk.to/69f1165f4648951c37a18238/1jnarupqq' from origin 'https://www.grynd.mywire.org' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.",
-      "url": "https://www.grynd.mywire.org/games/precision"
-    },
-    {
-      "type": "requestfailed",
-      "url": "https://embed.tawk.to/69f1165f4648951c37a18238/1jnarupqq",
-      "error": "net::ERR_FAILED"
-    },
-    {
-      "type": "console",
-      "message": "Failed to load resource: net::ERR_FAILED",
-      "url": "https://www.grynd.mywire.org/games/precision"
-    },
-    {
-      "type": "console",
-      "message": "Access to script at 'https://embed.tawk.to/69f1165f4648951c37a18238/1jnarupqq' from origin 'https://www.grynd.mywire.org' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.",
-      "url": "https://www.grynd.mywire.org/security-policy"
-    },
-    {
-      "type": "requestfailed",
-      "url": "https://embed.tawk.to/69f1165f4648951c37a18238/1jnarupqq",
-      "error": "net::ERR_FAILED"
-    },
-    {
-      "type": "console",
-      "message": "Failed to load resource: net::ERR_FAILED",
-      "url": "https://www.grynd.mywire.org/security-policy"
-    },
-    {
-      "type": "console",
-      "message": "Access to script at 'https://embed.tawk.to/69f1165f4648951c37a18238/1jnarupqq' from origin 'https://www.grynd.mywire.org' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.",
-      "url": "https://www.grynd.mywire.org/privacy-policy"
-    },
-    {
-      "type": "requestfailed",
-      "url": "https://embed.tawk.to/69f1165f4648951c37a18238/1jnarupqq",
-      "error": "net::ERR_FAILED"
-    },
-    {
-      "type": "console",
-      "message": "Failed to load resource: net::ERR_FAILED",
-      "url": "https://www.grynd.mywire.org/privacy-policy"
-    },
-    {
-      "type": "console",
-      "message": "Access to script at 'https://embed.tawk.to/69f1165f4648951c37a18238/1jnarupqq' from origin 'https://www.grynd.mywire.org' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.",
-      "url": "https://www.grynd.mywire.org/terms"
-    },
-    {
-      "type": "requestfailed",
-      "url": "https://embed.tawk.to/69f1165f4648951c37a18238/1jnarupqq",
-      "error": "net::ERR_FAILED"
-    },
-    {
-      "type": "console",
-      "message": "Failed to load resource: net::ERR_FAILED",
-      "url": "https://www.grynd.mywire.org/terms"
-    },
-    {
-      "type": "console",
-      "message": "Access to script at 'https://embed.tawk.to/69f1165f4648951c37a18238/1jnarupqq' from origin 'https://www.grynd.mywire.org' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.",
-      "url": "https://www.grynd.mywire.org/fair-play"
-    },
-    {
-      "type": "requestfailed",
-      "url": "https://embed.tawk.to/69f1165f4648951c37a18238/1jnarupqq",
-      "error": "net::ERR_FAILED"
-    },
-    {
-      "type": "console",
-      "message": "Failed to load resource: net::ERR_FAILED",
-      "url": "https://www.grynd.mywire.org/fair-play"
-    },
-    {
-      "type": "console",
-      "message": "Access to script at 'https://embed.tawk.to/69f1165f4648951c37a18238/1jnarupqq' from origin 'https://www.grynd.mywire.org' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.",
-      "url": "https://www.grynd.mywire.org/accessibility"
-    },
-    {
-      "type": "requestfailed",
-      "url": "https://embed.tawk.to/69f1165f4648951c37a18238/1jnarupqq",
-      "error": "net::ERR_FAILED"
-    },
-    {
-      "type": "console",
-      "message": "Failed to load resource: net::ERR_FAILED",
-      "url": "https://www.grynd.mywire.org/accessibility"
+      "type": "navigation",
+      "status": 404,
+      "url": "https://grynd.dedyn.io/sentry-example-page"
     }
   ]
 }

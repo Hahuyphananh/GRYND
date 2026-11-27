@@ -26,6 +26,11 @@ import {
   type ReactNode,
 } from "react";
 import {
+  SOLITAIRE_EVENTS,
+  trackSolitaireEvent,
+  trackSolitaireEventOnce,
+} from "../../../../../lib/solitaire-analytics";
+import {
   IconAlertTriangle,
   IconArrowLeft,
   IconCards,
@@ -264,6 +269,17 @@ export default function SolitaireReviewPageClient({
   kind: ReviewGameKind;
   gameId: string;
 }) {
+  // REVIEW: the replay was opened. Completion is reported when the closing
+  // summary is reached, never here.
+  const reviewMode = kind === "duel" ? "ranked" : kind === "daily" ? "daily" : "solo";
+  useEffect(() => {
+    trackSolitaireEventOnce(`review_opened:${kind}:${gameId}`, "solitaire_review_opened", {
+      game_id: gameId,
+      mode: reviewMode,
+      surface: "review",
+    });
+  }, [kind, gameId, reviewMode]);
+
   const [data, setData] = useState<SolitaireReview | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -285,6 +301,30 @@ export default function SolitaireReviewPageClient({
     recommendation: MoveRecommendation;
     phase: "before" | "after";
   } | null>(null);
+
+  // "Review completed" means the closing summary was actually SEEN, not that
+  // the page mounted. The summary is the last section, so one visible
+  // intersection is the honest signal; the per-session key keeps a scroll back
+  // and forth from counting twice. No new analysis or request is involved.
+  const summaryRef = useRef<HTMLElement | null>(null);
+  useEffect(() => {
+    const node = summaryRef.current;
+    if (!node || typeof IntersectionObserver === "undefined") return undefined;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (!entries.some((entry) => entry.isIntersecting)) return;
+        observer.disconnect();
+        trackSolitaireEventOnce(
+          `review_completed:${kind}:${gameId}`,
+          SOLITAIRE_EVENTS.reviewCompleted,
+          { game_id: gameId, mode: reviewMode, surface: "review" },
+        );
+      },
+      { threshold: 0.4 },
+    );
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [kind, gameId, reviewMode, data]);
 
   // Restore the pace this browser last picked. Reading in an effect rather than
   // in the state initializer keeps the server markup and the first client
@@ -1166,6 +1206,15 @@ export default function SolitaireReviewPageClient({
                           <div className="mt-2 flex flex-wrap items-center gap-2">
                             <Link
                               href={practicePlan.practiceHref}
+                              onClick={() =>
+                                trackSolitaireEvent(SOLITAIRE_EVENTS.reviewPracticeClicked, {
+                                  game_id: gameId,
+                                  mode: reviewMode,
+                                  surface: "review",
+                                  skill_id: practicePlan.skillId,
+                                  exercise_id: practicePlan.exerciseId,
+                                })
+                              }
                               data-testid="review-practice-situation"
                               data-skill={practicePlan.skillId}
                               data-exercise={practicePlan.exerciseId}
@@ -1600,6 +1649,7 @@ export default function SolitaireReviewPageClient({
           </div>
 
           <section
+            ref={summaryRef}
             data-testid="review-completion-summary"
             aria-labelledby="review-completion-title"
             className="mt-6 rounded-[var(--radius-surface)] border border-[color:var(--border-hairline)] bg-[color:var(--bg-surface)] p-4 shadow-[var(--shadow-raise)] sm:p-5"

@@ -9,15 +9,41 @@ import { db } from "../../../../../../db";
 import { users } from "../../../../../../db/schema";
 import { issueOtp } from "../../../../../../lib/auth/adminOtp";
 import { sendEmailSafely } from "../../../../../../lib/emails/base";
+import { auditLog } from "../../../../../../lib/security/auditLog";
+import { clientIpFromHeaders } from "../../../../../../lib/security/clientIp";
+import {
+  checkSendAttemptLimit,
+  recordSendAttempt,
+} from "../../../../../../lib/security/mfaAttemptLimit";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-export async function POST() {
+export async function POST(req: Request) {
   try {
     const { userId } = await auth();
     if (!userId) {
       return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
+    }
+
+    const ip = clientIpFromHeaders(req.headers);
+
+    // Per-user send budget (3 per 5 minutes). Without it every "send" button
+    // press is an email to the account holder — an easy way to flood a
+    // victim's inbox using their own session, or to burn the provider quota.
+    const sendCheck = await checkSendAttemptLimit(userId, "user");
+    if (!sendCheck.allowed) {
+      const resetAt = sendCheck.resetAt ?? Date.now();
+      const retryAfterSeconds = Math.max(1, Math.ceil((resetAt - Date.now()) / 1000));
+      auditLog("user_mfa_code_send_limited", { userId, ip, retryAfterSeconds });
+      return NextResponse.json(
+        {
+          success: false,
+          error: "Too many codes requested. Please wait a few minutes and try again.",
+          retryAfterSeconds,
+        },
+        { status: 429, headers: { "Retry-After": String(retryAfterSeconds) } },
+      );
     }
 
     const [row] = await db
@@ -33,6 +59,8 @@ export async function POST() {
         { status: 400 },
       );
     }
+
+    await recordSendAttempt(userId, "user");
 
     const code = await issueOtp(userId);
     const result = await sendEmailSafely({

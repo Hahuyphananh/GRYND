@@ -197,6 +197,12 @@ const stableDb = {
 // the test exercises the real route without paying for a second search.
 const DAILY_DEAL = SOLO_DEAL;
 
+// This suite exercises persistence against a fake DB that only knows the
+// solitaire result tables, so the 18+ lookup (which reads `users`) is switched
+// off here. Authentication is still enforced and mocked, and the gate itself is
+// covered by tests/age-gate.test.mjs.
+process.env.API_AGE_GATE = "off";
+
 function installMocks() {
   if (mocksInstalled) return;
   mocksInstalled = true;

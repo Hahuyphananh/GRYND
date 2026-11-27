@@ -14,8 +14,18 @@
 
 import { getRedis } from "../redis/client";
 
-const PREFIX_VERIFY = "admin-mfa:attempts:";
-const PREFIX_SEND = "admin-mfa:send:";
+/**
+ * Which flow a counter belongs to.
+ *
+ * The keys must not collide: an admin is also a regular user, and guesses
+ * against their USER-level factor must not consume (or reset) the admin
+ * budget. `admin` keeps the original key prefix, so existing records and
+ * lockouts survive this change.
+ */
+export type MfaAttemptScope = "admin" | "user";
+
+const PREFIX_VERIFY = "-mfa:attempts:";
+const PREFIX_SEND = "-mfa:send:";
 
 // Verification attempt limits
 const VERIFY_LOCKOUT_THRESHOLDS = [
@@ -42,18 +52,42 @@ type SendRecord = {
 const verifyMemory = new Map<string, AttemptRecord>();
 const sendMemory = new Map<string, SendRecord>();
 
-function verifyKey(userId: string): string {
-  return `${PREFIX_VERIFY}${userId}`;
+// Serializes read-modify-write per key. Without this, N concurrent failures can
+// all read the same count and write count+1, so an attacker who parallelises
+// guesses records ONE attempt instead of N. Redis does not save the fallback:
+// many deployments run without it, so the queue lives here.
+const verifyQueues = new Map<string, Promise<void>>();
+
+function runExclusive<T>(key: string, task: () => Promise<T>): Promise<T> {
+  const previous = verifyQueues.get(key) ?? Promise.resolve();
+  // Run whether or not the previous task settled well, and never let one
+  // rejection poison the chain for later attempts.
+  const run = previous.then(task, task);
+  verifyQueues.set(
+    key,
+    run.then(
+      () => undefined,
+      () => undefined,
+    ),
+  );
+  return run;
 }
 
-function sendKey(userId: string): string {
-  return `${PREFIX_SEND}${userId}`;
+function verifyKey(userId: string, scope: MfaAttemptScope): string {
+  return `${scope}${PREFIX_VERIFY}${userId}`;
+}
+
+function sendKey(userId: string, scope: MfaAttemptScope): string {
+  return `${scope}${PREFIX_SEND}${userId}`;
 }
 
 // ── Verification Attempt Tracking ──────────────────────────────────────────
 
-async function readVerifyRecord(userId: string): Promise<AttemptRecord | null> {
-  const key = verifyKey(userId);
+async function readVerifyRecord(
+  userId: string,
+  scope: MfaAttemptScope,
+): Promise<AttemptRecord | null> {
+  const key = verifyKey(userId, scope);
   const redis = getRedis();
   if (redis) {
     try {
@@ -84,8 +118,12 @@ async function readVerifyRecord(userId: string): Promise<AttemptRecord | null> {
   return null;
 }
 
-async function writeVerifyRecord(userId: string, record: AttemptRecord): Promise<void> {
-  const key = verifyKey(userId);
+async function writeVerifyRecord(
+  userId: string,
+  scope: MfaAttemptScope,
+  record: AttemptRecord,
+): Promise<void> {
+  const key = verifyKey(userId, scope);
   verifyMemory.set(key, record);
 
   const redis = getRedis();
@@ -99,8 +137,8 @@ async function writeVerifyRecord(userId: string, record: AttemptRecord): Promise
   }
 }
 
-async function deleteVerifyRecord(userId: string): Promise<void> {
-  const key = verifyKey(userId);
+async function deleteVerifyRecord(userId: string, scope: MfaAttemptScope): Promise<void> {
+  const key = verifyKey(userId, scope);
   verifyMemory.delete(key);
 
   const redis = getRedis();
@@ -113,10 +151,25 @@ async function deleteVerifyRecord(userId: string): Promise<void> {
  * Check if the user is currently locked out from MFA verification.
  * Returns { allowed: false, lockedUntil } if locked, { allowed: true } otherwise.
  */
+/**
+ * Test-only: forget every in-memory attempt record.
+ *
+ * The limiter keeps its Redis fallback in the two module-level maps below;
+ * tests run without Redis configured, so clearing them is the only reset
+ * available. Redis state is deliberately NOT touched — a test must never
+ * delete production keys.
+ */
+export function __resetMfaAttemptMemory(): void {
+  verifyMemory.clear();
+  verifyQueues.clear();
+  sendMemory.clear();
+}
+
 export async function checkVerifyAttemptLimit(
   userId: string,
+  scope: MfaAttemptScope = "admin",
 ): Promise<{ allowed: boolean; lockedUntil?: number; attempts?: number }> {
-  const record = await readVerifyRecord(userId);
+  const record = await readVerifyRecord(userId, scope);
   if (!record) {
     return { allowed: true };
   }
@@ -131,9 +184,23 @@ export async function checkVerifyAttemptLimit(
 /**
  * Record a failed MFA verification attempt and apply progressive lockout.
  */
-export async function recordVerifyFailure(userId: string): Promise<void> {
+export async function recordVerifyFailure(
+  userId: string,
+  scope: MfaAttemptScope = "admin",
+): Promise<void> {
+  // One increment per invocation, even under Promise.all: the count is the
+  // security property, so concurrent failures must never collapse into one.
+  await runExclusive(verifyKey(userId, scope), () =>
+    recordVerifyFailureLocked(userId, scope),
+  );
+}
+
+async function recordVerifyFailureLocked(
+  userId: string,
+  scope: MfaAttemptScope,
+): Promise<void> {
   const now = Date.now();
-  const record = await readVerifyRecord(userId);
+  const record = await readVerifyRecord(userId, scope);
 
   const newCount = (record?.count ?? 0) + 1;
   const firstAttemptAt = record?.firstAttemptAt ?? now;
@@ -148,7 +215,7 @@ export async function recordVerifyFailure(userId: string): Promise<void> {
     }
   }
 
-  await writeVerifyRecord(userId, {
+  await writeVerifyRecord(userId, scope, {
     count: newCount,
     lockedUntil,
     firstAttemptAt,
@@ -158,14 +225,20 @@ export async function recordVerifyFailure(userId: string): Promise<void> {
 /**
  * Clear the verification attempt record (called on successful verification).
  */
-export async function clearVerifyAttempts(userId: string): Promise<void> {
-  await deleteVerifyRecord(userId);
+export async function clearVerifyAttempts(
+  userId: string,
+  scope: MfaAttemptScope = "admin",
+): Promise<void> {
+  await deleteVerifyRecord(userId, scope);
 }
 
 // ── OTP Send Throttling ────────────────────────────────────────────────────
 
-async function readSendRecord(userId: string): Promise<SendRecord | null> {
-  const key = sendKey(userId);
+async function readSendRecord(
+  userId: string,
+  scope: MfaAttemptScope,
+): Promise<SendRecord | null> {
+  const key = sendKey(userId, scope);
   const redis = getRedis();
   if (redis) {
     try {
@@ -195,8 +268,12 @@ async function readSendRecord(userId: string): Promise<SendRecord | null> {
   return null;
 }
 
-async function writeSendRecord(userId: string, record: SendRecord): Promise<void> {
-  const key = sendKey(userId);
+async function writeSendRecord(
+  userId: string,
+  scope: MfaAttemptScope,
+  record: SendRecord,
+): Promise<void> {
+  const key = sendKey(userId, scope);
   sendMemory.set(key, record);
 
   const redis = getRedis();
@@ -212,8 +289,9 @@ async function writeSendRecord(userId: string, record: SendRecord): Promise<void
  */
 export async function checkSendAttemptLimit(
   userId: string,
+  scope: MfaAttemptScope = "admin",
 ): Promise<{ allowed: boolean; resetAt?: number; remaining?: number }> {
-  const record = await readSendRecord(userId);
+  const record = await readSendRecord(userId, scope);
   if (!record) {
     return { allowed: true, remaining: SEND_MAX_ATTEMPTS };
   }
@@ -235,13 +313,19 @@ export async function checkSendAttemptLimit(
 /**
  * Record an OTP send attempt.
  */
-export async function recordSendAttempt(userId: string): Promise<void> {
+export async function recordSendAttempt(
+  userId: string,
+  scope: MfaAttemptScope = "admin",
+): Promise<void> {
   const now = Date.now();
-  const record = await readSendRecord(userId);
+  const record = await readSendRecord(userId, scope);
 
   if (!record) {
-    await writeSendRecord(userId, { count: 1, windowStart: now });
+    await writeSendRecord(userId, scope, { count: 1, windowStart: now });
   } else {
-    await writeSendRecord(userId, { count: record.count + 1, windowStart: record.windowStart });
+    await writeSendRecord(userId, scope, {
+      count: record.count + 1,
+      windowStart: record.windowStart,
+    });
   }
 }

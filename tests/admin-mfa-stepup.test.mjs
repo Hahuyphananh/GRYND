@@ -60,7 +60,7 @@ test("admin API routes are explicitly excluded from public route treatment", () 
   // code below it (including the public early return) can run for /api/admin.
   const adminBlock = proxy.slice(adminApiPos, publicRoutePos);
   assert.ok(
-    adminBlock.includes("return applySecurityHeaders(NextResponse.next());"),
+    adminBlock.includes("applySecurityHeaders(passThrough(), nonce)") || adminBlock.includes("applySecurityHeaders(NextResponse.next())"),
     "admin API block should return after auth + admin role + MFA checks"
   );
 });
@@ -511,7 +511,7 @@ test("no admin API endpoint bypasses the middleware MFA gate", () => {
 
   // Verify the early return is still present (for other public routes)
   assert.ok(
-    proxy.includes("return applySecurityHeaders(NextResponse.next());"),
+    proxy.includes("applySecurityHeaders(passThrough(), nonce)") || proxy.includes("applySecurityHeaders(NextResponse.next())"),
     "middleware should still have an early return for public routes"
   );
 });

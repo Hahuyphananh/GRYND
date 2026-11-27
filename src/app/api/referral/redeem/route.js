@@ -3,12 +3,18 @@ import { claimIdempotency } from "../../../../lib/security/idempotency";
 import { sql } from "../../../../db/sql";
 import { parseAndValidateJson } from "../../../../lib/security/validation";
 import { checkUnlocks } from "../../../../lib/specialTitles";
+import { requireAgeVerifiedUser } from "../../../../lib/auth/requireAgeVerified";
 
 // Token amount credited to the referrer's running earnings total.
 const REFERRAL_BONUS = 250;
 
 export async function POST(request) {
   const { userId } = await auth();
+
+  // 18+ gate: redeeming credits REFERRAL_BONUS coins to the referrer's
+  // earnings, so it is a money write.
+  const gate = await requireAgeVerifiedUser();
+  if (gate.response) return gate.response;
 
   if (!userId) {
     return new Response(

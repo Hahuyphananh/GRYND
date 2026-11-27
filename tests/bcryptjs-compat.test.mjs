@@ -25,9 +25,12 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import bcrypt from "bcryptjs";
 
+// Routes that still hash or verify a password. /api/profile/update is NOT in
+// this list any more: it stopped writing `users.password` (Clerk owns
+// authentication), so it no longer imports bcryptjs — see the credentials
+// rejection in that route.
 const ROUTES = [
   "src/app/api/delete-account/route.js",
-  "src/app/api/profile/update/route.js",
   "src/app/api/sync-user/route.ts",
   "src/app/api/webhooks/clerk/route.js",
 ];

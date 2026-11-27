@@ -1,129 +1,106 @@
-# GRYND | Skill Gaming Platform
+# GRYND — Competitive Solitaire
 
-Welcome to **GRYND**, a skill gaming platform where players compete in fast-paced games using **virtual tokens**.
+GRYND is a competitive **Klondike Solitaire** platform. Two players get the same
+server-dealt puzzle and race to solve it; the first to move all 52 cards to the
+foundations wins. Ranked results move a server-verified Elo rating and trophies.
+Nothing is wagered and there are no purchasable tokens.
 
-GRYND brings competitive 1v1 duels, AI opponents, strategy games, arcade-style challenges, and classic games together on one platform. Every game is strictly head-to-head: one player against one opponent. Players can discover games based on their preferences and compete across desktop and mobile.
-
----
-
-## Features
-
-* **20 Games**: A growing collection of competitive, strategy, arcade, and classic games.
-* **PvP Gameplay**: Compete against other players in real-time 1v1 duels.
-* **AI Opponents**: Play supported games against AI opponents for practice.
-* **Virtual Token System**: Play using virtual tokens. Tokens have no real-world monetary value and cannot be redeemed for cash.
-* **Competitive Matches**: Compete in duels, races, strategy matches, and skill-based challenges.
-* **Personalized Game Recommendations**: GRYND uses a game-preference questionnaire to create a personalized **FOR YOU** section.
-* **Live Player Counts**: Game cards show how many players are currently playing each game.
-* **Player Progression**: Track gameplay, wins, streaks, rankings, and other player statistics.
-* **Secure Authentication**: Clerk-powered authentication with JWT and OAuth support.
-* **Wallet & Token Management**: Secure token balance management through protected API routes.
-* **GRYND+**: Optional subscription features and premium platform functionality.
-* **Responsive Design**: Optimized for desktop and mobile gameplay.
-* **Native Mobile Support**: Mobile app functionality through Capacitor.
-* **Security First**: Built with protections including SQL injection prevention, CSRF protection, rate limiting, secure authentication, and TLS.
-* **Modern Game Experiences**: Interactive interfaces, animations, game effects, and custom GRYND visuals.
+GRYND is 18+ and built around fair, transparent competition: the deal is
+identical for both seats, the rules are enforced server-side, and every result is
+replayable.
 
 ---
 
-## Games
+## How you play
 
-GRYND currently features 20 games:
+| Mode | What it is | Rated |
+| --- | --- | --- |
+| **Ranked** | A 1v1 race on the same deal against a live player. Free to enter. | Yes — Elo + trophies |
+| **Solo** | Klondike on your own, timed, with a saved record. | No |
+| **Daily Challenge** | One full deal per UTC day, identical for every player. | No |
+| **Practice vs AI** | Six bot opponents, from Rookie to Perfect. | No |
+| **Puzzles** | Daily and unlimited Solitaire puzzle sets, plus a ranked puzzle queue. | Ranked puzzles are rated separately |
 
-| Game                    | Type                                          |
-| ----------------------- | --------------------------------------------- |
-| **Roulette**            | Fast-paced PvP wheel duel                     |
-| **Blackjack**           | Strategic head-to-head card game              |
-| **Mines**               | Risk-based PvP tile game                      |
-| **Memory Grid**         | Memory and pattern-recall duel                |
-| **Plinko**              | Physics-based PvP ball-drop game              |
-| **Poker**               | Heads-up No-Limit Texas Hold'em                |
-| **Crash**               | 1v1 crash and cash-out game                   |
-| **Chess**               | Strategic PvP and AI chess                    |
-| **Keno**                | Fast-paced number and reaction game           |
-| **UNO**                 | Fast head-to-head card duel                   |
-| **Rock Paper Scissors** | Best-of-7 PvP duel                            |
-| **Tower Arena**         | 1v1 physics-based tower-stacking game         |
-| **Four in a Row**       | Strategic Connect Four-style duel             |
-| **Lane Rush**           | Oval-circuit garage racing, first to 1,000    |
-| **Pool Masters**        | Physics-based 8-ball pool                     |
-| **Hex Duel**            | Turn-based hex-grid strategy game             |
-| **Barrier Blitz**       | 1v1 race with pawns and barriers              |
-| **Odds**                | Prediction and mind-game duel                 |
-| **Precision**           | Fast-paced reaction and timing duel           |
-| **Dots & Boxes**        | Classic territory and strategy game           |
-
-Each game has its own gameplay mechanics and competitive format, ranging from fast reaction challenges to strategic board games, all played 1v1.
+Ranked pairings prefer a live player. If no one is waiting when the queue window
+expires, the same deal is raced against a **recorded run** by a real player — a
+replay of that person's own moves, never an AI pretending to be a human. Every
+surface labels the opponent as **Live player**, **Recorded opponent** or
+**GRYND AI**; the classification comes from the server's match data, never from a
+display name. Bots are always unrated and never affect a competitive record.
 
 ---
 
-## Personalization
+## Game Review
 
-GRYND includes a personalized game discovery system designed to help players find games that match their preferences.
+Completed games store the deal and the accepted move log, so Game Review can
+replay any position from the real log:
 
-During onboarding, players can answer questions about the types of games they enjoy, their experience level, motivations, and preferred gameplay styles.
+- moves are rated only when the engine can compare them with a concrete
+  alternative on that board — routine placements and stock passes are not
+  narrated;
+- flagged moves can show the better move, the measurable reason, and a read-only
+  before/after demonstration;
+- a mistake links to an existing Academy lesson and a validated practice drill,
+  then returns to the same ply;
+- the review never reveals a face-down card and never analyses a game the player
+  did not finish.
 
-GRYND uses these preferences to generate a personalized **FOR YOU** game section while keeping the complete game catalog available through **All Games**.
-
-Players can also update their preferences later through Settings.
-
----
-
-## Preview
-
-![GRYND banner](./src/images/bannerimage.png)
-
-*GRYND platform banner*
-
----
-
-## Tech Stack
-
-| Layer              | Technology                             |
-| ------------------ | -------------------------------------- |
-| **Frontend**       | Next.js 16.15, React 19.1, TailwindCSS |
-| **Backend**        | Next.js API Routes                     |
-| **Database**       | Neon Postgres                          |
-| **ORM**            | Drizzle ORM                            |
-| **Authentication** | Clerk (JWT + OAuth)                    |
-| **Hosting**        | Vercel                                 |
-| **Mobile**         | Capacitor                              |
+Analysis is cached per game + log + engine version. Re-opening a game is free; a
+free account gets a fixed number of fresh analyses per day, and PRO raises that
+limit.
 
 ---
 
-## Environment Setup
+## Fair play and identity
+
+- One deterministic deal per match, generated server-side from a committed seed,
+  solvable, and never pre-solved.
+- The server decides the result, the rating change and the trophy change;
+  settlement is idempotent per match.
+- Opponent type is classified on the server (`human`, `recorded`, `ai`) and
+  labelled consistently in the lobby, match view, result screen and analytics.
+- No fake player counts, fake online indicators or invented testimonials.
+
+---
+
+## Stack
+
+| Layer | Technology |
+| --- | --- |
+| Frontend | Next.js, React, TailwindCSS |
+| Backend | Next.js API routes |
+| Database | Postgres (Drizzle ORM) |
+| Auth | Clerk |
+| Realtime | Socket.IO |
+| Analytics | PostHog |
+| Mobile | Capacitor |
+
+---
+
+## Environment setup
 
 1. Copy `.env.example` to `.env.local`.
-2. Fill in all required environment variables.
-3. Never commit `.env.local` or production secrets.
-4. If secrets have previously been exposed, rotate them immediately in the relevant provider dashboards.
+2. Fill in the required variables (database, Clerk, PostHog, and the email
+   provider used for transactional mail).
+3. Never commit `.env.local` or production secrets. Rotate anything that has
+   been exposed.
 
-### Resend Email Webhooks
+### Resend email webhooks
 
-GRYND supports Resend email webhooks through:
-
-`/api/webhooks/resend`
-
-Configure Resend to send inbound `email.received` events and outbound events such as:
-
-* `email.sent`
-* `email.delivered`
-* `email.bounced`
-* `email.failed`
-
-Set the following environment variables:
-
-* `RESEND_API_KEY`
-* `RESEND_WEBHOOK_SECRET`
-
-See `docs/resend-webhooks.md` for the complete webhook configuration checklist.
+GRYND receives Resend events at `/api/webhooks/resend`
+(`email.sent`, `email.delivered`, `email.bounced`, `email.failed`,
+`email.received`). Set `RESEND_API_KEY` and `RESEND_WEBHOOK_SECRET`; the full
+checklist is in `docs/resend-webhooks.md`.
 
 ---
 
-## About GRYND
+## Repository notes
 
-GRYND is built around competitive skill gaming, giving players a single platform to discover games, challenge opponents, practice against AI, compete in 1v1 matches, and find games tailored to their preferences.
-
-GRYND uses **virtual tokens only**. Tokens have no real-world monetary value and are not redeemable for cash.
+- `public/llms.txt` is the machine-readable summary of the same product.
+- `src/lib/seo.ts` owns page titles, canonicals and social cards;
+  `src/lib/seoPages.ts` is the sitemap inventory.
+- `src/lib/attribution.ts` stores the first-touch acquisition channel in the
+  browser; later tagged visits never overwrite it.
+- Shared tests: `npm test`, `npm run typecheck`, `npm run build`.
 
 **GRYND is an 18+ platform and promotes responsible play.**

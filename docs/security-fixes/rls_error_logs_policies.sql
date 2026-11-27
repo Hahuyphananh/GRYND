@@ -1,33 +1,34 @@
--- RLS Policies for error_logs table
--- This file sets up Row Level Security policies to allow the application
--- to use the anon/publishable key instead of the dangerous service role key
--- for error logging and error retrieval.
-
--- Step 1: Enable Row Level Security on the error_logs table
-ALTER TABLE "error_logs" ENABLE ROW LEVEL SECURITY;
-
--- Step 2: Create policy allowing INSERT operations (for error logging)
--- This allows the anon role to insert error logs (used by logError function)
-CREATE POLICY "error_logs_insert_anon"
-ON "error_logs"
-FOR INSERT
-TO anon
-USING (true)
-WITH CHECK (true);
-
--- Step 3: Create policy allowing SELECT operations (for error retrieval)
--- This allows the anon role to select error logs (used by /api/pm/errors endpoint)
--- Note: The /api/pm/errors endpoint is still protected by PM_API_KEY authentication
-CREATE POLICY "error_logs_select_anon"
-ON "error_logs"
-FOR SELECT
-TO anon
-USING (true);
-
+-- error_logs: LOCKDOWN, not "RLS for the anon key".
+--
+-- The previous draft of this file (and migration 0094) enabled RLS and then
+-- granted `anon` SELECT USING (true) and INSERT on `error_logs`, on the theory
+-- that the app could then drop the service-role key. That is the opposite of
+-- what should happen:
+--
+--   * `anon` is the PUBLIC publishable key, shipped in the browser bundle. A
+--     USING (true) SELECT policy makes every stack trace, endpoint and
+--     metadata value readable by anyone with that key.
+--   * The INSERT policy was invalid Postgres (`USING` is not valid for
+--     INSERT), so the migration's behaviour depended on how it was run.
+--   * Nothing in the app needs either policy. `logError()` and
+--     /api/pm/errors both use SUPABASE_SERVICE_ROLE_KEY, and service_role
+--     bypasses RLS by design.
+--
+-- The shipped, journaled fix is src/db/migrations/0268_error_logs_lockdown.sql.
+-- Apply it with `npm run db:migrate` - do not paste this file over a live
+-- database by hand. Its contents, for review:
+--
+--   ALTER TABLE error_logs ENABLE ROW LEVEL SECURITY;
+--   DROP POLICY IF EXISTS error_logs_select_anon ON error_logs;
+--   DROP POLICY IF EXISTS error_logs_insert_anon ON error_logs;
+--   REVOKE ALL PRIVILEGES ON TABLE error_logs FROM anon;
+--   REVOKE ALL PRIVILEGES ON TABLE error_logs FROM authenticated;
+--   GRANT  ALL PRIVILEGES ON TABLE error_logs TO service_role;
+--
 -- Verification:
--- After running this SQL, you can verify the policies were created by:
--- 1. Going to Supabase Dashboard → Table Editor → error_logs
--- 2. Checking the "Row level security" section in the sidebar
--- 3. Confirming you see both policies listed:
---    - error_logs_insert_anon (under INSERT policies)
---    - error_logs_select_anon (under SELECT policies)
+--   SELECT polname FROM pg_policy WHERE polrelid = 'error_logs'::regclass;
+--     -- expect ZERO rows
+--   SELECT has_table_privilege('anon', 'error_logs', 'SELECT');
+--     -- expect false
+--   SELECT relrowsecurity FROM pg_class WHERE oid = 'error_logs'::regclass;
+--     -- expect true

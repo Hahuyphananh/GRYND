@@ -1,6 +1,7 @@
 import crypto from "crypto";
 import { db } from "../../db";
 import { getSiteUrl } from "../siteUrl";
+import { requireSecret } from "../security/requireSecret";
 import {
   emailEvents,
   DEFAULT_NOTIFICATION_PREFS,
@@ -66,31 +67,23 @@ export async function recordUnsubscribeEvent({
   }
 }
 
-let hasWarnedMissingSecret = false;
-
 /**
  * Secret used to sign unsubscribe tokens. Falls back through the same secrets
  * the rest of the app signs with so this works without extra configuration —
  * set EMAIL_UNSUBSCRIBE_SECRET to rotate the link signature independently.
  */
 function getSigningSecret(): string {
-  const configured =
-    process.env.EMAIL_UNSUBSCRIBE_SECRET ||
-    process.env.GAME_SESSION_SECRET ||
-    process.env.NEXTAUTH_SECRET ||
-    process.env.CLERK_SECRET_KEY;
-
-  if (!configured) {
-    if (!hasWarnedMissingSecret) {
-      console.warn(
-        "[emails/unsubscribe] No signing secret configured. Using development fallback secret.",
-      );
-      hasWarnedMissingSecret = true;
-    }
-    return "development-only-insecure-secret";
-  }
-
-  return configured;
+  // No production fallback: this value signs every unsubscribe link, so a
+  // public default would let anyone unsubscribe, or re-subscribe, any account.
+  return requireSecret(
+    [
+      "EMAIL_UNSUBSCRIBE_SECRET",
+      "GAME_SESSION_SECRET",
+      "NEXTAUTH_SECRET",
+      "CLERK_SECRET_KEY",
+    ],
+    "Email unsubscribe signing",
+  );
 }
 
 function sign(payload: string): string {

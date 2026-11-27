@@ -3,6 +3,11 @@
 // go through posthog-js; server events need the posthog-node SDK.
 
 import { PostHog } from "posthog-node";
+import {
+  isSolitaireEvent,
+  sanitizeSolitaireProperties,
+  type SolitaireEventName,
+} from "./solitaire-analytics";
 
 let client: PostHog | null = null;
 
@@ -27,6 +32,27 @@ export interface ServerAnalyticsEvent {
  * Best-effort server event capture. Never throws — analytics must not
  * break an API response.
  */
+/**
+ * Server capture for a Solitaire event the DATABASE confirmed.
+ *
+ * `distinctId` is the Clerk user id (never an email) and properties go through
+ * the shared allowlist, so a caller cannot leak a deal, a log or an identity
+ * field into analytics. Fire-and-forget: analytics never fails a request.
+ */
+export function captureSolitaireServerEvent(
+  event: SolitaireEventName,
+  distinctId: string,
+  properties?: Record<string, unknown>,
+): void {
+  if (!isSolitaireEvent(event)) return;
+  if (!distinctId || typeof distinctId !== "string") return;
+  captureServerEvent({
+    event,
+    distinctId,
+    properties: sanitizeSolitaireProperties(properties),
+  });
+}
+
 export function captureServerEvent({ event, distinctId, properties }: ServerAnalyticsEvent): void {
   try {
     const ph = getPostHog();

@@ -6,11 +6,13 @@ import {
   type LimitConfig,
 } from "./lib/security/rateLimit";
 import { auditLog } from "./lib/security/auditLog";
-import { buildScriptSrc } from "./lib/security/csp";
+import { buildConnectSrc, buildScriptSrc, inlineScriptHashes } from "./lib/security/csp";
+import { clientIpFromHeaders } from "./lib/security/clientIp";
 import { isAdmin } from "./lib/auth/isAdmin";
 import { isMaintenanceMode } from "./lib/security/maintenance";
 import { withTimeout } from "./lib/security/withTimeout";
 import { internalizeMiddlewareSelfRewrite } from "./lib/security/middlewareSelfRewrite";
+import { MINIMUM_AGE } from "./lib/ageVerification";
 import { hasRecentMfa } from "./lib/auth/requireMfa";
 import {
   ADMIN_MFA_COOKIE,
@@ -299,6 +301,19 @@ const API_ROUTE_LIMITS: Array<{ pattern: RegExp; config: LimitConfig }> = [
     pattern: /^\/api\/tower-arena\//,
     config: { windowMs: 60_000, max: 900 },
   },
+  {
+    // Checkout session creation calls Stripe's API and writes subscription
+    // rows. A burst is never a legitimate player action — a double-click, a
+    // retry loop, or scripted abuse is the whole population of this route.
+    pattern: /^\/api\/stripe\/subscribe$/,
+    config: { windowMs: 60_000, max: 10 },
+  },
+  {
+    // Player reports feed the moderation queue. One report per few seconds is
+    // already generous; without this a single account can bury the queue.
+    pattern: /^\/api\/reports\/submit$/,
+    config: { windowMs: 60_000, max: 5 },
+  },
   { pattern: /^\/api\//, config: { windowMs: 60_000, max: 120 } },
 ];
 
@@ -403,12 +418,51 @@ async function userMfaGate(
 // / age lookup before the first byte of HTML is sent). The API age gate makes
 // the opposite choice on purpose and fails closed.
 
-function getClientIp(req: Request) {
-  const forwardedFor = req.headers.get("x-forwarded-for");
-  if (forwardedFor) {
-    return forwardedFor.split(",")[0]?.trim() || "unknown";
-  }
-  return req.headers.get("x-real-ip") || "unknown";
+/** The client IP, from shared lib/security/clientIp (trusted-proxy aware). */
+function getClientIp(req: Request): string {
+  return clientIpFromHeaders(req.headers);
+}
+
+/**
+ * A 128-bit per-request value for the CSP. Base64 so it is a valid source
+ * expression; Next reads it from the request's Content-Security-Policy header
+ * and stamps it on its own bootstrap and chunk scripts.
+ */
+function createNonce(): string {
+  const bytes = new Uint8Array(16);
+  crypto.getRandomValues(bytes);
+  return Buffer.from(bytes).toString("base64");
+}
+
+/**
+ * The request headers that carry the nonce downstream.
+ *
+ * Next extracts the nonce from the `Content-Security-Policy` header ON THE
+ * REQUEST, and `x-nonce` is what this app's server components read for their
+ * own inline scripts (root layout, JSON-LD). Both must match the policy set on
+ * the response, so they are built together.
+ */
+function requestHeadersFor(req: Request, nonce: string): Headers {
+  const headers = new Headers(req.headers);
+  headers.set("x-nonce", nonce);
+  headers.set(
+    "Content-Security-Policy",
+    buildScriptSrc({
+      development: process.env.NODE_ENV === "development",
+      nonce,
+      hashes: inlineScriptHashes(),
+    })
+  );
+  return headers;
+}
+
+/** A pass-through response carrying a fresh nonce and its policy. */
+function passThroughResponse(req: Request): NextResponse {
+  const nonce = createNonce();
+  return applySecurityHeaders(
+    NextResponse.next({ request: { headers: requestHeadersFor(req, nonce) } }),
+    nonce
+  );
 }
 
 function getLimitForPath(pathname: string): LimitConfig | null {
@@ -420,7 +474,7 @@ function getLimitForPath(pathname: string): LimitConfig | null {
   return null;
 }
 
-function applySecurityHeaders(response: NextResponse) {
+function applySecurityHeaders(response: NextResponse, nonce: string = createNonce()) {
   response.headers.set("Referrer-Policy", "strict-origin-when-cross-origin");
   response.headers.set("X-Frame-Options", "SAMEORIGIN");
   response.headers.set("X-Content-Type-Options", "nosniff");
@@ -449,10 +503,21 @@ function applySecurityHeaders(response: NextResponse) {
   // trailing `https:` allowed ANY https origin to serve script and made this
   // directive useless as an injection control. `unsafe-eval` stays
   // development-only; the http Hilltop origin is added in development only.
+  // A per-request nonce is the ONLY way an inline script may run: a fresh
+  // value is minted in middlewareHandler and the same value is put on the
+  // request (where Next picks it up for its own bootstrap scripts) and here.
   const scriptSrc = `${buildScriptSrc({
     development: process.env.NODE_ENV === "development",
     extraHosts: hilltopDevHosts,
+    nonce,
+    hashes: inlineScriptHashes(),
   })}; `;
+
+  // Named hosts only — see buildConnectSrc in lib/security/csp.ts for why the
+  // old bare `https:` made this directive worthless as an exfiltration control.
+  const connectSrc = buildConnectSrc({
+    development: process.env.NODE_ENV === "development",
+  });
 
   response.headers.set(
     "Content-Security-Policy",
@@ -461,13 +526,13 @@ function applySecurityHeaders(response: NextResponse) {
       "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdn.jsdelivr.net; " +
       "img-src 'self' data: blob: https:; " +
       "font-src 'self' data: https://fonts.gstatic.com; " +
-      "connect-src 'self' https: wss:; " +
+      `${connectSrc}; ` +
       // AdSense serves each ad unit in a cross-origin iframe, so `frame-src`
       // — the one directive that is NOT wildcarded above — has to name its
       // hosts explicitly: googleads.g.doubleclick.net and the
       // safeframe/tpc.googlesyndication.com frames the ad units render in.
-      // (img-src and connect-src already allow all of `https:`; script-src
-      // names its ad hosts explicitly in lib/security/csp.ts.)
+      // (script-src, img-src and connect-src name their ad hosts explicitly
+      // in lib/security/csp.ts.)
       // Without these the loader still downloads and then silently fails to
       // paint a single ad. Only the pages in src/components/AdSenseScript.tsx
       // ever request them (see the page allow-list in tests/adsense.test.mjs).
@@ -554,6 +619,12 @@ const middlewareHandler = async (auth: () => Promise<any>, req: NextRequest) => 
   cleanupRateLimitStore();
   const pathname = req.nextUrl.pathname;
   const ip = getClientIp(req);
+
+  // One nonce per request, shared by the request headers (so Next stamps its
+  // own scripts) and the response policy (so the browser enforces it).
+  const nonce = createNonce();
+  const passThrough = () =>
+    NextResponse.next({ request: { headers: requestHeadersFor(req, nonce) } });
 
   // ── Maintenance-mode kill switch ──────────────────────────────────────
   // When the flag is on, everyone except admins is redirected to the
@@ -804,7 +875,7 @@ const middlewareHandler = async (auth: () => Promise<any>, req: NextRequest) => 
 
     // Admin API request is authenticated and authorized; MFA is verified
     // unless this is the bootstrap flow that establishes it.
-    return applySecurityHeaders(NextResponse.next());
+    return applySecurityHeaders(passThrough(), nonce);
   }
 
   // Playable game routes are browsable while SIGNED OUT but still fall through
@@ -858,7 +929,7 @@ const middlewareHandler = async (auth: () => Promise<any>, req: NextRequest) => 
       }
     }
 
-    return applySecurityHeaders(NextResponse.next());
+    return applySecurityHeaders(passThrough(), nonce);
   }
 
   const { userId, sessionClaims, factorVerificationAge } = await auth();
@@ -918,14 +989,21 @@ const middlewareHandler = async (auth: () => Promise<any>, req: NextRequest) => 
       }
     }
 
-    // Age is ASKED FOR, never enforced here: a signed-in player with no date of
-    // birth on file is sent to /complete-profile to supply one, and a player who
-    // reports being under 18 plays on like anybody else. Nothing about a page
-    // navigation depends on the NUMBER any more — only on whether it exists.
+    // No date of birth on file -> collect it. Under 18 -> /access-denied, the
+    // same boundary the API gate enforces (lib/auth/requireAgeVerified.ts).
+    // The page gate stays FAIL-OPEN on a lookup outage (see `withTimeout`
+    // above): a DB hiccup must not take the site down, while the API gate —
+    // where wagering and rank move — fails closed instead.
     if (!age) {
       auditLog("missing_age_claim", { userId, ip, path: pathname });
 
       return applySecurityHeaders(NextResponse.redirect(new URL("/complete-profile", req.url)));
+    }
+
+    if (Number(age) < MINIMUM_AGE) {
+      auditLog("underage_redirect", { userId, ip, path: pathname });
+
+      return applySecurityHeaders(NextResponse.redirect(new URL("/access-denied", req.url)));
     }
   }
 
@@ -995,7 +1073,7 @@ const middlewareHandler = async (auth: () => Promise<any>, req: NextRequest) => 
   });
   if (mfaGate) return mfaGate;
 
-  const response = NextResponse.next();
+  const response = passThrough();
   if (renewAdminMfa) {
     response.cookies.set(
       ADMIN_MFA_COOKIE,
@@ -1003,7 +1081,7 @@ const middlewareHandler = async (auth: () => Promise<any>, req: NextRequest) => 
       adminMfaCookieOptions(req)
     );
   }
-  return applySecurityHeaders(response);
+  return applySecurityHeaders(response, nonce);
 };
 
 const clerkProtectedMiddleware = clerkMiddleware(middlewareHandler);
@@ -1032,7 +1110,7 @@ export default async function proxy(req: NextRequest, event: NextFetchEvent) {
   }
 
   if (!hasClerkSecretKey) {
-    const response = applySecurityHeaders(NextResponse.next());
+    const response = passThroughResponse(req);
     // Local/dev without Clerk still serves /play, so its framing policy has to
     // be applied here too — otherwise the surface would behave differently in
     // dev than in production.
@@ -1073,7 +1151,7 @@ export default async function proxy(req: NextRequest, event: NextFetchEvent) {
       "[middleware] Clerk middleware invocation failed; returning safe response.",
       error
     );
-    return applySecurityHeaders(NextResponse.next());
+    return passThroughResponse(req);
   }
 }
 

@@ -1,4 +1,3 @@
-import bcrypt from "bcryptjs";
 import { auth } from "@clerk/nextjs/server";
 import { getNeonSql } from "../../../../db/neon";
 import { parseAndValidateJson } from "../../../../lib/security/validation";
@@ -6,7 +5,6 @@ import { auditLog } from "../../../../lib/security/auditLog";
 import { searchNameFor } from "../../../../lib/searchName";
 import { findProfanity } from "../../../../lib/moderation/profanity";
 
-const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 // NOTE: profile pictures are no longer accepted by this endpoint. Grynd
 // avatars are OFFICIAL icons only, equipped via /api/user/icon/select.
 export async function POST(request) {
@@ -61,7 +59,37 @@ export async function POST(request) {
     const hasPassword =
       parsed.data.password !== null && parsed.data.password !== "";
 
-    if (!hasName && !hasEmail && !hasPassword) {
+    // EMAIL AND PASSWORD ARE NOT WRITABLE HERE.
+    //
+    // Clerk owns both. Accepting them turned this endpoint into a second,
+    // unverified copy of an identity field: an address typed into the form was
+    // stored with no proof the caller controls it (a phishing / account-
+    // recovery lever), and a "password" was bcrypt-hashed into a column that
+    // nothing authenticates against, because sign-in is Clerk's. The two copies
+    // could also disagree forever.
+    //
+    // Email changes happen at the sign-in provider; the `user.updated` Clerk
+    // webhook mirrors the primary VERIFIED address back into `users.email`.
+    if (hasEmail || hasPassword) {
+      auditLog("profile_update_credentials_rejected", {
+        userId,
+        attemptedEmail: hasEmail,
+        attemptedPassword: hasPassword,
+      });
+      return new Response(
+        JSON.stringify({
+          success: false,
+          error:
+            "Email and password are managed by your sign-in account, not here. Change your email there and it is saved once verified.",
+        }),
+        {
+          status: 400,
+          headers: { "Content-Type": "application/json" },
+        },
+      );
+    }
+
+    if (!hasName) {
       return new Response(
         JSON.stringify({ success: false, error: "No profile fields provided" }),
         {
@@ -106,68 +134,19 @@ export async function POST(request) {
       );
     }
 
-    if (
-      parsed.data.password !== null &&
-      parsed.data.password !== "" &&
-      parsed.data.password.length < 6
-    ) {
-      return new Response(
-        JSON.stringify({
-          success: false,
-          error: "password must be at least 6 characters",
-        }),
-        {
-          status: 400,
-          headers: { "Content-Type": "application/json" },
-        },
-      );
-    }
-
-    const cleanName = hasName ? parsed.data.name : currentUser.name;
-    const cleanEmail = hasEmail ? parsed.data.email : currentUser.email;
-    const passwordHash = hasPassword
-      ? await bcrypt.hash(parsed.data.password, 12)
-      : null;
-    if (hasEmail && !EMAIL_REGEX.test(cleanEmail)) {
-      return new Response(
-        JSON.stringify({ success: false, error: "email has invalid format" }),
-        {
-          status: 400,
-          headers: { "Content-Type": "application/json" },
-        },
-      );
-    }
-
-    if (hasEmail) {
-      const existingEmail = await sql`
-        SELECT id FROM users WHERE email = ${cleanEmail} AND clerk_id <> ${userId} LIMIT 1
-      `;
-
-      if (existingEmail.length) {
-        return new Response(
-          JSON.stringify({ success: false, error: "Email already in use" }),
-          {
-            status: 409,
-            headers: { "Content-Type": "application/json" },
-          },
-        );
-      }
-    }
+    const cleanName = parsed.data.name;
 
     // `search_name` is the folded match key /api/friends/search reads, derived
     // from the username on every write — `cleanName` is the new name, or the
     // unchanged current one when this request carried no name. Without this a
     // player who renamed could only be found by their OLD username: the column
     // still held the previous name, because nothing else writes it.
+    // `name` is the ONLY writable column. Email and password belong to Clerk
+    // (see the rejection above), so this statement cannot touch them.
     const updated = await sql`
       UPDATE users
       SET name = ${cleanName},
-          search_name = ${searchNameFor(cleanName)},
-          email = ${cleanEmail},
-          password = CASE
-            WHEN ${Boolean(passwordHash)} THEN ${passwordHash}
-            ELSE password
-          END
+          search_name = ${searchNameFor(cleanName)}
       WHERE clerk_id = ${userId}
       RETURNING name, email
     `;
@@ -182,14 +161,9 @@ export async function POST(request) {
       );
     }
 
-    auditLog("profile_updated", {
-      userId,
-      // Never log the raw email address — audit logs (console + any sink)
-      // must not become a second copy of PII. A boolean flag keeps the
-      // forensic signal without storing the value.
-      emailChanged: Boolean(hasEmail),
-      passwordUpdated: Boolean(passwordHash),
-    });
+    // Never log the display name's value or the email address — audit logs
+    // (console + any sink) must not become a second copy of PII.
+    auditLog("profile_updated", { userId, nameChanged: true });
 
     return new Response(
       JSON.stringify({

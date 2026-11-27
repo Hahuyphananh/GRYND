@@ -437,8 +437,11 @@ test("the lobby promises a recording, not a bot", () => {
 test("the live match names the recording and says it is not an AI", () => {
   const page = code(MATCH_PAGE);
   assert.match(page, /data-testid="solitaire-ghost-opponent"/);
-  assert.match(page, /Racing a recorded run by a real player/);
+  assert.match(page, /A recorded run by a real player/);
+  assert.match(page, /not a live player, and/);
   assert.match(page, /never an AI/);
+  // The canonical user-facing classification, not a name-based guess.
+  assert.match(page, /Recorded opponent/);
   assert.match(page, /const ghost = match\?\.isGhost \? match\.ghost \?\? null : null/);
   assert.match(page, /ghost\?\.name \|\| opponentIdentity\?\.name/);
   // The client still sends nothing competitive.

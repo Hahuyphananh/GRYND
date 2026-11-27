@@ -8,6 +8,10 @@ import {
   getAcquisitionParams,
   isGameStartEvent,
 } from "../lib/analytics";
+import {
+  attributionProperties,
+  captureFirstTouch,
+} from "../lib/attribution";
 
 /**
  * Marketing funnel tracking, wired once here so game pages stay untouched.
@@ -27,14 +31,29 @@ export function FunnelTracker() {
 
   useEffect(() => {
     if (!process.env.NEXT_PUBLIC_POSTHOG_KEY) return;
+
+    // FIRST TOUCH, persisted in this browser — captured even while signed out,
+    // because the visitor who lands on a tagged page and signs up three
+    // navigations later is exactly the person this is for. The tracker used to
+    // read UTMs off the current URL, so that visitor lost the channel.
+    // `captureFirstTouch` never overwrites a captured value (a bare `direct` is
+    // the only one a later channel may upgrade).
+    const touch = captureFirstTouch();
     if (!isLoaded || !isSignedIn || !user) return;
 
-    // Persist acquisition params once per user session.
-    const params = getAcquisitionParams();
-    if (Object.keys(params).length > 0) {
-      posthog.people.set(params);
-      posthog.register(params);
+    const firstTouch = attributionProperties(touch);
+    if (Object.keys(firstTouch).length > 0) {
+      posthog.register(firstTouch);
+      // Set the person profile ONCE: after that the original channel is never
+      // replaced by a later campaign visit.
+      if (!posthog.get_property("acquisition_channel")) {
+        posthog.people.set(firstTouch);
+      }
     }
+    // Keep the raw UTM fields on events for the current visit without touching
+    // the first-touch person properties.
+    const params = getAcquisitionParams();
+    if (Object.keys(params).length > 0) posthog.register(params);
 
     if (registered.current) return;
     registered.current = true;

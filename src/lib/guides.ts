@@ -790,6 +790,73 @@ export const GUIDES: readonly Guide[] = [
     gameSlugs: ["solitaire-duel"],
     relatedGuides: ["how-to-practice-solitaire", "recovering-from-a-solitaire-losing-streak"],
   },
+
+  {
+    slug: "solitaire-game-review-explained",
+    title: "Solitaire Move Analysis: How Game Review Works",
+    metaDescription:
+      "How a GRYND Solitaire Game Review rates moves, finds the turning points, shows the better move and links the mistake to a practice drill — and what it deliberately does not claim.",
+    h1: "Solitaire move analysis, explained",
+    summary:
+      "A Game Review replays the deal you actually played and rates the decisions you made with the information you had at the time. This is what the labels mean, which moments are worth your attention, and how to turn one review into a practice session that changes the next game.",
+    sections: [
+      {
+        heading: "What the review replays",
+        paragraphs: [
+          "Every completed game stores the deal and the ordered log of accepted moves. Game Review rebuilds the position before each move from that deal and that prefix of the log — there is no stored board per move and no reconstruction from memory. You can step forward, step back, jump to the start or the end, or scrub the timeline.",
+          "Because the replay is the same rules engine that refereed the match, the review can never show a position the game could not have reached. Cards that were face down at that moment stay face down: the analysis rates your decision using what you could see, never the identities underneath.",
+        ],
+      },
+      {
+        heading: "What the labels mean",
+        paragraphs: [
+          "A move is only labelled when the engine can compare it with a concrete alternative on that board. Great and good marks a move that gains something measurable — a foundation card, a revealed card, an opened column — compared with what else was available. Inaccuracy and mistake mark the reverse: a legal move that gave up more than it gained when a better one was on the board.",
+          "Routine card placements and stock passes are deliberately not commented on. A review that narrates every move trains you to skim it. If the summary says you made two mistakes in ninety moves, the other eighty-eight do not need your attention.",
+        ],
+      },
+      {
+        heading: "The better move, and why it comes with a picture",
+        paragraphs: [
+          "On a flagged move the review can show the alternative it preferred and the reason, measured from the same position. Where the engine is confident it also rebuilds two read-only positions: the board immediately before your move, and the same board with the recommended move applied. Nothing about the demonstration is recomputed by the page — the engine's own move is applied and checked.",
+          "Confidence matters. An uncertain position is not presented as a mistake you must accept; the recommendation simply is not shown. A review that always has an opinion is a review you cannot trust.",
+        ],
+      },
+      {
+        heading: "Turning points, not a transcript",
+        paragraphs: [
+          "The highlights panel collects a handful of moments: the strongest positive plays, the mistakes, and structural events such as opening a column, unlocking a long sequence or pulling a card back off a foundation. Each one jumps the board to that ply, so you can see the decision instead of reading about it.",
+          "Read the highlights in game order once, then pick a single moment to understand properly. The point is not to audit every move; it is to leave with one decision you would make differently.",
+        ],
+      },
+      {
+        heading: "From a mistake to a drill",
+        paragraphs: [
+          "A flagged move is evidence about a concept, so the review maps it to the concept the engine actually measured: revealing hidden cards, foundation timing, opening columns, managing kings, stock-cycle planning or comparing sequences. Each concept has an existing Academy lesson and a validated practice drill built on prepared boards.",
+          "The drill is not a copy of your deal and does not reuse its seed. It teaches the decision in isolation, then returns you to the exact ply you were reading. Practice never touches your rating, and your practice record stays on your device.",
+        ],
+      },
+      {
+        heading: "What the review will not tell you",
+        paragraphs: [
+          "It will not give you a single accuracy percentage, a grade or a skill rating. Those numbers are easy to produce and hard to justify: the same move can be correct in one deal and wrong in another, and a percentage hides which decision cost you the race.",
+          "It will also not analyse a game you did not finish. A forfeit or an abandoned board is still replayable, so you can see what happened, but rating an unplayed game would be inventing evidence. And it will not compare you with other players: the review is about your decisions on your deal.",
+        ],
+      },
+      {
+        heading: "A five-minute routine that uses it",
+        paragraphs: [
+          "Open the review of your last completed game and read only the highlights. Pick the one moment you did not see coming, step through the recommended alternative once, then open the linked drill and finish it. Close the review.",
+          "Do that after a loss and you have converted a result into a specific, rehearsed correction. Do it after a win and you have found the decision that nearly cost you the game — which is usually the more useful of the two.",
+        ],
+      },
+    ],
+    gameSlugs: ["solitaire-duel"],
+    relatedGuides: [
+      "solitaire-mistakes-to-avoid",
+      "how-to-practice-solitaire",
+      "speed-versus-accuracy-in-solitaire",
+    ],
+  },
 ];
 
 /**

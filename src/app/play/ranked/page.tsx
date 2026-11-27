@@ -5,7 +5,7 @@ import { pageMetadata } from "../../../lib/seo";
 
 const RANKED_TITLE = "Ranked Solitaire lobby | GRYND";
 const RANKED_DESCRIPTION =
-  "Rated 1v1 Solitaire against real human players. One shared deal, both seats, Elo and trophies on the line.";
+  "Rated 1v1 Solitaire. One shared deal, both seats, Elo and trophies on the line. You are paired with a live player — or, if no one is waiting, a recorded run of the same deal.";
 
 export const metadata = pageMetadata({
   title: RANKED_TITLE,

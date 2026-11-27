@@ -233,8 +233,12 @@ export default function PvpResultScreen({
   rank = null,
   rankDelta = null,
   // Optional final score comparison, e.g.
-  //   [{ name: "You", score: 240, highlight: true }, { name: "Rival", score: 180 }]
+  //   [{ name: "You", score: 240, highlight: true, elo: 1180 },
+  //    { name: "Rival", score: 180, elo: 1240 }]
   // The highlighted side is emphasised; the other stays visible but muted.
+  // `elo` is optional: when a side carries a number it is printed under the
+  // score in Match Details (the bot's roster strength in a practice match, the
+  // player's rated Elo in a ranked one); a null/absent value prints nothing.
   // Games that don't pass it render exactly as before.
   sides = null,
   // Optional game-specific block rendered IN THE MAIN FLOW (visible without
@@ -676,9 +680,10 @@ export default function PvpResultScreen({
                 {outcome === "win" &&
                 opponent &&
                 !opponent.isAi &&
+                opponent.kind !== "recorded" &&
                 opponent.name &&
                 opponent.name !== "Opponent" &&
-                opponent.name !== "GRYND AI" ? (
+                opponent.kind !== "ai" ? (
                   <h2
                     className={`mt-3 font-black leading-tight tracking-tight text-[color:var(--text-primary)] ${
                       compact ? "text-2xl" : "text-3xl sm:text-4xl"
@@ -690,9 +695,10 @@ export default function PvpResultScreen({
                 ) : outcome === "loss" &&
                   opponent &&
                   !opponent.isAi &&
+                  opponent.kind !== "recorded" &&
                   opponent.name &&
                   opponent.name !== "Opponent" &&
-                  opponent.name !== "GRYND AI" ? (
+                  opponent.kind !== "ai" ? (
                   <h2
                     className={`mt-3 font-black leading-tight tracking-tight text-[color:var(--text-primary)] ${
                       compact ? "text-2xl" : "text-3xl sm:text-4xl"
@@ -701,6 +707,24 @@ export default function PvpResultScreen({
                     Defeated by{" "}
                     <span className="text-[color:var(--text-secondary)]">@{opponent.name}</span>
                   </h2>
+                ) : opponent?.kind === "recorded" && opponent.name ? (
+                  // A recorded run is never presented as the live person whose
+                  // moves it replays. The name is shown as the recording's
+                  // handle, with the classification stated in words.
+                  <>
+                    <h2
+                      className={`mt-3 font-black leading-tight tracking-tight ${
+                        outcome === "win"
+                          ? "text-[color:var(--state-win)]"
+                          : "text-[color:var(--state-loss)]"
+                      } ${compact ? "text-2xl" : "text-3xl sm:text-4xl"}`}
+                    >
+                      {outcome === "win" ? "You beat a recorded opponent" : "Beaten by a recorded opponent"}
+                    </h2>
+                    <p className="mt-1 text-sm text-[color:var(--text-muted)]">
+                      {opponent.name} — a replay of a real player&apos;s run on this deal, not a live player.
+                    </p>
+                  </>
                 ) : outcome === "win" && opponent?.isAi && opponent.name ? (
                   <>
                     <h2
@@ -1068,6 +1092,17 @@ export default function PvpResultScreen({
                                   >
                                     {side.score}
                                   </p>
+                                  {side.elo !== null &&
+                                    side.elo !== undefined &&
+                                    Number.isFinite(Number(side.elo)) && (
+                                      <p
+                                        data-testid="result-side-elo"
+                                        title="Elo rating for this game"
+                                        className="mt-0.5 font-mono text-[11px] font-bold text-[color:var(--text-muted)]"
+                                      >
+                                        {formatNumber(side.elo)} Elo
+                                      </p>
+                                    )}
                                   {side.highlight && (
                                     <p className="mt-0.5 text-[11px] font-bold uppercase tracking-widest text-[color:var(--accent-strong)]">
                                       Winner
@@ -1190,6 +1225,16 @@ export default function PvpResultScreen({
                               <div className="min-w-0 text-left">
                                 <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[color:var(--text-muted)]">
                                   Opponent
+                                  <span
+                                    data-testid="result-opponent-kind"
+                                    className="ml-2 rounded-full border border-[color:var(--border-hairline)] px-1.5 py-0.5 text-[9px] font-bold tracking-[0.12em]"
+                                  >
+                                    {opponent.kind === "recorded"
+                                      ? "Recorded opponent"
+                                      : opponent.kind === "ai"
+                                        ? "GRYND AI"
+                                        : "Live player"}
+                                  </span>
                                 </p>
                                 <p className="truncate text-sm font-bold text-[color:var(--text-primary)]">
                                   {opponent.isAi ? (

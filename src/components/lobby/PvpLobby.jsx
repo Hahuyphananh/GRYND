@@ -549,7 +549,10 @@ export function PvpLobby({
                 ]
               : [
                   ["Entry", "Free"],
-                  ["Opponent", "Live player"],
+                  // Ranked pairs a live player first; if the queue window
+                  // expires the same deal is raced against a recorded run, so
+                  // calling this "Live player" unconditionally was inaccurate.
+                  ["Opponent", "Live player or recorded run"],
                   ["Winner", "First to solve it"],
                   ["Draw", "No rating change"],
                 ]

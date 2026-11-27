@@ -140,6 +140,9 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   // records that disagree. The country arrives on the request headers (see
   // lib/consentRegions.ts); it is "" in local dev, i.e. "not the EU".
   const requestHeaders = await headers();
+  // The per-request CSP nonce, minted in the proxy. Every inline <script> this
+  // layout renders must carry it: the policy has no 'unsafe-inline'.
+  const nonce = requestHeaders.get("x-nonce") ?? undefined;
   const requiresCmp = requiresGoogleCmp(countryFromHeaders(requestHeaders));
 
   // The publisher id this property is authorised under (lib/ads.ts). Rendered
@@ -156,7 +159,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
             hoists `async` scripts (the AdSense tag) above it in the emitted
             HTML, which is exactly what wait_for_update covers — see the
             component's note. */}
-        <ConsentModeDefault />
+        <ConsentModeDefault nonce={nonce} />
         {adsenseAccount && <meta name="google-adsense-account" content={adsenseAccount} />}
         <link rel="manifest" href="/manifest.json" />
         {/* Organization + WebSite nodes, emitted through the shared renderer
@@ -190,7 +193,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
             executes during parsing — before any body content exists — so the
             theme is settled before anything is painted. Verified: the first
             paint after a reload is already the stored theme. */}
-        <script dangerouslySetInnerHTML={{ __html: THEME_BOOTSTRAP }} />
+        <script nonce={nonce} dangerouslySetInnerHTML={{ __html: THEME_BOOTSTRAP }} />
         {/* Analytics, the skip link, the splash overlay, the navbar offset and
             every floating widget now live in <SiteChrome> below, because the
             portal surface (/play/<gameKey>) must render the game and none of

@@ -10,6 +10,7 @@
 // code runs both in the Edge middleware and in Node route handlers.
 
 import { hasRecentMfa } from "./requireMfa";
+import { requireSecret } from "../security/requireSecret";
 
 export const ADMIN_MFA_COOKIE = "admin_mfa";
 export const ADMIN_MFA_MAX_AGE_MS = 24 * 60 * 60 * 1000;
@@ -81,11 +82,11 @@ export function adminMfaCookieOptions(req: { headers: Headers; url: string }) {
 type FactorVerificationAge = [number, number] | null;
 
 function getSecret(): string {
-  return (
-    process.env.GAME_SESSION_SECRET ||
-    process.env.NEXTAUTH_SECRET ||
-    process.env.CLERK_SECRET_KEY ||
-    "development-only-insecure-secret"
+  // No production fallback: this value signs the admin_mfa cookie, so a
+  // hard-coded default would let anyone forge an admin step-up.
+  return requireSecret(
+    ["GAME_SESSION_SECRET", "NEXTAUTH_SECRET", "CLERK_SECRET_KEY"],
+    "MFA cookie signing",
   );
 }
 

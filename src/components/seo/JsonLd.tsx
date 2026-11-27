@@ -1,3 +1,5 @@
+import { headers } from "next/headers";
+
 import type { JsonLdNode } from "../../lib/reviewJsonLd";
 
 /**
@@ -18,6 +20,12 @@ import type { JsonLdNode } from "../../lib/reviewJsonLd";
  *    nothing is worse than absent structured data, so a page with no real
  *    claim to make emits no markup rather than an empty node.
  *
+ *  • The request nonce is attached (when the proxy supplied one). The CSP has
+ *    no 'unsafe-inline', so an inline <script> without it is refused. Reading
+ *    the nonce here, rather than threading a prop through every page, keeps
+ *    all ten call sites unchanged and makes it impossible for a new page to
+ *    forget it.
+ *
  * Server component by design: it takes already-built plain data, renders no
  * interactive markup, and depends on no browser API — so the JSON-LD is in the
  * server-rendered HTML, before any script runs and with nothing to hydrate.
@@ -26,11 +34,17 @@ import type { JsonLdNode } from "../../lib/reviewJsonLd";
  *   <JsonLd data={buildGameStructuredData(slug)} />   // several nodes
  *   <JsonLd data={buildWebsiteJsonLd()} />            // one node
  */
-export default function JsonLd({ data }: { data?: JsonLdNode | JsonLdNode[] | null }) {
+export default async function JsonLd({
+  data,
+}: {
+  data?: JsonLdNode | JsonLdNode[] | null;
+}) {
   const nodes = (Array.isArray(data) ? data : [data]).filter((node): node is JsonLdNode =>
     Boolean(node)
   );
   if (nodes.length === 0) return null;
+
+  const nonce = (await headers()).get("x-nonce") ?? undefined;
 
   return (
     <>
@@ -38,6 +52,7 @@ export default function JsonLd({ data }: { data?: JsonLdNode | JsonLdNode[] | nu
         <script
           key={index}
           type="application/ld+json"
+          nonce={nonce}
           // Serialised here and nowhere else — see the `<` note above.
           dangerouslySetInnerHTML={{ __html: JSON.stringify(node).replace(/</g, "\\u003c") }}
         />

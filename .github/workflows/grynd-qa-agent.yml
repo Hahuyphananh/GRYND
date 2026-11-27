@@ -96,12 +96,20 @@ jobs:
           echo "===== GIT STATUS ====="
           git status --short
 
+      # THE WRITE PATH IS MANUAL-ONLY.
+      #
+      # These steps let a model edit source files, which are then committed to
+      # a branch and opened as a PR with this job's `contents: write` /
+      # `pull-requests: write` token. The model's own step never sees the token,
+      # but the code it writes runs in later steps and would land in a PR whose
+      # workflows execute with repository secrets. So the automated daily/push
+      # run only REPORTS; a human starts the repair with "Run workflow".
       - name: Install AI SDK
-        if: steps.check.outputs.needs_fix == 'true'
+        if: steps.check.outputs.needs_fix == 'true' && github.event_name == 'workflow_dispatch'
         run: npm install --no-save openai
 
       - name: Run AI fixer
-        if: steps.check.outputs.needs_fix == 'true'
+        if: steps.check.outputs.needs_fix == 'true' && github.event_name == 'workflow_dispatch'
         env:
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
           GRYND_URL: https://grynd.dedyn.io/

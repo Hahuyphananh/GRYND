@@ -9,7 +9,6 @@
 // and the request-level idempotency key rejects double-submits — so an
 // activation can never be double-spent.
 
-import { auth } from "@clerk/nextjs/server";
 import { claimIdempotency } from "../../../../../lib/security/idempotency";
 import {
   hasActiveEffect,
@@ -17,10 +16,14 @@ import {
   useItemAsEffect,
   userIdByClerkId,
 } from "../../../../../lib/shopItems";
+import { requireAgeVerifiedUser } from "../../../../../lib/auth/requireAgeVerified";
 
 export async function POST(req) {
   try {
-    const { userId } = await auth();
+    // 18+ gate: activation consumes a paid inventory charge.
+    const gate = await requireAgeVerifiedUser();
+    if (gate.response) return gate.response;
+    const userId = gate.userId;
     if (!userId) {
       return Response.json(
         { success: false, error: "Not authenticated" },

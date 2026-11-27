@@ -1744,6 +1744,27 @@
       "when": 1800000111000,
       "tag": "0267_competitive_streak_leaderboard_idx",
       "breakpoints": true
+    },
+    {
+      "idx": 249,
+      "version": "7",
+      "when": 1800000112000,
+      "tag": "0268_error_logs_lockdown",
+      "breakpoints": true
+    },
+    {
+      "idx": 250,
+      "version": "7",
+      "when": 1800000113000,
+      "tag": "0269_users_rls_lockdown",
+      "breakpoints": true
+    },
+    {
+      "idx": 251,
+      "version": "7",
+      "when": 1800000114000,
+      "tag": "0270_force_rls_users",
+      "breakpoints": true
     }
   ]
 }

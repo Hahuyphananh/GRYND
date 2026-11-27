@@ -1,13 +1,17 @@
 // src/lib/auth/requireAgeVerified.ts
 //
-// Server-side AUTHENTICATION gate for game / wagering API routes, which also
-// records the caller's age.
+// Server-side AUTHENTICATION + AGE gate for game / wagering API routes.
 //
-// AGE IS NOT ENFORCED. The 18+ rule was removed: the platform still ASKS for a
-// date of birth (/complete-profile), still stores the resulting `users.age`, and
-// still reports it to the pages, but being under 18 never blocks play. A route
-// behind this helper therefore only refuses a signed-out caller — the 401 — and
-// nothing else.
+// AGE IS ENFORCED (18+). This file is the single decision point: a signed-in
+// caller needs a `users.age` record and it must be at least MINIMUM_AGE
+// (src/lib/ageVerification.ts). The page middleware enforces the same boundary
+// for navigations (src/proxy.ts) and sends an under-18 account to
+// /access-denied; this helper is what protects the APIs, because every /api/*
+// path is public to the middleware.
+//
+// The rollout switch `API_AGE_GATE` (below) is the escape hatch: "log" reports
+// what would be rejected without blocking, and is the way to measure before
+// flipping a production deployment to "enforce".
 //
 // WHY THIS EXISTS: the page middleware (src/proxy.ts) only guards page
 // NAVIGATIONS. Every /api/* path is listed as public there, so an API request
@@ -52,6 +56,7 @@ import { users } from "../../db/schema";
 import { cacheGet, cacheSet } from "../redis/cache";
 import { CacheKeys, CacheTTL } from "../redis/keys";
 import { withTimeout } from "../security/withTimeout";
+import { MINIMUM_AGE } from "../ageVerification";
 
 export type AgeGateMode = "off" | "log" | "enforce";
 
@@ -222,22 +227,56 @@ async function lookupAge(userId: string): Promise<AgeLookup> {
 }
 
 /**
- * Map an age lookup onto the failure it warrants, or null when allowed.
+ * Map an age (or a failed lookup) onto the rejection it warrants, or null.
  *
- * NO AGE FAILS THIS GATE ANY MORE. The age is collected and stored so the
- * platform knows who it is serving, but it is not a condition of play: a signed-in
- * caller with no date of birth on file and a caller who reports being under 18
- * are both allowed through. Authentication is the only thing this helper still
- * refuses, and that is decided before it is ever called.
+ * FAIL CLOSED on an outage. A lookup that never settled is an age we do not
+ * know, and letting a request through on "unknown" is exactly the bypass this
+ * gate exists to close. 503 rather than 403 so the client can tell "try again"
+ * apart from "not eligible". The PAGE middleware makes the opposite choice for
+ * navigations (it fails open rather than taking the whole site down); the API
+ * is where money and rank move, so it is the side that has to be strict.
  *
- * Kept as a function (rather than deleted) so every route keeps one documented
- * decision point — and so a future legal requirement has one place to return to.
+ * A missing age is 403 with its own reason, not 401: the caller is
+ * authenticated, they simply have not supplied a date of birth (normally the
+ * middleware has already sent them to /complete-profile).
  */
+export function ageGateFailureFor(
+  age: number | null,
+  lookupFailed = false,
+): AgeGateFailure | null {
+  if (lookupFailed) {
+    return {
+      status: 503,
+      error: "We could not verify your age right now. Please try again.",
+      reason: "age_lookup_failed",
+    };
+  }
+
+  if (age === null || age === undefined || !Number.isFinite(Number(age))) {
+    return {
+      status: 403,
+      error: "Add your date of birth to continue.",
+      reason: "missing_age",
+    };
+  }
+
+  if (Number(age) < MINIMUM_AGE) {
+    return {
+      status: 403,
+      error: `You must be at least ${MINIMUM_AGE} to play.`,
+      reason: "underage",
+    };
+  }
+
+  return null;
+}
+
+/** The lookup-shaped wrapper used by `resolveAgeGate`. */
 function failureFor(lookup: AgeLookup): AgeGateFailure | null {
   if (lookup.failed) {
-    console.warn("[age-gate] age lookup failed; allowing the request");
+    console.warn("[age-gate] age lookup failed; refusing the request");
   }
-  return null;
+  return ageGateFailureFor(lookup.age, lookup.failed);
 }
 
 /**

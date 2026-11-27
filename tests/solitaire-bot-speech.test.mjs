@@ -177,11 +177,15 @@ test("the match page builds a snapshot only for a practice bot", () => {
 
 test("the bubble lives in the existing opponent strip, not a new section", () => {
   const page = read(PAGE);
-  assert.match(page, /data-testid="solitaire-bot-opponent"/);
-  assert.match(page, /<BotSpeech[\s\S]{0,400}fallback=\{practiceBot\.description\}/);
-  assert.match(page, /showAvatar=\{false\}/);
+  const stripStart = page.indexOf('data-testid="solitaire-bot-opponent"');
+  assert.ok(stripStart > -1, "the opponent strip test id must exist");
+  // Scope the assertions to THIS strip: the same muted-11px paragraph is still
+  // used, correctly, by the recorded-run card further up the page.
+  const strip = page.slice(stripStart, stripStart + 6000);
+  assert.match(strip, /<BotSpeech[\s\S]*fallback=\{practiceBot\.description\}/);
+  assert.match(strip, /showAvatar=\{false\}/);
   // The old raw description paragraph is gone; the strip keeps its padding.
-  assert.doesNotMatch(page, /truncate text-\[11px\] text-white\/45/);
+  assert.doesNotMatch(strip, /truncate text-\[11px\] text-white\/45/);
 });
 
 test("only practice results hand the opponent the last word", () => {

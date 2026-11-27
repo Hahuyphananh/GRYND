@@ -1,8 +1,7 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
 import { useUser } from "@clerk/nextjs";
-import posthog from "posthog-js";
-import { getAcquisitionParams } from "../../lib/analytics";
+
 
 /**
  * Reads the server-authoritative onboarding flag for the signed-in account.
@@ -88,16 +87,11 @@ export default function SyncPage() {
           replacedRef.current = true;
           const isNewUser = data?.message === "User synced successfully";
 
-          // Marketing funnel: a fresh signup completes at the sync handoff
-          // (the one place that knows the user is brand new). Attribution
-          // params ride along so signups are traceable to a channel.
-          if (isNewUser && process.env.NEXT_PUBLIC_POSTHOG_KEY) {
-            try {
-              posthog.capture("sign_up_completed", getAcquisitionParams());
-            } catch (err) {
-              console.warn("[funnel] sign_up_completed failed:", err);
-            }
-          }
+          // `sign_up_completed` is emitted by the Clerk `user.created` webhook,
+          // where the row insert proves the signup. Nothing is captured here:
+          // the sync handoff also runs for EXISTING users and on retries, so a
+          // client event would double-count and could report a signup that the
+          // database never accepted.
 
           setStatus("Redirecting...");
           // IMPORTANT: a full navigation (not router.replace) — so back/refresh

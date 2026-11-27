@@ -312,8 +312,15 @@ test("practice code only consults the proven line as a dead-end recovery", () =>
   assert.match(store, /planAiLine\(\{/);
   assert.match(store, /solveDealLine\(matchDeal\)/);
 
+  // The standalone build is now a thin shell: `standalone/.../match.ts`
+  // re-exports the shared controller so both shells run one engine. Follow the
+  // re-export instead of demanding a second copy of the heuristic.
   const standalone = strip("standalone/solitaire-duel/src/match.ts");
-  assert.match(standalone, /planAiMoves\(\{/);
+  const reExport = /export \* from "([^"]+)"/.exec(standalone);
+  assert.ok(reExport, "the standalone shell must re-export the shared controller");
+  assert.match(reExport[1], /localMatch$/);
+  const sharedMatch = strip("src/lib/solitaire-duel/localMatch.ts");
+  assert.match(sharedMatch, /planAiMoves\(\{/);
 });
 
 test("a proven line always finishes a served deal (the recovery guarantee)", () => {

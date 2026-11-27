@@ -28,6 +28,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 
+import {
+  SOLITAIRE_EVENTS,
+  trackSolitaireEvent,
+} from "../../lib/solitaire-analytics";
+
 import { useOnlineStatus } from "../../hooks/useOnlineStatus";
 
 import PostMatchAdSlot from "../ads/PostMatchAdSlot";
@@ -393,6 +398,11 @@ export default function SoloSolitaireGame({ mode, daily, soloSummary = null }: S
       // study, and the inactivity limit waits with it.
       timerStartedAtMs: null,
     });
+    trackSolitaireEvent(SOLITAIRE_EVENTS.gameStarted, {
+      mode: "solo",
+      opponent_type: "ai",
+      source: "solo_deal",
+    });
     setSession(next);
     setSavedResult("idle");
     setReviewGameId(null);
@@ -525,6 +535,31 @@ export default function SoloSolitaireGame({ mode, daily, soloSummary = null }: S
         finished.endedAtMs ?? Date.now(),
         Date.now(),
       );
+      // The board is the proof here: the engine completed (or the attempt was
+      // abandoned) before this function ran, so the event is true even if the
+      // POST below later fails. Ranked results are NOT reported this way — those
+      // wait for the server's settlement.
+      if (finished.won) {
+        trackSolitaireEvent(SOLITAIRE_EVENTS.gameCompleted, {
+          mode: finished.mode,
+          result: "win",
+          duration_seconds: Math.round(elapsedMs / 1000),
+          opponent_type: finished.mode === "daily" ? undefined : "ai",
+        });
+        if (finished.mode === "daily") {
+          trackSolitaireEvent(SOLITAIRE_EVENTS.dailyChallengeCompleted, {
+            mode: "daily",
+            result: "completed",
+            duration_seconds: Math.round(elapsedMs / 1000),
+          });
+        }
+      } else {
+        trackSolitaireEvent(SOLITAIRE_EVENTS.gameAbandoned, {
+          mode: finished.mode,
+          result: "abandoned",
+          duration_seconds: Math.round(elapsedMs / 1000),
+        });
+      }
       const key = `${finished.mode}:${finished.dateKey ?? finished.seed}:${finished.log.length}`;
       if (submittedRef.current === key) return;
       submittedRef.current = key;
@@ -746,6 +781,10 @@ export default function SoloSolitaireGame({ mode, daily, soloSummary = null }: S
     setFinishing(null);
     submittedRef.current = null;
     persistSession(next);
+    trackSolitaireEvent(SOLITAIRE_EVENTS.gameRestarted, {
+      mode: session.mode,
+      source: "restart",
+    });
   }, [abandonIfNeeded, persistSession, session]);
 
   const startDaily = useCallback(() => {
@@ -756,6 +795,14 @@ export default function SoloSolitaireGame({ mode, daily, soloSummary = null }: S
       dateKey: daily.dateKey,
       deal: daily.deal,
       startedAtMs: Date.now(),
+    });
+    trackSolitaireEvent(SOLITAIRE_EVENTS.dailyChallengeStarted, {
+      mode: "daily",
+      source: "daily_deal",
+    });
+    trackSolitaireEvent(SOLITAIRE_EVENTS.gameStarted, {
+      mode: "daily",
+      source: "daily_deal",
     });
     setSession(next);
     setSavedResult("idle");

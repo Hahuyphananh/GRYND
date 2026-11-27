@@ -35,6 +35,7 @@ import { solitaireSoloResults } from "../../../../db/schema";
 import { logError } from "../../../../lib/logError";
 import { summariseSolo } from "../../../../lib/solitaire-duel/soloStats.js";
 import { recordStreakCompletion } from "../../../../lib/streaks/server";
+import { requireAgeVerifiedUser } from "../../../../lib/auth/requireAgeVerified";
 import { dealFromSeed } from "../../../../lib/solitaire-duel/deck";
 import { replayMoves } from "../../../../lib/solitaire-duel/rules";
 import {
@@ -106,7 +107,11 @@ export async function GET() {
 }
 
 export async function POST(req: Request) {
-  const { userId } = await auth();
+  // 18+ gate: a completed board credits the day's streak and its milestone
+  // rewards, so this is a progression write, not a read.
+  const gate = await requireAgeVerifiedUser();
+  if (gate.response) return gate.response;
+  const userId = gate.userId;
   if (!userId) {
     return NextResponse.json(
       { success: false, error: "Unauthenticated", code: "SIGN_IN_REQUIRED" },

@@ -25,7 +25,8 @@
 // state on screen and the decision (wait or cancel) theirs. Bot matches live
 // in the separate Play vs AI lobby at /play/ai.
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { SOLITAIRE_EVENTS, trackSolitaireEvent } from "../../lib/solitaire-analytics";
 
 import { useUser } from "@clerk/nextjs";
 import Link from "next/link";
@@ -83,6 +84,10 @@ export default function SolitaireLobby({ variant = "home" }: { variant?: "home" 
 
   const [rankedBusy, setRankedBusy] = useState(false);
   const [cancelling, setCancelling] = useState(false);
+  // When THIS queue search began, so the found event can carry a real wait.
+  const queuedAtRef = useRef<number | null>(null);
+  const queueDuration = () =>
+    queuedAtRef.current == null ? undefined : Date.now() - queuedAtRef.current;
   const [error, setError] = useState<string | null>(null);
   const [snapshot, setSnapshot] = useState<LobbySnapshot | null>(null);
   const [lobbyLoading, setLobbyLoading] = useState(true);
@@ -139,6 +144,13 @@ export default function SolitaireLobby({ variant = "home" }: { variant?: "home" 
         const data = await res.json().catch(() => null);
         if (!stopped && data?.success && data.data?.status === "playing") {
           stopped = true;
+          // The server confirmed the row is playing: FOUND.
+          trackSolitaireEvent(SOLITAIRE_EVENTS.rankedMatchFound, {
+            mode: "ranked",
+            game_id: "solitaire-duel",
+            queue_duration_ms: queueDuration(),
+          });
+          queuedAtRef.current = null;
           router.push(matchPath(waitingId));
         }
       } catch {
@@ -164,6 +176,12 @@ export default function SolitaireLobby({ variant = "home" }: { variant?: "home" 
     if (rankedBusy) return;
     setRankedBusy(true);
     setError(null);
+    queuedAtRef.current = Date.now();
+    trackSolitaireEvent(SOLITAIRE_EVENTS.rankedQueueStarted, {
+      mode: "ranked",
+      game_id: "solitaire-duel",
+      source: "lobby",
+    });
     try {
       const res = await fetch("/api/solitaire-duel/create-or-join", {
         method: "POST",
@@ -178,6 +196,15 @@ export default function SolitaireLobby({ variant = "home" }: { variant?: "home" 
         return;
       }
       const matchId = String(data.data.matchId);
+      if (data.data.status !== "waiting") {
+        // FOUND only after the server confirmed a real playing row.
+        trackSolitaireEvent(SOLITAIRE_EVENTS.rankedMatchFound, {
+          mode: "ranked",
+          game_id: "solitaire-duel",
+          queue_duration_ms: queueDuration(),
+        });
+        queuedAtRef.current = null;
+      }
       if (data.data.status === "waiting") {
         // Nobody was waiting: the caller now HOLDS a real open lobby. Stay on
         // the page, show it, and let them wait or cancel.
@@ -237,11 +264,19 @@ export default function SolitaireLobby({ variant = "home" }: { variant?: "home" 
     const matchId = waitingId;
     setLocalWaitingId(null);
     try {
-      await fetch(`/api/solitaire-duel/match/${matchId}/cancel`, {
+      const res = await fetch(`/api/solitaire-duel/match/${matchId}/cancel`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
       });
+      // Only a server-confirmed cancellation is a queue_cancelled event.
+      if (res.ok) {
+        trackSolitaireEvent(SOLITAIRE_EVENTS.rankedQueueCancelled, {
+          mode: "ranked",
+          game_id: "solitaire-duel",
+        });
+        queuedAtRef.current = null;
+      }
     } catch {
       setError("Unable to cancel the search. Try again.");
     } finally {

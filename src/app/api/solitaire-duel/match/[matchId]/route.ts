@@ -28,6 +28,7 @@ import { requirePracticePlayer } from "../../../../../lib/auth/guestSession";
 import { logError } from "../../../../../lib/logError";
 import { getSeatIdentity } from "../../../../../lib/seatIdentity";
 import { getTrophyMapsForUsers } from "../../../../../lib/trophyStore";
+import { getRatingMapsForUsers } from "../../../../../lib/rating";
 import { fetchMatch, isMatchId } from "../../../../../lib/solitaire-duel/serverStore";
 
 export const dynamic = "force-dynamic";
@@ -98,6 +99,33 @@ export async function GET(
       players = null;
     }
 
+    // Each seat's Elo for THIS game, so the result screen can show who was
+    // rated what rather than only the viewer's own numbers. Read through the
+    // queue matcher's one-query helper; a player who has never completed a
+    // rated duel has no row and stays null ("Unrated"), never a fabricated 1000.
+    // Cosmetic like the identity above: a failure here must not fail the board.
+    let ratings: { player1: number | null; player2: number | null } | null = null;
+    try {
+      // Clerk ids only: the bot sentinel has no player_ratings row.
+      const ratedIds = [result.match.player1Id, result.match.player2Id].filter(
+        (id): id is string => typeof id === "string" && id.startsWith("user_"),
+      );
+      if (ratedIds.length > 0) {
+        const ratingMaps = await getRatingMapsForUsers(ratedIds);
+        const ratingFor = (id: string | null | undefined): number | null => {
+          if (typeof id !== "string") return null;
+          const value = ratingMaps[id]?.["solitaire-duel"];
+          return typeof value === "number" && Number.isFinite(value) ? value : null;
+        };
+        ratings = {
+          player1: ratingFor(result.match.player1Id),
+          player2: ratingFor(result.match.player2Id),
+        };
+      }
+    } catch {
+      ratings = null;
+    }
+
     return NextResponse.json({
       success: true,
       data: {
@@ -106,6 +134,9 @@ export async function GET(
         // board and no outcome, and `matchToDto` itself stays exactly as the
         // store defines it.
         players,
+        // Per-seat Solitaire Duel Elo (null = never rated). Same rule: it
+        // describes the players, it never changes one.
+        ratings,
       },
     });
   } catch (error) {

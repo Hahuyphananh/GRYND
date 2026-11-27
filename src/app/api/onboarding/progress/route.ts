@@ -22,6 +22,12 @@
 
 import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
+import {
+  SOLITAIRE_EVENTS,
+  onceOnServer,
+  type SolitaireEventName,
+} from "../../../../lib/solitaire-analytics";
+import { captureSolitaireServerEvent } from "../../../../lib/analytics-server";
 import { and, eq, isNull } from "drizzle-orm";
 import { db } from "../../../../db";
 import { users } from "../../../../db/schema";
@@ -81,6 +87,22 @@ export async function POST(request: Request) {
       .update(users)
       .set({ [column]: value })
       .where(and(eq(users.id, user.id), isNull(users[column])));
+
+    // AUTHORITATIVE: the column write above is the proof. A skipped tutorial is
+    // reported as skipped, never as a completion, and the same user can only
+    // produce one of these per instance (the WHERE IS NULL keeps it once in
+    // the database).
+    const mapped: SolitaireEventName | null =
+      body.event === "welcome_started"
+        ? SOLITAIRE_EVENTS.onboardingStarted
+        : body.event === "tutorial_completed"
+          ? SOLITAIRE_EVENTS.onboardingCompleted
+          : body.event === "tutorial_skipped"
+            ? SOLITAIRE_EVENTS.onboardingSkipped
+            : null;
+    if (mapped && onceOnServer(`${mapped}:${userId}`)) {
+      captureSolitaireServerEvent(mapped, userId, { surface: "onboarding_progress" });
+    }
 
     return NextResponse.json({ success: true, event: body.event });
   } catch (err) {

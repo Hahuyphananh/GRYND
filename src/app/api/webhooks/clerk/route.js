@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { Webhook } from "svix";
 import bcrypt from "bcryptjs";
 import crypto from "crypto";
+import { eq } from "drizzle-orm";
 import { users, userAutomationState } from "../../../../db/schema";
 import { auditLog } from "../../../../lib/security/auditLog";
 import { deleteUserLocalData } from "../../../../lib/security/deleteUserData";
@@ -16,6 +17,8 @@ import { reconcileEmoteState } from "../../../../lib/emotes";
 import { grantAllCosmeticsToUser } from "../../../../lib/cosmetics";
 import { searchNameFor } from "../../../../lib/searchName";
 import { moderatedDisplayName } from "../../../../lib/moderation/profanity";
+import { SOLITAIRE_EVENTS } from "../../../../lib/solitaire-analytics";
+import { captureSolitaireServerEvent } from "../../../../lib/analytics-server";
 
 export async function POST(req) {
   try {
@@ -71,6 +74,18 @@ export async function POST(req) {
           })
           .onConflictDoNothing()
           .returning({ id: users.id });
+        // AUTHORITATIVE signup: `insertedRows` is non-empty ONLY when this
+        // webhook actually created the row. A retried delivery inserts nothing
+        // (onConflictDoNothing + returning), so the event cannot double-count.
+        // Attribution stays on the person profile: the webhook carries no UTM,
+        // and the client registers acquisition params after consent.
+        if (insertedRows?.length) {
+          captureSolitaireServerEvent(SOLITAIRE_EVENTS.signupCompleted, id, {
+            is_authenticated: true,
+            source: "clerk_webhook",
+            surface: "signup",
+          });
+        }
         // A brand-new local user owns the full free official icon catalog
         // (default + all 12). Guarantees every account can access every icon
         // in the picker regardless of whether it ever hits the sync-user
@@ -131,6 +146,27 @@ export async function POST(req) {
           },
         });
       auditLog("webhook_session_created", { clerkId });
+    }
+
+    if (evt.type === "user.updated") {
+      // THE ONE WRITE PATH FOR `users.email`.
+      //
+      // /api/profile/update no longer accepts an email: an address typed into
+      // a form and stored without proof of ownership was a phishing and
+      // account-recovery lever. Clerk owns the address and verifies it, and
+      // this mirrors the PRIMARY VERIFIED address down so the local copy is
+      // always one the identity provider stands behind.
+      const { id, email_addresses, primary_email_address_id } = evt.data;
+      const primary =
+        email_addresses?.find((address) => address.id === primary_email_address_id) ??
+        email_addresses?.[0];
+      const email = primary?.email_address;
+      const verified = primary?.verification?.status === "verified";
+
+      if (id && email && verified) {
+        await db.update(users).set({ email }).where(eq(users.clerkId, id));
+        auditLog("webhook_user_updated", { clerkId: id, emailSynced: true });
+      }
     }
 
     if (evt.type === "user.deleted") {

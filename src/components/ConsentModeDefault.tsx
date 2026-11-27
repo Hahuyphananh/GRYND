@@ -60,10 +60,13 @@ gtag('consent', 'default', {
 // Strip ad click identifiers from ad requests while ad_storage is denied.
 gtag('set', 'ads_data_redaction', true);`;
 
-export default function ConsentModeDefault() {
+export default function ConsentModeDefault({ nonce }: { nonce?: string }) {
   return (
     <script
       id="consent-mode-default"
+      // The CSP is nonce-based with no 'unsafe-inline'; this script only runs
+      // when it carries the request nonce from the proxy.
+      nonce={nonce}
       // Server-rendered inline on purpose: it must run before every Google
       // tag, so it cannot be a deferred client script.
       dangerouslySetInnerHTML={{ __html: CONSENT_MODE_DEFAULT }}

@@ -65,6 +65,11 @@ import {
   IconTrophy,
 } from "@tabler/icons-react";
 
+import {
+  SOLITAIRE_EVENTS,
+  trackSolitaireEvent,
+  trackSolitaireEventOnce,
+} from "../../../../lib/solitaire-analytics";
 import NavigationBar from "../../../../components/navigation-bar";
 import GameSessionHost from "../../../../components/GameSessionHost";
 import MatchWaiting from "../../../../components/lobby/MatchWaiting";
@@ -164,8 +169,12 @@ type MatchDto = {
   aiDifficulty: string | null;
   /** The public identity of that bot; null on a human duel. */
   bot: MatchBot | null;
+  /** Each seat's Elo for Solitaire Duel; null means that seat is Unrated. */
+  ratings?: { player1: number | null; player2: number | null } | null;
   /** True when the opponent is a RECORDED human run — never an AI seat. */
   isGhost?: boolean;
+  /** Server-classified opponent type — the ONE source for every label. */
+  opponentKind?: "human" | "recorded" | "ai";
   /** The anonymised handle, recorded strength and recorded pace of that run. */
   ghost?: {
     name: string;
@@ -609,6 +618,31 @@ export default function SolitaireDuelMatchPage() {
     return "racing" as const;
   }, [match, loadError, terminal, status, countdownMs]);
 
+  // A match STARTS when the server has both seats and the race clock begins —
+  // not when the page mounts. The result is never reported from here: that is
+  // the settlement's job on the server.
+  useEffect(() => {
+    if (phase !== "racing" || !match) return;
+    if (match.isAi) {
+      trackSolitaireEventOnce(`ai-started:${matchId}`, SOLITAIRE_EVENTS.gameStarted, {
+        mode: "ai",
+        game_id: "solitaire-duel",
+        opponent_type: "ai",
+      });
+      return;
+    }
+    // Server-classified opponent (a recorded run is NOT a live human) and the
+    // rating gap at the moment the race starts, when both seats are rated.
+    const p1 = match.ratings?.player1 ?? null;
+    const p2 = match.ratings?.player2 ?? null;
+    trackSolitaireEventOnce(`ranked-started:${matchId}`, SOLITAIRE_EVENTS.rankedMatchStarted, {
+      mode: "ranked",
+      game_id: "solitaire-duel",
+      opponent_type: match.opponentKind ?? "human",
+      rating_diff: p1 != null && p2 != null ? Math.abs(p1 - p2) : undefined,
+    });
+  }, [phase, match, matchId]);
+
   // ── Practice pause (vs AI only) ────────────────────────────────────────
   const {
     canPause,
@@ -874,6 +908,10 @@ export default function SolitaireDuelMatchPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
       });
+      trackSolitaireEvent(SOLITAIRE_EVENTS.rankedQueueCancelled, {
+        mode: "ranked",
+        game_id: "solitaire-duel",
+      });
     } catch {
       // Best effort — an abandoned lobby is reaped either way.
     } finally {
@@ -897,6 +935,13 @@ export default function SolitaireDuelMatchPage() {
   const requeue = useCallback(async () => {
     if (requeueing) return;
     setRequeueing(true);
+    if (!matchRef.current?.isAi) {
+      trackSolitaireEvent(SOLITAIRE_EVENTS.rankedQueueStarted, {
+        mode: "ranked",
+        game_id: "solitaire-duel",
+        source: "rematch",
+      });
+    }
     try {
       const res = await fetch(
         matchRef.current?.isAi ? "/api/solitaire-duel/create-ai" : "/api/solitaire-duel/create-or-join",
@@ -914,6 +959,13 @@ export default function SolitaireDuelMatchPage() {
       );
       const data = await res.json().catch(() => null);
       if (res.ok && data?.success) {
+        // FOUND only after the server confirmed the match exists.
+        if (!matchRef.current?.isAi) {
+          trackSolitaireEvent(SOLITAIRE_EVENTS.rankedMatchFound, {
+            mode: "ranked",
+            game_id: "solitaire-duel",
+          });
+        }
         router.push(`/casino/solitaire-duel/${data.data.matchId}`);
       }
     } catch {
@@ -1057,6 +1109,17 @@ export default function SolitaireDuelMatchPage() {
   const canRestart = isPractice && !restarting && !leaving;
   const myFoundation = Math.max(0, myProgress?.foundationCards ?? 0);
   const opponentFoundation = Math.max(0, opponentProgress?.foundationCards ?? 0);
+
+  // Elo per side for the result's Match Details. Ranked: the account's own
+  // rated value for each seat. Practice: the bot's roster strength, and the
+  // human seat's real duel Elo (a practice match never changes it, so it is
+  // shown as-is; an account that has never played rated shows nothing).
+  const myElo = match?.ratings && mySeatKey ? match.ratings[mySeatKey] ?? null : null;
+  const opponentElo = isPractice
+    ? practiceBot?.rating ?? null
+    : match?.ratings && mySeatKey
+      ? match.ratings[mySeatKey === "player1" ? "player2" : "player1"] ?? null
+      : null;
   const myPercent = myProgress?.progressPercent ?? 0;
   const opponentPercent = opponentProgress?.progressPercent ?? 0;
   const outcome = viewerOutcome(seat, match?.result) ?? "draw";
@@ -1216,9 +1279,13 @@ export default function SolitaireDuelMatchPage() {
                   data-testid="solitaire-ghost-opponent"
                   className="mt-2 rounded-xl border border-cyan-400/25 bg-cyan-400/[0.06] px-3 py-2 text-[11px] font-semibold leading-relaxed text-cyan-100/80"
                 >
-                  Racing a recorded run by a real player — {ghost.name}
+                  <span className="mr-1 rounded-full border border-cyan-400/40 bg-cyan-400/10 px-1.5 py-0.5 text-[9px] font-black uppercase tracking-[0.12em] text-cyan-100">
+                    Recorded opponent
+                  </span>
+                  A recorded run by a real player — {ghost.name}
                   {ghost.rating != null ? ` (${ghost.rating} Elo)` : ""}. A replay
-                  of their own moves on this exact deal: never an AI.
+                  of their own moves on this exact deal: not a live player, and
+                  never an AI.
                 </div>
               )}
 
@@ -1246,6 +1313,9 @@ export default function SolitaireDuelMatchPage() {
                       </span>
                       <span className="rounded-full border border-white/15 bg-white/[0.04] px-2 py-0.5 text-[11px] font-black uppercase tracking-[0.12em] text-white/55">
                         {practiceBot.difficultyLabel}
+                      </span>
+                      <span className="rounded-full border border-violet-400/40 bg-violet-400/10 px-2 py-0.5 text-[11px] font-black uppercase tracking-[0.12em] text-violet-200">
+                        GRYND AI
                       </span>
                       <span className="rounded-full border border-emerald-400/30 bg-emerald-400/10 px-2 py-0.5 text-[11px] font-black uppercase tracking-[0.12em] text-emerald-300/80">
                         Unrated
@@ -1657,6 +1727,10 @@ export default function SolitaireDuelMatchPage() {
           // Practice has no account behind the opponent: it is the roster bot,
           // so the result shows its own portrait and names it without an "@".
           isAi: isPractice,
+          // Canonical kind from the server; the result screen never re-guesses
+          // from a display name.
+          kind:
+            match?.opponentKind ?? (isPractice ? "ai" : ghost ? "recorded" : "human"),
           imageSrc: isPractice ? practiceBot?.avatar?.src ?? null : null,
           imageAlt: isPractice ? practiceBot?.avatar?.alt ?? null : null,
           ratingLabel: isPractice ? practiceBot?.ratingLabel ?? null : null,
@@ -1726,11 +1800,13 @@ export default function SolitaireDuelMatchPage() {
             name: "You",
             score: `${myFoundation}/52`,
             highlight: outcome === "win",
+            elo: myElo,
           },
           {
             name: opponentName,
             score: `${opponentFoundation}/52`,
             highlight: outcome === "loss",
+            elo: opponentElo,
           },
         ]}
         summary={[

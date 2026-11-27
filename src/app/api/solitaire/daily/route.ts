@@ -41,6 +41,7 @@ import { dailyDateKey, summariseDaily } from "../../../../lib/solitaire-duel/sol
 import { dailyDealFor } from "../../../../lib/solitaire-duel/daily";
 import { getMembershipTier } from "../../../../lib/stripe/subscriptions";
 import { recordStreakCompletion } from "../../../../lib/streaks/server";
+import { requireAgeVerifiedUser } from "../../../../lib/auth/requireAgeVerified";
 import { isValidDailyDateKey } from "../../../../lib/solitaire-duel/dailyArchive";
 import { replayMoves } from "../../../../lib/solitaire-duel/rules";
 import {
@@ -159,7 +160,10 @@ export async function GET(req: Request) {
 }
 
 export async function POST(req: Request) {
-  const { userId } = await auth();
+  // 18+ gate: an official daily result credits the streak and its rewards.
+  const gate = await requireAgeVerifiedUser();
+  if (gate.response) return gate.response;
+  const userId = gate.userId;
   if (!userId) {
     return NextResponse.json(
       {

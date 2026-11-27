@@ -26,6 +26,7 @@
 import { auth } from "@clerk/nextjs/server";
 import { cookies, headers } from "next/headers";
 import { httpsFromForwardedProto } from "./adminMfa";
+import { requireSecret } from "../security/requireSecret";
 import { requireAgeVerifiedUser } from "./requireAgeVerified";
 import {
   GUEST_COOKIE,
@@ -47,12 +48,16 @@ export type PracticePlayer = {
 };
 
 function getSecret(): string {
-  return (
-    process.env.GUEST_SESSION_SECRET ||
-    process.env.GAME_SESSION_SECRET ||
-    process.env.NEXTAUTH_SECRET ||
-    process.env.CLERK_SECRET_KEY ||
-    "development-only-insecure-secret"
+  // No production fallback: a known secret would let a visitor mint another
+  // visitor's guest id and drive their practice match.
+  return requireSecret(
+    [
+      "GUEST_SESSION_SECRET",
+      "GAME_SESSION_SECRET",
+      "NEXTAUTH_SECRET",
+      "CLERK_SECRET_KEY",
+    ],
+    "Guest session signing",
   );
 }
 

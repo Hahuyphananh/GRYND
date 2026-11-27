@@ -74,11 +74,11 @@ for (const route of ROUTES) {
       timeout: 45000,
     });
     await new Promise((r) => setTimeout(r, 1500)); // hydration
-    await page.evaluate((src) => {
-      const s = document.createElement("script");
-      s.textContent = src;
-      document.head.appendChild(s);
-    }, axeSource);
+    // The app's CSP (script-src 'nonce-...') blocks an appended <script>, which
+        // left window.axe undefined and made EVERY route report a false "FAILED".
+        // Evaluating the bundle directly runs it in the page context through the
+        // devtools protocol, which script-src does not govern.
+        await page.evaluate(axeSource);
 
     const results = await page.evaluate(async () => {
       const r = await window.axe.run(document, {
