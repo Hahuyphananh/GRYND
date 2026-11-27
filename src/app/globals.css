@@ -247,45 +247,57 @@ body {
 /* Route-change transition — the shared page wrapper for every route
    (src/components/RouteTransition.jsx). Both animations are one-shot and the
    wrapper is re-keyed by the pathname, so they replay on each navigation.
+   Without the full-screen wipe. The old veil painted the whole
+   viewport at 34% page colour for 280ms on every navigation, which read as a
+   camera flash. It is gone; nothing covers the page now and no element's
+   brightness changes. Two quiet parts instead:
 
-   `route-fade-in` deliberately has NO opacity-0 resting state: the wrapper's
-   natural opacity is 1, so a cancelled, skipped or never-started animation
-   still leaves the page visible. The page used to be animated by framer-motion
-   instead, and an AnimatePresence `mode="wait"` hand-off that Next's navigation
-   interleaved with left this wrapper stuck on its `initial` opacity — a page
-   fully built in the DOM that painted nothing. See
-   docs/route-transition-blank-page.md. */
-@keyframes routeFadeIn {
-  0% {
-    opacity: 0;
+   * `route-settle` — the page rises 6px and steps opacity 0.86 → 1 in 200ms.
+     There is NO opacity-0 resting state, so a skipped, cancelled or
+     interrupted animation still leaves the page visible. The wrapper's natural
+     opacity is 1; an AnimatePresence hand-off once left it stuck on `initial`
+     and painted nothing (docs/route-transition-blank-page.md).
+   * `route-accent-sweep` — a 2px brand hairline across the top edge that draws
+     once and fades. It is fixed, 2px tall and pointer-transparent, so it can
+     never obscure content. */
+@keyframes routeSettle {
+  from {
+    opacity: 0.86;
+    transform: translateY(6px);
   }
-  100% {
+  to {
     opacity: 1;
+    transform: none;
   }
 }
-.route-fade-in {
-  animation: routeFadeIn 0.25s ease-out;
+.route-settle {
+  animation: routeSettle 0.2s cubic-bezier(0.22, 0.61, 0.36, 1);
 }
 
-/* The route change's darkening wipe. The resting state (`.route-wipe`) is
-   opacity 0 — transparent — and is applied unconditionally: if the animation
-   never runs the veil stays invisible instead of covering the page it sits
-   over, and a veil without it would rest at its natural opacity of 1, i.e. an
-   opaque sheet over the page. Only the flash is conditional, so it does not
-   play on a hard load. */
-@keyframes routeWipe {
+@keyframes routeAccentSweep {
   0% {
-    opacity: 0.34;
+    transform: scaleX(0.15);
+    opacity: 0.85;
   }
   100% {
+    transform: scaleX(1);
     opacity: 0;
   }
 }
-.route-wipe {
-  opacity: 0;
-}
-.route-wipe-flash {
-  animation: routeWipe 0.28s ease-in-out forwards;
+.route-accent-sweep {
+  position: fixed;
+  inset: 0 0 auto 0;
+  height: 2px;
+  z-index: 60;
+  pointer-events: none;
+  transform-origin: 50% 50%;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    var(--gr-brand-cyan, #22d3ee),
+    transparent
+  );
+  animation: routeAccentSweep 0.32s ease-out forwards;
 }
 
 @keyframes scaleIn {

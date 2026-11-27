@@ -79,21 +79,26 @@ fresh and animates it once. The gap was never the probe; it was the navigation.
 two CSS keyframes (defined in `src/app/globals.css`) and re-keys on the
 pathname:
 
-- `.route-fade-in` — the same 0.25 s fade-in, with **no opacity-0 resting
-  state**, so a skipped, cancelled or interrupted animation falls back to the
-  element's natural opacity of 1. This is what makes the failure mode
-  impossible rather than unlikely.
-- `.route-wipe` — the same 0.34 → 0 darkening flash, whose resting state is
-  opacity 0, so it cannot cover the page if it never runs.
+- `.route-settle` — a 200 ms entrance: 6px rise, opacity 0.86 → 1, with **no
+  opacity-0 resting state**, so a skipped, cancelled or interrupted animation
+  falls back to the element's natural opacity of 1. This is what makes the
+  failure mode impossible rather than unlikely.
+- `.route-accent-sweep` — a 2px brand hairline across the top edge that draws
+  once and fades. It is fixed, hairline-thin and `pointer-events: none`, so it
+  cannot cover or intercept anything.
+
+The earlier fix also shipped `.route-wipe`, a full-viewport veil at 34% page
+colour for 280 ms on every navigation. In use it read as a camera flash, so it
+was removed: no layer covers the page any more and nothing on screen changes
+brightness. Only the two quiet animations above remain.
 
 Reduced-motion is handled by the existing global `prefers-reduced-motion` block,
 which collapses both to their end state (the same way `.animate-state-in`
 behaves).
 
-The wipe veil sits **inside** the keyed wrapper. Two siblings cannot share one
-`key`, and a veil React reuses instead of remounting never replays its one-shot
-animation — measured as a veil that stayed at its transparent resting opacity
-while the page around it faded in.
+Both animated nodes sit **inside** the keyed wrapper. Two siblings cannot share
+one `key`, and a node React reuses instead of remounting never replays its
+one-shot animation.
 
 ## How to verify
 

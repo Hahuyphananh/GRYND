@@ -1,23 +1,29 @@
 /**
  * route-transition-visibility.test.mjs
  *
- * The shared page wrapper must never be able to hide a page. It used to be a
- * keyed framer-motion child inside `<AnimatePresence mode="wait">`, and when
- * Next's navigation interleaved with the exit/enter hand-off the wrapper was
- * left on its `initial` opacity for good — Pool Masters, Precision and the
- * Chess "created, waiting for opponent" page rendered a complete waiting room
- * in the DOM that painted nothing until the player refreshed. Measured on the
- * create journey: 7/8, 8/8 and 7/9 attempts respectively
- * (docs/route-transition-blank-page.md).
+ * The shared page wrapper must never be able to hide the page, and must never
+ * paint a full-screen flash over it.
+ *
+ * History: the wrapper used to be a keyed framer-motion child inside
+ * `<AnimatePresence mode="wait">`, and when Next's navigation interleaved with
+ * the exit/enter hand-off it was left on its `initial` opacity for good —
+ * Pool Masters, Precision and the Chess "created, waiting for opponent" page
+ * rendered a complete waiting room in the DOM that painted nothing until the
+ * player refreshed (docs/route-transition-blank-page.md).
+ *
+ * The first fix kept a 0.25s page fade and added `.route-wipe`, a full-viewport
+ * veil at 34% page colour for 280ms on every navigation. That veil is what read
+ * as a camera flash; it has been removed in favour of a 6px content settle and
+ * a 2px accent hairline, and these assertions keep it removed.
  *
  * These are wiring-level assertions, which is this repo's convention for page
  * contracts; the behavioural half of the guard is the browser check
  * `node qa/games-blank-audit.mjs --create-only`, which fails when any create
  * journey leaves a page invisible.
  *
- * Assertions run against the files with their comments stripped: the comment
- * above documents the old markup, and prose must neither satisfy nor trip a
- * guard about what the code does.
+ * Assertions run against the files with their comments stripped: the comments
+ * document the old markup, and prose must neither satisfy nor trip a guard
+ * about what the code does.
  *
  * Run:  node --import tsx --test tests/route-transition-visibility.test.mjs
  */
@@ -45,8 +51,6 @@ const ruleOf = (selector) => {
 };
 
 test("the shared wrapper never drives page visibility from a JS animation", () => {
-  // The whole failure mode: an `initial` opacity that only a completed enter
-  // animation clears. Any of these coming back reintroduces it.
   assert.doesNotMatch(
     wrapper,
     /AnimatePresence/,
@@ -64,66 +68,76 @@ test("the shared wrapper never drives page visibility from a JS animation", () =
   );
 });
 
-test("the fade class has no opacity-0 resting state", () => {
-  assert.match(css, /@keyframes routeFadeIn\s*\{/);
-  assert.match(css, /\.route-fade-in\s*\{\s*animation: routeFadeIn/);
+test("the settle has no opacity-0 resting state", () => {
+  assert.match(css, /@keyframes routeSettle\s*\{/);
+  assert.match(css, /\.route-settle\s*\{\s*animation: routeSettle/);
   assert.doesNotMatch(
-    ruleOf(".route-fade-in"),
+    ruleOf(".route-settle"),
     /opacity:\s*0/,
     "a base opacity of 0 on the page wrapper is the bug being fixed",
   );
-  const keyframes = css.slice(css.indexOf("@keyframes routeFadeIn"));
+  const keyframes = css.slice(css.indexOf("@keyframes routeSettle"));
   const endState = keyframes.slice(0, keyframes.indexOf("@keyframes", 1));
-  assert.match(endState, /100%\s*\{\s*opacity:\s*1;\s*\}/);
+  assert.match(endState, /to\s*\{\s*opacity:\s*1;/);
+  // The entrance is a step, not a fade from black: starting near 0 would read
+  // as the same flash the veil caused.
+  assert.match(endState, /from\s*\{\s*opacity:\s*0\.86;/);
 });
 
-test("the fade is applied on navigation, and the wrapped children carry it", () => {
-  // The fade must sit on the element that actually renders the page...
-  const classAt = wrapper.indexOf("route-fade-in min-h-dvh");
+test("the settle is applied on navigation, and the wrapped children carry it", () => {
+  const classAt = wrapper.indexOf("route-settle min-h-dvh");
   const childrenAt = wrapper.indexOf("{children}");
   const closingAt = wrapper.indexOf("</div>", classAt);
-  assert.ok(classAt !== -1, `${WRAPPER} must apply the route fade class`);
+  assert.ok(classAt !== -1, `${WRAPPER} must apply the route settle class`);
   assert.ok(
     childrenAt > classAt && childrenAt < closingAt,
-    `${WRAPPER} must render {children} inside the faded element`,
+    `${WRAPPER} must render {children} inside the settled element`,
   );
   // ...and it must be conditional on a first-mount flag: a hard load has to
-  // paint its content immediately rather than starting at opacity 0.
+  // paint its content immediately rather than starting translated/translucent.
   assert.match(
     wrapper,
-    /className=\{[^}]*route-fade-in min-h-dvh[^}]*\}/,
-    "the fade must be conditional, so a hard load paints immediately",
+    /className=\{[^}]*route-settle min-h-dvh[^}]*\}/,
+    "the settle must be conditional, so a hard load paints immediately",
   );
   assert.match(wrapper, /firstMount/, "the condition must be the first mount");
 });
 
-test("the wipe veil rests transparent so it can never cover the page", () => {
-  // The transparent resting state is applied unconditionally — a veil that
-  // lost it would sit at its natural opacity of 1, an opaque sheet over the
-  // page — while only the flash is conditional (so nothing flashes on a hard
-  // load). The literal prefix below only matches while that holds.
-  assert.match(wrapper, /route-wipe pointer-events-none fixed inset-0 z-\[60\] bg-\[#030817\]/);
+test("nothing flashes a full-screen veil over the page", () => {
+  // The removed veil was `fixed inset-0 z-[60]` at 34% page colour. Any
+  // full-viewport fixed layer in this wrapper is the regression.
+  assert.doesNotMatch(wrapper, /route-wipe/, "the darkening wipe must stay removed");
   assert.doesNotMatch(
-    ruleOf(".route-wipe"),
-    /animation:/,
-    ".route-wipe must carry only the transparent resting state",
+    wrapper,
+    /fixed inset-0/,
+    `${WRAPPER} must not paint a full-viewport overlay on navigation`,
   );
-  assert.match(ruleOf(".route-wipe"), /opacity:\s*0;/);
-  assert.match(ruleOf(".route-wipe-flash"), /animation: routeWipe/);
-  assert.match(ruleOf(".route-wipe-flash"), /forwards/);
+  assert.doesNotMatch(css, /@keyframes routeWipe\b/);
+  assert.doesNotMatch(css, /\.route-wipe/);
+});
 
-  // Exactly one keyed element: React cannot remount two siblings that share a
-  // key, and a veil reused instead of remounted never replays its one-shot
-  // animation (measured: it sat at its transparent resting opacity).
-  assert.equal(
-    (wrapper.match(/key=\{pathname\}/g) || []).length,
-    1,
-    "exactly one element may be keyed by the pathname",
-  );
-  const veilAt = wrapper.indexOf("route-wipe");
+test("the replacement is a 2px accent hairline that cannot cover content", () => {
+  assert.match(wrapper, /route-accent-sweep/);
+  const rule = ruleOf(".route-accent-sweep");
+  assert.match(rule, /height:\s*2px;/, "the sweep must stay a hairline");
+  assert.match(rule, /pointer-events:\s*none;/, "the sweep must never eat a click");
+  assert.match(rule, /position:\s*fixed;/);
+  assert.match(rule, /animation:\s*routeAccentSweep/);
+  assert.match(rule, /inset:\s*0 0 auto 0;/, "the sweep belongs to the top edge only");
+
+  // It must be inside the keyed element so it remounts and replays, and it
+  // must not exist on a hard load.
+  const keyAt = wrapper.indexOf("key={pathname}");
+  const sweepAt = wrapper.indexOf("route-accent-sweep");
+  const childrenAt = wrapper.indexOf("{children}");
   assert.ok(
-    veilAt > wrapper.indexOf("route-fade-in min-h-screen"),
-    "the veil must sit inside the keyed wrapper so it remounts with it",
+    keyAt !== -1 && sweepAt > keyAt && sweepAt < childrenAt,
+    "the sweep must sit inside the keyed wrapper, before the page content",
+  );
+  assert.match(
+    wrapper,
+    /navigating \? <span[^>]*className="route-accent-sweep" \/> : null/,
+    "the sweep is a navigation-only element",
   );
 });
 
