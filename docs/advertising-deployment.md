@@ -437,3 +437,7 @@ Before any re-enable, get written confirmation from the network that the website
 and zone serve **non-adult** creatives only, then spot-check a live result and
 banner in a browser before leaving it on. Keep `HILLTOP_BANNER_PROVIDER_ATTESTED`
 off until the same check covers Hilltop creatives.
+
+The stop is effective only once a release is activated: the publish job skips
+a commit that is no longer the tip of the source branch, so land the change in
+the final commit and confirm the live page makes no provider request.
