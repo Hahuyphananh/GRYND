@@ -1,0 +1,42 @@
+# deploy/systemd/grynd-app-b.service  —  green slot (port 3002)
+#
+# The idle half of the pair described in grynd-app-a.service. Same contract,
+# different slot link and port; see deploy/lib/services.mjs for the switch.
+
+[Unit]
+Description=GRYND web app (Next.js, green slot, 3002)
+Documentation=file:///home/ubuntu/grynd/README.md
+After=network-online.target
+Wants=network-online.target
+ConditionPathExists=/home/ubuntu/grynd/slots/b
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+User=ubuntu
+Group=ubuntu
+WorkingDirectory=/home/ubuntu/grynd/slots/b/app
+EnvironmentFile=/home/ubuntu/grynd/env/app.env
+Environment=NODE_ENV=production
+Environment=PORT=3002
+Environment=HOSTNAME=127.0.0.1
+ExecStart=/usr/bin/node /home/ubuntu/grynd/slots/b/app/node_modules/next/dist/bin/next start -p 3002 -H 127.0.0.1
+Restart=always
+RestartSec=3
+KillSignal=SIGTERM
+TimeoutStopSec=25
+# A deliberate stop delivers SIGTERM; without this a successful cutover leaves
+# the retired slot marked "failed" in systemd.
+SuccessExitStatus=143
+
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=read-only
+ReadWritePaths=/home/ubuntu/grynd
+ProtectKernelTunables=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+
+# Started on demand by the release tool.

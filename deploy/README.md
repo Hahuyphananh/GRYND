@@ -162,21 +162,48 @@ validate (id, manifest, completeness, arch/node, BUILD_ID, realtime hash, env fi
   byte-identical). They are not independently versioned, and a rollback after a
   protocol change should be reviewed against realtime clients before it runs.
 
-## 4. Service changes required (proposed, not installed)
+## 4. Service layout: two app slots behind one nginx upstream
+
+A deploy must not stop the only app process. Two units, one per slot, each
+pinned to its own slot link and port, plus one nginx upstream that names the
+serving slot:
+
+| | blue | green |
+|---|---|---|
+| unit | `grynd-app-a.service` | `grynd-app-b.service` |
+| slot link | `/home/ubuntu/grynd/slots/a` | `/home/ubuntu/grynd/slots/b` |
+| loopback port | `3000` | `3002` |
+
+Activation (`deploy/lib/services.mjs`): point the idle slot at the new release →
+start it → wait for its own `127.0.0.1:<port>/api/health` → atomically rewrite
+`/etc/nginx/grynd/upstream-server.conf` (`server 127.0.0.1:<port>;`) and
+`nginx -t && systemctl reload nginx` (graceful; in-flight requests finish) →
+stop the retired slot. A failure before the nginx reload leaves the old slot
+serving and reverts; there is no moment with no upstream, which is what made
+`systemctl restart` return 502s during activation.
+
+The activation health gate reads `state/app-slot` and probes the port that is
+actually serving, not a fixed 3000.
 
 | | today | after migration |
 |---|---|---|
-| app unit | `WorkingDirectory=/home/ubuntu/GRYND`, `npm start`, env from the checkout | `WorkingDirectory=/home/ubuntu/grynd/current/app`, `node …/next/dist/bin/next start -p 3000 -H 127.0.0.1`, `EnvironmentFile=/home/ubuntu/grynd/env/app.env` |
+| app unit | `WorkingDirectory=/home/ubuntu/GRYND`, `npm start`, env from the checkout | two slot units, `WorkingDirectory=/home/ubuntu/grynd/slots/{a,b}/app`, `EnvironmentFile=/home/ubuntu/grynd/env/app.env` |
 | realtime unit | `WorkingDirectory=/home/ubuntu/GRYND/realtime-server`, `.env` in that directory | `WorkingDirectory=/home/ubuntu/grynd/current/realtime`, `EnvironmentFile=/home/ubuntu/grynd/env/realtime.env` |
 | environment | `.env.production` (app) and `realtime-server/.env` inside the checkout | two `0600` files under `grynd/env/`, managed independently of any release |
-| nginx / DNS / TLS / firewall | — | **no change** |
-| `sudoers` | — | one scoped line for the dedicated deploy account (see §9): `grynd-deploy ALL=(root) NOPASSWD: /usr/bin/systemctl restart grynd-app.service, /usr/bin/systemctl restart grynd-realtime.service` (verify the `systemctl` path with `command -v systemctl`) |
+| nginx | `proxy_pass http://127.0.0.1:3000` | `upstream grynd_app { include /etc/nginx/grynd/upstream-server.conf; keepalive 16; }` and `proxy_pass http://grynd_app` |
+| `sudoers` | — | scoped rules for the deploy account: start/stop each slot unit, `/usr/sbin/nginx -t`, `systemctl reload nginx` (see §9.1) |
 
-Files: `deploy/systemd/grynd-app.service`, `deploy/systemd/grynd-realtime.service`.
-Both use `ConditionPathExists=/home/ubuntu/grynd/current` so a missing pointer
-means "do not start", not "start the wrong thing". Their `ExecStart` uses
-`/usr/bin/node` as a placeholder — set it to `command -v node` on the VM
-(a version-managed Node install is not in `/usr/bin`).
+Files: `deploy/systemd/grynd-app-a.service`, `deploy/systemd/grynd-app-b.service`,
+`deploy/systemd/grynd-realtime.service`. The old single `grynd-app.service` is
+kept, disabled, as the manual fallback. Every unit uses `ConditionPathExists` so
+a missing link means "do not start", not "start the wrong thing". Their
+`ExecStart` uses `/usr/bin/node` — set it to `command -v node` on the VM.
+
+`/etc/nginx/grynd/` is owned `grynd-deploy:grynd-deploy 0750` and the included
+file is `0644`, so the deploy account can atomically replace one line without a
+root write; the nginx master (root) can still read it. Without the slots and
+that include, the controller falls back to the old restart path, so a
+half-migrated host still deploys.
 
 Two operational notes for the units:
 
@@ -403,11 +430,17 @@ sudo install -m 600 -o grynd-deploy -g grynd-deploy \
 echo 'restrict ssh-ed25519 <PUBLIC_KEY_BASE64> grynd-actions-deploy' \
   | sudo tee -a /home/grynd-deploy/.ssh/authorized_keys
 
-# 4. Scoped privilege only: restart the two units, nothing else.
-#    Verify the systemctl path first with: command -v systemctl
-sudo tee /etc/sudoers.d/grynd-deploy >/dev/null <<'EOF'
-grynd-deploy ALL=(root) NOPASSWD: /usr/bin/systemctl restart grynd-app.service, /usr/bin/systemctl restart grynd-realtime.service
+# 4. Scoped privilege only: the blue/green switch, nothing else.
+#    Verify the paths first with: command -v systemctl; command -v nginx
+cat | sudo tee /etc/sudoers.d/grynd-blue-green >/dev/null <<'EOF'
+grynd-deploy ALL=(root) NOPASSWD: /usr/bin/systemctl start grynd-app-a.service, /usr/bin/systemctl stop grynd-app-a.service
+grynd-deploy ALL=(root) NOPASSWD: /usr/bin/systemctl start grynd-app-b.service, /usr/bin/systemctl stop grynd-app-b.service
+grynd-deploy ALL=(root) NOPASSWD: /usr/bin/systemctl restart grynd-realtime.service
+grynd-deploy ALL=(root) NOPASSWD: /usr/sbin/nginx -t
+grynd-deploy ALL=(root) NOPASSWD: /usr/bin/systemctl reload nginx
 EOF
+sudo chmod 0440 /etc/sudoers.d/grynd-blue-green
+sudo visudo -cf /etc/sudoers.d/grynd-blue-green
 sudo chmod 0440 /etc/sudoers.d/grynd-deploy
 sudo visudo -cf /etc/sudoers.d/grynd-deploy
 
@@ -415,7 +448,13 @@ sudo visudo -cf /etc/sudoers.d/grynd-deploy
 #    grynd-deploy must be able to traverse /home/ubuntu (normally 0755).
 sudo install -d -m 755 -o grynd-deploy -g grynd-deploy /home/ubuntu/grynd
 sudo install -d -m 755 -o grynd-deploy -g grynd-deploy \
-  /home/ubuntu/grynd/{releases,incoming,state,tool}
+  /home/ubuntu/grynd/{releases,incoming,state,tool,slots}
+sudo install -d -m 750 -o grynd-deploy -g grynd-deploy /etc/nginx/grynd
+# Seed both slots at the live release and record which one is serving.
+sudo -u grynd-deploy ln -sfn /home/ubuntu/grynd/current /home/ubuntu/grynd/slots/a
+sudo -u grynd-deploy ln -sfn /home/ubuntu/grynd/current /home/ubuntu/grynd/slots/b
+echo a | sudo tee /home/ubuntu/grynd/state/app-slot >/dev/null
+sudo chown grynd-deploy:grynd-deploy /home/ubuntu/grynd/state/app-slot
 # env/ holds the 0600 files owned by the service account; the directory itself
 # is traversable so the deploy account can stat them (contents are never read).
 sudo install -d -m 755 -o ubuntu -g ubuntu /home/ubuntu/grynd/env

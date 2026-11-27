@@ -70,7 +70,7 @@ async function revertToPrevious({
     result.swapped = true;
     await controller.restart({ restartRealtime, releaseId: previousId });
     result.restarted = true;
-    const gate = await runHealthGate({ targets: healthTargets, ...healthOptions });
+    const gate = await runHealthGate({ targets: await healthTargets(), ...healthOptions });
     result.health = summarizeHealth(gate);
   } catch (error) {
     result.error = error.message;
@@ -265,7 +265,12 @@ export async function activateRelease({
     previousManifest.realtime.hash === manifest.realtime.hash
   );
 
-  const healthTargets = defaultHealthTargets(healthOptions);
+  // Resolved at use time: a blue/green controller moves the app to another
+  // loopback port, and the gate must follow it rather than always probe 3000.
+  const healthTargets = async () => {
+    const serving = await Promise.resolve(controller.servingPort?.()).catch(() => null);
+    return defaultHealthTargets({ ...healthOptions, ...(serving ? { appPort: serving } : {}) });
+  };
   const healthConfig = {
     attempts: healthOptions.attempts ?? 12,
     intervalMs: healthOptions.intervalMs ?? 750,
@@ -337,7 +342,7 @@ export async function activateRelease({
   }
 
   // ── Health gate ──────────────────────────────────────────────────────────
-  const gate = await runHealthGate({ targets: healthTargets, ...healthConfig });
+  const gate = await runHealthGate({ targets: await healthTargets(), ...healthConfig });
   const health = summarizeHealth(gate);
 
   if (!gate.ok) {

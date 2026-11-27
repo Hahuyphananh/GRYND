@@ -1,0 +1,52 @@
+# deploy/systemd/grynd-app-a.service  —  blue slot (port 3000)
+#
+# One of two app units that share one nginx upstream. The release tool starts
+# the idle slot, waits for its own /api/health, points nginx at it and stops the
+# other one, so a deploy never leaves nginx without an upstream (the 502 window
+# a `systemctl restart` produced). See deploy/lib/services.mjs.
+#
+#   slot a -> /home/ubuntu/grynd/slots/a -> releases/<id>   port 3000
+#   slot b -> /home/ubuntu/grynd/slots/b -> releases/<id>   port 3002
+#
+# Each unit resolves its OWN slot link at start, so the two releases never share
+# a working directory: the old process keeps serving its own .next/static chunks
+# until it is stopped after the cutover.
+
+[Unit]
+Description=GRYND web app (Next.js, blue slot, 3000)
+Documentation=file:///home/ubuntu/grynd/README.md
+After=network-online.target
+Wants=network-online.target
+ConditionPathExists=/home/ubuntu/grynd/slots/a
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+User=ubuntu
+Group=ubuntu
+WorkingDirectory=/home/ubuntu/grynd/slots/a/app
+EnvironmentFile=/home/ubuntu/grynd/env/app.env
+Environment=NODE_ENV=production
+Environment=PORT=3000
+Environment=HOSTNAME=127.0.0.1
+ExecStart=/usr/bin/node /home/ubuntu/grynd/slots/a/app/node_modules/next/dist/bin/next start -p 3000 -H 127.0.0.1
+Restart=always
+RestartSec=3
+KillSignal=SIGTERM
+TimeoutStopSec=25
+# A deliberate stop delivers SIGTERM; without this a successful cutover leaves
+# the retired slot marked "failed" in systemd.
+SuccessExitStatus=143
+
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=read-only
+ReadWritePaths=/home/ubuntu/grynd
+ProtectKernelTunables=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+
+# Started by the release tool, not at boot: the tool decides which slot is
+# serving, and starting both would double the memory for no traffic.
