@@ -546,6 +546,24 @@ test("the surface is mounted only by the wired result screens", () => {
   );
 });
 
+test("solo and daily offer after any finished run, not only a win", () => {
+  const game = code(read("src/components/solitaire-duel/SoloSolitaireGame.tsx"));
+  // The slot is gated on the run having ENDED; a forfeited daily or solo run is
+  // as finished as a solved one.
+  assert.match(
+    game,
+    /\{session\.endedAtMs !== null && !finishing && \(\s*<PostMatchAdSlot/,
+    "the offer must follow the end of the run, whatever the outcome",
+  );
+  assert.doesNotMatch(
+    game,
+    /\{session\.won && !finishing && \(\s*<PostMatchAdSlot/,
+    "a win-only gate would skip every finished loss",
+  );
+  // The id is the run's end, so the same result cannot offer twice.
+  assert.match(game, /matchId=\{`solitaire:\$\{session\.mode\}:.*endedAtMs\}`\}/);
+});
+
 test("puzzle results offer the same surface, once per finished run", () => {
   const puzzle = code(read("src/components/solitaire-duel/SolitairePuzzle.tsx"));
   const session = code(read("src/components/play/PuzzleSessionPlayer.tsx"));

@@ -1192,9 +1192,14 @@ export default function SoloSolitaireGame({ mode, daily, soloSummary = null }: S
             </div>
           )}
 
-          {session.won && !finishing && (
+          {/* ANY finished run earns the offer, not only a win. Both result
+              overlays above (solved and forfeited) sit behind it, and the id is
+              this run's end, so the same finished game can never offer twice.
+              The slot itself still asks the server, so PRO, a declined cadence
+              or an unavailable provider renders nothing. */}
+          {session.endedAtMs !== null && !finishing && (
             <PostMatchAdSlot
-              matchId={`solitaire:${session.mode}:${session.dateKey ?? session.seed}:${session.endedAtMs ?? "finished"}`}
+              matchId={`solitaire:${session.mode}:${session.dateKey ?? session.seed}:${session.endedAtMs}`}
             />
           )}
         </div>
