@@ -1,0 +1,12 @@
+#!/bin/sh
+# Start the slot recorded in state/app-slot. Called by grynd-boot.service at
+# boot: the old grynd-app.service is disabled because the release tool decides
+# which slot serves, and starting both would double memory for no traffic.
+set -eu
+state=/home/ubuntu/grynd/state/app-slot
+slot=$(cat "$state" 2>/dev/null || echo a)
+case "$slot" in
+  a|b) ;;
+  *) slot=a ;;
+esac
+exec /usr/bin/systemctl start "grynd-app-$slot.service"

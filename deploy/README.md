@@ -194,8 +194,10 @@ actually serving, not a fixed 3000.
 | `sudoers` | — | scoped rules for the deploy account: start/stop each slot unit, `/usr/sbin/nginx -t`, `systemctl reload nginx` (see §9.1) |
 
 Files: `deploy/systemd/grynd-app-a.service`, `deploy/systemd/grynd-app-b.service`,
-`deploy/systemd/grynd-realtime.service`. The old single `grynd-app.service` is
-kept, disabled, as the manual fallback. Every unit uses `ConditionPathExists` so
+`deploy/systemd/grynd-realtime.service`, plus `grynd-boot.service` (oneshot) and
+`grynd-start-slot` (`/usr/local/sbin/`), which starts the slot recorded in
+`state/app-slot` at boot so a reboot does not come up with no upstream. The old
+single `grynd-app.service` is kept, disabled, as the manual fallback. Every unit uses `ConditionPathExists` so
 a missing link means "do not start", not "start the wrong thing". Their
 `ExecStart` uses `/usr/bin/node` — set it to `command -v node` on the VM.
 
@@ -441,6 +443,12 @@ grynd-deploy ALL=(root) NOPASSWD: /usr/bin/systemctl reload nginx
 EOF
 sudo chmod 0440 /etc/sudoers.d/grynd-blue-green
 sudo visudo -cf /etc/sudoers.d/grynd-blue-green
+
+# 4b. Boot starts the recorded slot (the slot units are not enabled).
+sudo install -m 755 -o root -g root deploy/systemd/grynd-start-slot /usr/local/sbin/grynd-start-slot
+sudo install -m 644 -o root -g root deploy/systemd/grynd-boot.service /etc/systemd/system/grynd-boot.service
+sudo systemctl daemon-reload
+sudo systemctl enable grynd-boot.service
 sudo chmod 0440 /etc/sudoers.d/grynd-deploy
 sudo visudo -cf /etc/sudoers.d/grynd-deploy
 

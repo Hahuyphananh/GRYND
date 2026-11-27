@@ -1,0 +1,22 @@
+# deploy/systemd/grynd-boot.service  —  start the recorded slot at boot
+#
+# The two slot units are started by the release tool, not by systemd at boot.
+# Without this oneshot, a reboot would leave nginx with no upstream because the
+# legacy grynd-app.service is disabled. It starts exactly the slot recorded in
+# state/app-slot, so the upstream nginx was last pointed at is the one that
+# comes back.
+
+[Unit]
+Description=Start the recorded GRYND app slot
+Documentation=file:///home/ubuntu/grynd/README.md
+After=network-online.target nginx.service
+Wants=network-online.target
+ConditionPathExists=/home/ubuntu/grynd/state/app-slot
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/local/sbin/grynd-start-slot
+
+[Install]
+WantedBy=multi-user.target
