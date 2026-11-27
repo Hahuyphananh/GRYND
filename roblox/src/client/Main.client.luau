@@ -94,6 +94,17 @@ drawBtn.Font = Enum.Font.GothamBold
 drawBtn.TextScaled = true
 drawBtn.Parent = topRow
 
+local newBtn = Instance.new("TextButton")
+newBtn.Name = "NewGame"
+newBtn.Size = UDim2.new(0, 90, 0, 36)
+newBtn.Position = UDim2.new(0, 4 * 78 + 254, 0, 32)
+newBtn.BackgroundColor3 = Color3.fromRGB(90, 70, 130)
+newBtn.TextColor3 = Color3.new(1, 1, 1)
+newBtn.Text = "New Game"
+newBtn.Font = Enum.Font.GothamBold
+newBtn.TextScaled = true
+newBtn.Parent = topRow
+
 -- Tableau columns
 local columns = {}
 for c = 1, Constants.TABLEAU_COLUMNS do
@@ -241,6 +252,14 @@ for i, suit in ipairs(Constants.SUITS) do
 		end
 	end)
 end
+
+newBtn.MouseButton1Click:Connect(function()
+	seed = math.floor(os.time())
+	state = Deck.stateFromSeed(seed)
+	selected = nil
+	render()
+	status.Text = "New game — seed " .. seed
+end)
 
 render()
 status.Text = "Seed " .. seed .. " — click Draw"
