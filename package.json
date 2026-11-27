@@ -202,7 +202,8 @@
     "verify:portal:solitaire:sdk": "node qa/solitaire-standalone-check.mjs --expect-sdk",
     "artwork:portal:solitaire": "node standalone/solitaire-duel/artwork/render-artwork.mjs",
     "zip:portal:solitaire": "node scripts/zip-portal-package.mjs",
-    "package:portal:solitaire": "npm run artwork:portal:solitaire && npm run build:portal:solitaire && npm run zip:portal:solitaire"
+    "package:portal:solitaire": "npm run artwork:portal:solitaire && npm run build:portal:solitaire && npm run zip:portal:solitaire",
+    "ads:posthog": "node scripts/ads/posthog-mode-report.mjs"
   },
   "dependencies": {
     "@capacitor/android": "^8.6.0",

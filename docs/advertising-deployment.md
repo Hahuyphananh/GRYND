@@ -466,3 +466,30 @@ already names every origin those creatives need.
    adult creative appears once, turn the variable off and redeploy immediately —
    the networks randomise creatives per request, so a single clean load proves
    nothing.
+
+## Ad performance by game mode (PostHog)
+
+Every post-match ad event carries `ad_mode` (`solo`, `daily`, `puzzle-daily`,
+`puzzle-unlimited`, `puzzle-ranked`, `puzzle-ai`, `puzzle-strategic`; duel
+results are still untagged) and `placement = "post-match"`. The dimension is a
+short bounded token — match ids, URLs, zone ids and free text are dropped by
+`buildAdEvent` in `src/lib/ads/core/report.ts`.
+
+Read-only report (needs `POSTHOG_PERSONAL_API_KEY` with `query:read` and
+`POSTHOG_PROJECT_ID`; never pass a key on the command line):
+
+```bash
+node --env-file=/home/ubuntu/grynd/env/app.env scripts/ads/posthog-mode-report.mjs --days=30
+npm run ads:posthog -- --days=7 --json
+```
+
+It prints requests, fills, fill rate, no-fills, blocked, errors, impressions,
+starts, completes and play rate per mode. `untagged` is an event without
+`ad_mode` (older builds, or a surface that does not pass one).
+
+Saved insight (PostHog UI, because creating one via API needs an `insight:write`
+key): **Insights → New insight → Trends**, event `ad_fill` and `ad_impression`,
+filter `placement = post-match`, breakdown by event property `ad_mode`. For a
+fill-rate trend, add `ad_request` to the series and switch to formula mode with
+`B / A * 100` (fills ÷ requests). `ad_mode` only exists from the build that
+shipped it, so earlier periods stay `untagged`/empty.
